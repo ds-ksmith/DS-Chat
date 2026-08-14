@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models import Room, RoomMembership, User
 from app.services.message_service import create_message
 from app.services.push_service import send_push_to_user
-from app.ws.connection_manager import ConnectionManager
+from app.ws.presence import Presence
 
 router = APIRouter(tags=["ws"])
 
@@ -33,7 +33,7 @@ async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UU
 
 async def _notify_offline_members(
     db: AsyncSession,
-    manager: ConnectionManager,
+    presence: Presence,
     room_id: uuid.UUID,
     sender: User,
     content: str,
@@ -42,7 +42,7 @@ async def _notify_offline_members(
         select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
     )
     member_ids = {row[0] for row in result.all()}
-    offline_ids = member_ids - manager.connected_user_ids(room_id)
+    offline_ids = member_ids - await presence.connected_user_ids(room_id)
     if not offline_ids:
         return
 
@@ -70,6 +70,8 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
 
     await websocket.accept()
     manager = websocket.app.state.connection_manager
+    presence: Presence = websocket.app.state.presence
+    broadcaster = websocket.app.state.broadcaster
     joined_rooms: set[uuid.UUID] = set()
 
     try:
@@ -90,7 +92,8 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         {"type": "error", "detail": "Not a member of this room"}
                     )
                     continue
-                manager.join(envelope.room_id, websocket, user.id)
+                manager.join(envelope.room_id, websocket)
+                await presence.join(envelope.room_id, user.id)
                 joined_rooms.add(envelope.room_id)
                 await websocket.send_json({"type": "joined", "room_id": str(envelope.room_id)})
 
@@ -99,6 +102,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     await websocket.send_json({"type": "error", "detail": "room_id required"})
                     continue
                 manager.leave(envelope.room_id, websocket)
+                await presence.leave(envelope.room_id, user.id)
                 joined_rooms.discard(envelope.room_id)
 
             elif envelope.type == "message":
@@ -115,7 +119,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     )
                     continue
                 message = await create_message(db, envelope.room_id, user.id, envelope.content)
-                await manager.broadcast(
+                await broadcaster.publish(
                     envelope.room_id,
                     {
                         "type": "message",
@@ -128,7 +132,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     },
                 )
                 await _notify_offline_members(
-                    db, manager, envelope.room_id, user, envelope.content
+                    db, presence, envelope.room_id, user, envelope.content
                 )
 
             else:
@@ -140,3 +144,5 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
         pass
     finally:
         manager.leave_all(websocket)
+        for room_id in joined_rooms:
+            await presence.leave(room_id, user.id)

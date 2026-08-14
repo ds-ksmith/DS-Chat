@@ -16,5 +16,9 @@ class Settings(BaseSettings):
     vapid_private_key: str | None = None
     vapid_subject: str = "mailto:admin@example.com"
 
+    # Cross-instance WebSocket fan-out + presence (ARCHITECTURE.md phase 5).
+    # No credentials in a local-dev default, unlike database_url.
+    redis_url: str = "redis://localhost:6379/0"
+
 
 settings = Settings()

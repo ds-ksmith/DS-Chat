@@ -1,3 +1,4 @@
+import contextlib
 import os
 from pathlib import Path
 
@@ -6,6 +7,9 @@ os.environ.setdefault(
 )
 os.environ.setdefault("SESSION_SECRET", "test-secret")
 os.environ.setdefault("SESSION_HTTPS_ONLY", "false")
+# DB index 15 keeps test presence/pub-sub state separate from whatever a
+# developer's local Redis is doing on db 0.
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/15")
 
 import pytest
 import pytest_asyncio
@@ -76,15 +80,15 @@ async def client(app):
 
 
 @pytest.fixture
-def ws_client():
+def ws_client_factory():
     # Starlette's TestClient (needed for websocket_connect, which httpx's
     # async client doesn't support) runs the ASGI app on a background thread
     # with its own event loop via anyio's BlockingPortal. asyncpg connections
-    # are bound to the loop they're opened on, so this app gets its own
-    # engine created here (no connections opened yet) rather than reusing
-    # the `db_session`/`app` fixtures' engine, which belongs to pytest's
-    # loop. No per-test rollback here (see test_ws_chat.py for the
-    # unique-name convention that keeps tests independent without it).
+    # are bound to the loop they're opened on, so each app built here gets
+    # its own engine (no connections opened yet) rather than reusing the
+    # `db_session`/`app` fixtures' engine, which belongs to pytest's loop.
+    # No per-test rollback here (see test_ws_chat.py for the unique-name
+    # convention that keeps tests independent without it).
     #
     # poolclass=NullPool: with pooling, a WS test that does more than one
     # DB round trip per message (e.g. the offline-push lookup) can hit a
@@ -94,19 +98,38 @@ def ws_client():
     # surfaces as "connection is closed". A fresh connection per session
     # sidesteps it; fine for tests, not something prod needs (prod isn't
     # juggling a background portal thread against the main test thread).
-    application = create_app()
-    test_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
-    test_session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
+    #
+    # A factory (not a single client) so tests can spin up more than one
+    # independent app instance -- sharing the same test Postgres and Redis,
+    # like separate app-server processes behind Nginx would -- to exercise
+    # cross-instance broadcast/presence (see test_broadcast.py). Each
+    # TestClient is entered via an ExitStack so its lifespan (which opens
+    # the Redis connection/pubsub listener) starts immediately and all of
+    # them get torn down together at fixture teardown.
+    stack = contextlib.ExitStack()
 
-    async def _get_db():
-        async with test_session_factory() as session:
-            yield session
+    def _make() -> TestClient:
+        application = create_app()
+        test_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
+        test_session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
-    application.dependency_overrides[get_db] = _get_db
+        async def _get_db():
+            async with test_session_factory() as session:
+                yield session
 
-    with TestClient(application) as tc:
+        application.dependency_overrides[get_db] = _get_db
+
+        tc = stack.enter_context(TestClient(application))
         tc.session_factory = test_session_factory  # type: ignore[attr-defined]
-        yield tc
+        return tc
+
+    yield _make
+    stack.close()
+
+
+@pytest.fixture
+def ws_client(ws_client_factory):
+    return ws_client_factory()
 
 
 async def register_and_login(
