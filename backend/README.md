@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
@@ -107,7 +107,8 @@ DATABASE_URL=postgresql+asyncpg://chatapp:chatapp@localhost:5432/chatapp_test .v
 
 ```
 app/
-  main.py            create_app(), session middleware, router/WS mounting
+  main.py            create_app(), session middleware, router/WS mounting,
+                        serves frontend/dist if it exists (see below)
   config.py           environment-driven settings (pydantic-settings)
   database.py          async engine/session, get_db() dependency
   dependencies.py       get_current_user (session cookie or Bearer token),
@@ -127,6 +128,24 @@ app/
 alembic/                      migrations
 tests/                         pytest + httpx/TestClient tests
 ```
+
+## Production deployment (Phase 8)
+
+See [`../DEPLOYMENT.md`](../DEPLOYMENT.md) for the full runbook. The one
+piece that lives in this backend's own code: `app/main.py` serves the built
+frontend directly (mounts `frontend/dist/assets` with far-future
+`Cache-Control` on Vite's content-hashed filenames, and a catch-all route
+that serves any other real file under `frontend/dist` or falls back to
+`index.html` for client-side routes like `/rooms/<id>` — `index.html`/
+`sw.js`/`manifest.webmanifest` always get `Cache-Control: no-cache` instead,
+since caching any of those is exactly how a client ends up stuck on a stale
+app version after a deploy) — but only if `frontend/dist` exists at
+startup. It never does in local dev (the Vite dev server handles the
+frontend there instead), so this is fully inert until someone actually runs
+`npm run build`. The point: one Gunicorn port ends up serving the frontend
+*and* `/api` *and* `/ws`, which is what lets a reverse proxy (Nginx Proxy
+Manager, in the deployment this was built for) forward a whole domain to a
+single upstream with no custom per-path routing.
 
 ## Admin portal (Phase 6)
 

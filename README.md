@@ -50,6 +50,6 @@ CORS configuration is needed in development.
 
 ## Deployment
 
-Not part of Phase 1. The target is two plain Linux servers with no
-containers — see [ARCHITECTURE.md §9](ARCHITECTURE.md#9-deployment-architecture--two-linux-servers-no-docker)
-and the corresponding "Production deployment" issue in the tracker.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production runbook — two
+Debian 13 servers, no containers, matching
+[ARCHITECTURE.md §9](ARCHITECTURE.md#9-deployment-architecture--two-linux-servers-no-docker).

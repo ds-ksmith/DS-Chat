@@ -1,0 +1,54 @@
+# /etc/systemd/system/chatapp.service
+#
+# Install: sudo cp deploy/systemd/chatapp.service /etc/systemd/system/
+#          sudo systemctl daemon-reload
+#          sudo systemctl enable --now chatapp
+#
+# See ../../DEPLOYMENT.md for the full app-server setup this fits into.
+# TLS termination and public-facing reverse proxying are handled by an
+# external Nginx Proxy Manager instance, not anything on this box -- this
+# unit just needs to be reachable on the TCP port below.
+
+[Unit]
+Description=KeepItTalking chat service app server
+After=network.target
+
+[Service]
+# No Type= override -- defaults to "simple", which is correct here since
+# gunicorn runs in the foreground (no --daemon flag below) and doesn't send
+# systemd's sd_notify readiness protocol.
+User=chatapp
+Group=chatapp
+WorkingDirectory=/srv/chatapp/backend
+EnvironmentFile=/etc/chatapp/env
+Environment=PYTHONUNBUFFERED=1
+
+# 0.0.0.0 because Nginx Proxy Manager runs on a separate host -- the actual
+# security boundary is the `ufw` rule in DEPLOYMENT.md restricting this
+# port to NPM's IP specifically, not the bind address. If NPM reaches this
+# box over a private network interface, bind to that private IP instead
+# for defense in depth (belt-and-suspenders on top of the firewall rule).
+ExecStart=/srv/chatapp/backend/.venv/bin/gunicorn app.main:app \
+  -k uvicorn.workers.UvicornWorker \
+  --workers 4 \
+  --bind 0.0.0.0:8000 \
+  --timeout 30
+
+# alembic upgrade head deliberately does NOT run here -- with --workers 4,
+# every restart would race multiple processes trying to migrate at once.
+# It's an explicit step in deploy/upgrade.sh instead, run once before the
+# restart that picks up the new code.
+
+Restart=on-failure
+RestartSec=2
+
+# Baseline hardening -- not a full systemd sandboxing pass, just the
+# well-understood safe defaults for a service that doesn't need to write
+# anywhere outside its own working directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

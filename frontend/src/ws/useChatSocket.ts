@@ -7,6 +7,9 @@ interface UseChatSocketOptions {
   onUnauthenticated: () => void
 }
 
+const RECONNECT_BASE_DELAY_MS = 1000
+const RECONNECT_MAX_DELAY_MS = 30000
+
 export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatSocketOptions) {
   const socketRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
@@ -16,28 +19,51 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
   onUnauthenticatedRef.current = onUnauthenticated
 
   useEffect(() => {
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${protocol}://${location.host}/ws/chat`)
-    socketRef.current = ws
+    let stopped = false
+    let reconnectDelay = RECONNECT_BASE_DELAY_MS
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-    ws.onopen = () => {
-      setConnected(true)
-      ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
-    }
+    function connect() {
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+      const ws = new WebSocket(`${protocol}://${location.host}/ws/chat`)
+      socketRef.current = ws
 
-    ws.onmessage = (event) => {
-      onMessageRef.current(JSON.parse(event.data) as ServerEnvelope)
-    }
+      ws.onopen = () => {
+        reconnectDelay = RECONNECT_BASE_DELAY_MS
+        setConnected(true)
+        ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
+      }
 
-    ws.onclose = (event) => {
-      setConnected(false)
-      if (event.code === 4401) {
-        onUnauthenticatedRef.current()
+      ws.onmessage = (event) => {
+        onMessageRef.current(JSON.parse(event.data) as ServerEnvelope)
+      }
+
+      ws.onclose = (event) => {
+        setConnected(false)
+        socketRef.current = null
+
+        if (event.code === 4401) {
+          onUnauthenticatedRef.current()
+          return
+        }
+        if (stopped) return
+
+        // Unexpected close -- a deploy restarting the app server, a brief
+        // network blip, or (absent any app-level ping/pong) an idle
+        // connection getting recycled by a reverse proxy in front of it.
+        // Retry with exponential backoff instead of leaving the chat
+        // silently dead until the user manually reloads.
+        reconnectTimer = setTimeout(connect, reconnectDelay)
+        reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY_MS)
       }
     }
 
+    connect()
+
     return () => {
-      ws.close()
+      stopped = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      socketRef.current?.close()
       socketRef.current = null
     }
   }, [roomId])
