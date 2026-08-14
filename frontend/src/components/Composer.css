@@ -3,11 +3,17 @@
   border-top: 1px solid var(--ds-border);
   background: var(--ds-surface);
   display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.composer-box {
+  display: flex;
   gap: var(--sp-2);
   align-items: flex-end;
 }
 
-.composer textarea {
+.composer-box textarea {
   flex: 1;
   resize: none;
   background: var(--ds-surface-2);
@@ -20,7 +26,7 @@
   max-height: 120px;
 }
 
-.composer textarea:focus {
+.composer-box textarea:focus {
   border-color: var(--ds-accent);
 }
 
@@ -41,4 +47,10 @@
 .composer-send:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.composer-status {
+  font-size: 0.76rem;
+  color: var(--ds-muted);
+  padding-left: 2px;
 }

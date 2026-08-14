@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { NetworkError } from '../api/client'
 import { getRoomMessages } from '../api/rooms'
 import { useChatSocket } from '../ws/useChatSocket'
 import type { ChatMessageEnvelope, Message, MyRoomItem, RoomMember, ServerEnvelope } from '../types'
@@ -21,12 +22,22 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
   const [history, setHistory] = useState<Message[]>([])
   const [live, setLive] = useState<ChatMessageEnvelope[]>([])
   const [wsError, setWsError] = useState<string | null>(null)
+  const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false)
 
   useEffect(() => {
     setHistory([])
     setLive([])
     setWsError(null)
-    getRoomMessages(room.id).then(setHistory).catch((err) => setWsError(String(err)))
+    setHistoryUnavailableOffline(false)
+    getRoomMessages(room.id)
+      .then(setHistory)
+      .catch((err) => {
+        if (err instanceof NetworkError) {
+          setHistoryUnavailableOffline(true)
+        } else {
+          setWsError(String(err))
+        }
+      })
   }, [room.id])
 
   const onMessage = useCallback((envelope: ServerEnvelope) => {
@@ -71,6 +82,11 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
       </header>
 
       {wsError && <p className="chat-pane-error">{wsError}</p>}
+      {historyUnavailableOffline && (
+        <p className="chat-pane-error chat-pane-note">
+          Message history for this room isn't available offline yet.
+        </p>
+      )}
 
       <MessageList messages={[...history, ...live]} members={members} />
       <Composer roomName={room.name} disabled={!connected} onSend={send} />

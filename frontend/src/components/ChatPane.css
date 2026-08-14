@@ -70,3 +70,7 @@
   padding: var(--sp-2) var(--sp-4) 0;
   margin: 0;
 }
+
+.chat-pane-note {
+  color: var(--ds-muted);
+}

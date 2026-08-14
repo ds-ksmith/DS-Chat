@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { NetworkError } from '../api/client'
 import { listMyInvites } from '../api/invites'
 import { listMyRooms, listRoomMembers } from '../api/rooms'
 import { BrowseRoomsModal } from '../components/BrowseRoomsModal'
 import { ChatPane } from '../components/ChatPane'
 import { InvitesModal } from '../components/InvitesModal'
 import { NewRoomModal } from '../components/NewRoomModal'
+import { OfflineBanner } from '../components/OfflineBanner'
 import { RoomInfoPanel } from '../components/RoomInfoPanel'
 import { Sidebar } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
@@ -27,13 +29,23 @@ export function ChatShellPage() {
   const [inviteCount, setInviteCount] = useState(0)
   const [infoOpen, setInfoOpen] = useState(false)
   const [modal, setModal] = useState<ModalKind>(null)
+  const [roomsUnavailableOffline, setRoomsUnavailableOffline] = useState(false)
 
   const activeRoom = rooms.find((r) => r.id === roomId)
 
   const refreshRooms = useCallback(async () => {
-    const list = await listMyRooms()
-    setRooms(list)
-    return list
+    try {
+      const list = await listMyRooms()
+      setRooms(list)
+      setRoomsUnavailableOffline(false)
+      return list
+    } catch (err) {
+      if (err instanceof NetworkError) {
+        setRoomsUnavailableOffline(true)
+        return []
+      }
+      throw err
+    }
   }, [])
 
   const refreshMembers = useCallback(() => {
@@ -62,6 +74,7 @@ export function ChatShellPage() {
   return (
     <div className="chat-shell">
       <TopBar />
+      <OfflineBanner />
       <div className="chat-shell-body">
         {(!isMobile || !roomId) && (
           <Sidebar
@@ -73,6 +86,7 @@ export function ChatShellPage() {
             onOpenBrowse={() => setModal('browse')}
             onOpenInvites={() => setModal('invites')}
             inviteCount={inviteCount}
+            unavailableOffline={roomsUnavailableOffline && rooms.length === 0}
           />
         )}
 

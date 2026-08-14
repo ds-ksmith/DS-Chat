@@ -11,6 +11,7 @@ interface SidebarProps {
   onOpenBrowse: () => void
   onOpenInvites: () => void
   inviteCount: number
+  unavailableOffline?: boolean
 }
 
 export function Sidebar({
@@ -22,6 +23,7 @@ export function Sidebar({
   onOpenBrowse,
   onOpenInvites,
   inviteCount,
+  unavailableOffline,
 }: SidebarProps) {
   const query = searchQuery.trim().toLowerCase()
   const filtered = query ? rooms.filter((r) => r.name.toLowerCase().includes(query)) : rooms
@@ -67,17 +69,25 @@ export function Sidebar({
           Browse rooms
         </button>
 
-        {filtered.length > 0 && <div className="sidebar-section-label">Rooms</div>}
-        <nav>
-          {filtered.map((room, i) => (
-            <RoomRow
-              key={room.id}
-              room={room}
-              colorIndex={i}
-              active={room.id === activeRoomId}
-            />
-          ))}
-        </nav>
+        {unavailableOffline ? (
+          <p className="sidebar-offline-note">
+            Your rooms aren't available offline yet. Reconnect to load them.
+          </p>
+        ) : (
+          <>
+            {filtered.length > 0 && <div className="sidebar-section-label">Rooms</div>}
+            <nav>
+              {filtered.map((room, i) => (
+                <RoomRow
+                  key={room.id}
+                  room={room}
+                  colorIndex={i}
+                  active={room.id === activeRoomId}
+                />
+              ))}
+            </nav>
+          </>
+        )}
       </div>
     </aside>
   )

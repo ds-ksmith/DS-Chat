@@ -1,4 +1,5 @@
 import { useRef, useState, type KeyboardEvent } from 'react'
+import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import './Composer.css'
 
 interface ComposerProps {
@@ -10,6 +11,7 @@ interface ComposerProps {
 export function Composer({ roomName, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const online = useOnlineStatus()
 
   function autoGrow() {
     const el = textareaRef.current
@@ -35,29 +37,34 @@ export function Composer({ roomName, disabled, onSend }: ComposerProps) {
 
   return (
     <div className="composer">
-      <textarea
-        ref={textareaRef}
-        rows={1}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => {
-          setValue(e.target.value)
-          autoGrow()
-        }}
-        onKeyDown={handleKeyDown}
-        placeholder={`Message #${roomName}`}
-      />
-      <button
-        type="button"
-        className="composer-send"
-        onClick={handleSend}
-        disabled={disabled || !value.trim()}
-        aria-label="Send message"
-      >
-        <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
-          <polygon points="2,2 18,10 2,18 6,10" fill="currentColor" />
-        </svg>
-      </button>
+      <div className="composer-box">
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            setValue(e.target.value)
+            autoGrow()
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={disabled ? (online ? 'Connecting…' : "You're offline") : `Message #${roomName}`}
+        />
+        <button
+          type="button"
+          className="composer-send"
+          onClick={handleSend}
+          disabled={disabled || !value.trim()}
+          aria-label="Send message"
+        >
+          <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
+            <polygon points="2,2 18,10 2,18 6,10" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
+      {disabled && (
+        <div className="composer-status">{online ? 'Connecting…' : "You're offline — messages can't be sent right now"}</div>
+      )}
     </div>
   )
 }

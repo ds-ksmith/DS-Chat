@@ -103,3 +103,11 @@
   color: var(--ds-muted);
   text-transform: uppercase;
 }
+
+.sidebar-offline-note {
+  color: var(--ds-muted);
+  font-size: 0.82rem;
+  padding: var(--sp-4);
+  line-height: 1.5;
+  margin: 0;
+}
