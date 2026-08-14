@@ -6,7 +6,11 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.schemas.auth import LoginRequest
 from app.schemas.user import UserRead
-from app.services.auth_service import InvalidCredentialsError, authenticate_user
+from app.services.auth_service import (
+    AccountDeactivatedError,
+    InvalidCredentialsError,
+    authenticate_user,
+)
 
 # No POST /register here: this is an invite-only site. Accounts are created
 # by an operator via `python -m app.cli create-user` (see app/cli.py), not
@@ -25,6 +29,8 @@ async def login(
         )
     except InvalidCredentialsError:
         raise HTTPException(status_code=401, detail="Invalid username/email or password")
+    except AccountDeactivatedError:
+        raise HTTPException(status_code=401, detail="Account is deactivated")
 
     request.session["user_id"] = str(user.id)
     return user

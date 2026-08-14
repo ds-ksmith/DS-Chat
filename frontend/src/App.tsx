@@ -1,8 +1,10 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { AdminRoute } from './components/AdminRoute'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
 import { ChatShellPage } from './pages/ChatShellPage'
+import { AdminPage } from './pages/AdminPage'
 
 function App() {
   return (
@@ -23,6 +25,14 @@ function App() {
             <ProtectedRoute>
               <ChatShellPage />
             </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminPage />
+            </AdminRoute>
           }
         />
         <Route path="*" element={<Navigate to="/rooms" replace />} />

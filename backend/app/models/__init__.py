@@ -1,3 +1,4 @@
+from app.models.admin_audit_log import AdminAuditLog
 from app.models.base import Base
 from app.models.invite import InviteStatus, RoomInvite
 from app.models.membership import RoomMembership, RoomRole
@@ -16,4 +17,5 @@ __all__ = [
     "RoomInvite",
     "InviteStatus",
     "PushSubscription",
+    "AdminAuditLog",
 ]

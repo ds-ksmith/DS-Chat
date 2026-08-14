@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.png'
 import { useAuth } from '../context/AuthContext'
 import { initials } from '../lib/avatar'
@@ -7,6 +8,7 @@ import './TopBar.css'
 
 export function TopBar() {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -58,6 +60,18 @@ export function TopBar() {
             <div className="top-bar-menu-scrim" onClick={() => setMenuOpen(false)} />
             <div className="top-bar-menu" role="menu">
               <div className="top-bar-menu-username">{user.username}</div>
+              {user.is_site_admin && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false)
+                    navigate('/admin')
+                  }}
+                >
+                  Admin
+                </button>
+              )}
               {isPushSupported() && (
                 <button
                   type="button"

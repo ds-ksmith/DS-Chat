@@ -18,7 +18,7 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Not authenticated")
 
     user = await db.get(User, uuid.UUID(user_id))
-    if user is None:
+    if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(status_code=401, detail="Not authenticated")
 
@@ -46,3 +46,8 @@ async def require_room_role(
     if _ROLE_RANK[membership.role] < _ROLE_RANK[minimum]:
         raise HTTPException(status_code=403, detail="Insufficient room role")
     return membership
+
+
+def require_site_admin(user: User) -> None:
+    if not user.is_site_admin:
+        raise HTTPException(status_code=403, detail="Site admin required")

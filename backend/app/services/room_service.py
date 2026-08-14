@@ -60,7 +60,7 @@ async def create_room(db: AsyncSession, owner_id: uuid.UUID, data: RoomCreate) -
 async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Room, bool]]:
     result = await db.execute(
         select(Room)
-        .where(Room.is_private.is_(False))
+        .where(Room.is_private.is_(False), Room.is_archived.is_(False))
         .options(selectinload(Room.memberships))
         .order_by(Room.created_at)
     )

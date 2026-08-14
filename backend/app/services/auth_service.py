@@ -15,6 +15,10 @@ class InvalidCredentialsError(Exception):
     pass
 
 
+class AccountDeactivatedError(Exception):
+    pass
+
+
 async def register_user(db: AsyncSession, data: UserCreate) -> User:
     user = User(
         username=data.username,
@@ -43,4 +47,6 @@ async def authenticate_user(
     user = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.password_hash):
         raise InvalidCredentialsError()
+    if not user.is_active:
+        raise AccountDeactivatedError()
     return user

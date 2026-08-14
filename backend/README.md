@@ -1,9 +1,10 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
 WebSocket chat endpoint that fans out across multiple app-server instances
-via Redis pub/sub, and Web Push notifications for offline room members. See
+via Redis pub/sub, Web Push notifications for offline room members, and a
+site-admin portal (user/room management + an audit log). See
 `../ARCHITECTURE.md` for the full system design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
@@ -59,7 +60,8 @@ cp .env.example .env
 ### 5. Create a user
 
 There's no public sign-up. Create accounts directly with the CLI (add
-`--admin` to grant `is_site_admin`, useful ahead of the phase-6 admin portal):
+`--admin` to grant `is_site_admin`, which unlocks the admin portal at
+`/admin` on the frontend and the `/api/admin/*` routes below):
 
 ```bash
 .venv/bin/python -m app.cli create-user alice alice@example.com "some-password"
@@ -106,19 +108,53 @@ app/
   main.py            create_app(), session middleware, router/WS mounting
   config.py           environment-driven settings (pydantic-settings)
   database.py          async engine/session, get_db() dependency
-  dependencies.py       get_current_user, require_room_member, require_room_role
+  dependencies.py       get_current_user, require_room_member, require_room_role,
+                           require_site_admin
   security.py            argon2 password hashing
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
-                             messages, room_invites, push_subscriptions)
+                             messages, room_invites, push_subscriptions,
+                             admin_audit_log)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, invites, push, health
+  routers/                  auth, rooms, invites, push, admin, health
   services/                  business logic called by routers
   ws/                        connection_manager (local sockets), presence +
                                broadcaster (Redis), /ws/chat handler
 alembic/                      migrations
 tests/                         pytest + httpx/TestClient tests
 ```
+
+## Admin portal (Phase 6)
+
+Every `/api/admin/*` route (`app/routers/admin.py`) requires
+`current_user.is_site_admin` (checked via `require_site_admin`,
+`app/dependencies.py`) and is backed by `app/services/admin_service.py`:
+- **Users**: list, deactivate/reactivate (`User.is_active`), reset password,
+  promote/demote `is_site_admin`. An admin can't deactivate or demote their
+  own account (`CannotActOnSelfError` → 400) — the one guard against an
+  admin locking themselves out. Deactivation takes effect immediately, even
+  for an already-open session: `get_current_user` re-checks `is_active` on
+  every request since it already loads the user row.
+- **Rooms**: list every room including private ones (unlike the
+  member-facing `GET /api/rooms`, which is open-rooms-only), archive/
+  unarchive (`Room.is_archived` — archived rooms drop out of the open-room
+  browse list but stay readable for existing members, matching how
+  Mattermost archive works), and force a transfer of ownership to any
+  existing member without needing to already be the owner (the "admin
+  override" of the member-initiated transfer in `room_service.py`, which
+  otherwise requires exactly that).
+- **Audit log**: every mutating admin action writes one `AdminAuditLog` row
+  (actor, action, target type/id, JSON metadata) in the same transaction as
+  the change, listed newest-first via `GET /api/admin/audit-log`.
+
+Two items from the original phase scope are deliberately not here yet:
+- **Bot/integration management** — nothing to manage until Phase 7 builds
+  the actual bot data model (`api_tokens`, `webhooks_incoming`,
+  `event_subscriptions` per `ARCHITECTURE.md` §4); it'll be built alongside
+  that data model instead of as an empty panel now.
+- **System settings** — no settings storage or concrete setting exists yet.
+  The frontend has an empty "Settings" tab as a placeholder for when one
+  does.
 
 ## Cross-instance broadcast (Phase 5)
 
@@ -192,3 +228,6 @@ their role.
   proxy (see `../frontend/vite.config.ts`) is the accepted phase-1 mitigation.
 - Deleting a room explicitly deletes its messages/memberships/invites first
   (`room_service.delete_room`) rather than relying on DB-level cascades.
+- `admin_audit_log` has no admin UI for filtering/searching yet — it's a
+  flat newest-first list with `limit`/`offset` pagination, no filter by
+  actor/action/target. Fine at current scale; revisit if the log grows.

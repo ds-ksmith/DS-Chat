@@ -81,3 +81,35 @@ export interface ChatErrorEnvelope {
 }
 
 export type ServerEnvelope = ChatMessageEnvelope | ChatJoinedEnvelope | ChatErrorEnvelope
+
+export interface AdminUser {
+  id: string
+  username: string
+  email: string
+  is_bot: boolean
+  is_site_admin: boolean
+  is_active: boolean
+  created_at: string
+}
+
+export interface AdminRoom {
+  id: string
+  name: string
+  description: string | null
+  is_private: boolean
+  is_archived: boolean
+  owner_id: string
+  created_at: string
+  member_count: number
+}
+
+export interface AuditLogEntry {
+  id: string
+  actor_id: string
+  actor_username: string
+  action: string
+  target_type: string
+  target_id: string
+  metadata: Record<string, unknown> | null
+  created_at: string
+}
