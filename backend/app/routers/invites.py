@@ -63,6 +63,8 @@ async def accept_invite_endpoint(
     return RoomMemberRead(
         user_id=membership.user_id,
         username=current_user.username,
+        display_name=current_user.display_name,
+        avatar_filename=current_user.avatar_filename,
         role=membership.role,
         joined_at=membership.joined_at,
     )

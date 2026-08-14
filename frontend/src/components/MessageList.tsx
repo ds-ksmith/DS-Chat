@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
-import { senderColorIndex } from '../lib/messageGrouping'
+import { avatarUrlFor, displayNameFor, senderColorIndex } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
 import { ImageLightbox } from './ImageLightbox'
@@ -24,8 +24,9 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [reactingId, setReactingId] = useState<string | null>(null)
 
-  function usernameFor(userId: string): string {
-    return members.find((m) => m.user_id === userId)?.username ?? 'someone'
+  function displayNameForUserId(userId: string): string {
+    const member = members.find((m) => m.user_id === userId)
+    return member?.display_name || member?.username || 'someone'
   }
 
   useEffect(() => {
@@ -59,13 +60,17 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
           <div key={msg.id} className={`message-row${isGroupStart ? ' message-row-start' : ''}`}>
             <div className="message-avatar-slot">
               {isGroupStart && (
-                <UserAvatar username={msg.username} colorIndex={senderColorIndex(msg.username, members)} />
+                <UserAvatar
+                  username={msg.username}
+                  colorIndex={senderColorIndex(msg.username, members)}
+                  avatarUrl={avatarUrlFor(msg.username, members)}
+                />
               )}
             </div>
             <div className="message-content">
               {isGroupStart && (
                 <div className="message-header">
-                  <span className="message-author">{msg.username}</span>
+                  <span className="message-author">{displayNameFor(msg.username, members)}</span>
                   <span className="message-time">
                     {new Date(msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
                   </span>
@@ -108,7 +113,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                             key={r.emoji}
                             type="button"
                             className={`message-reaction-pill${mineReaction ? ' message-reaction-pill-mine' : ''}`}
-                            title={r.user_ids.map(usernameFor).join(', ')}
+                            title={r.user_ids.map(displayNameForUserId).join(', ')}
                             onClick={() => onReact(msg.id, r.emoji)}
                           >
                             <span>{r.emoji}</span>

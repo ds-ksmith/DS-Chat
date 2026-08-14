@@ -8,3 +8,7 @@
   color: var(--ds-text);
   font-size: 0.68rem;
 }
+
+.user-avatar-img {
+  object-fit: cover;
+}

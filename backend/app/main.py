@@ -11,7 +11,7 @@ from redis.asyncio import Redis
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
-from app.routers import admin, auth, bots, health, invites, push, rooms, webhooks
+from app.routers import admin, auth, bots, health, invites, push, rooms, users, webhooks
 from app.ws.broadcaster import RoomBroadcaster
 from app.ws.chat import router as ws_router
 from app.ws.connection_manager import ConnectionManager
@@ -73,6 +73,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(rooms.router)
+    app.include_router(users.router)
     app.include_router(invites.router)
     app.include_router(push.router)
     app.include_router(admin.router)

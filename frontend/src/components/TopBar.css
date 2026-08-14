@@ -40,16 +40,11 @@
 .top-bar-avatar {
   width: 30px;
   height: 30px;
-  border-radius: var(--radius-pill);
-  background: var(--ds-accent-3);
+  padding: 0;
   border: none;
-  color: var(--ds-text);
-  font-size: 0.78rem;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: transparent;
   cursor: pointer;
+  display: flex;
 }
 
 .top-bar-menu-scrim {

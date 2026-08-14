@@ -4,6 +4,8 @@ export interface User {
   email: string
   is_bot: boolean
   is_site_admin: boolean
+  display_name: string | null
+  avatar_filename: string | null
   created_at: string
 }
 
@@ -29,6 +31,8 @@ export interface MyRoomItem extends Room {
 export interface RoomMember {
   user_id: string
   username: string
+  display_name: string | null
+  avatar_filename: string | null
   role: RoomRole
   joined_at: string
 }
@@ -121,6 +125,8 @@ export interface AdminUser {
   is_bot: boolean
   is_site_admin: boolean
   is_active: boolean
+  display_name: string | null
+  avatar_filename: string | null
   created_at: string
 }
 

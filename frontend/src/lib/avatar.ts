@@ -18,3 +18,9 @@ export function initials(name: string): string {
 export function accentForIndex(index: number): string {
   return ACCENT_CYCLE[((index % ACCENT_CYCLE.length) + ACCENT_CYCLE.length) % ACCENT_CYCLE.length]
 }
+
+export function hashIndex(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) | 0
+  return Math.abs(hash)
+}

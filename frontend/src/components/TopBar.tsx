@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.png'
+import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
-import { initials } from '../lib/avatar'
+import { hashIndex } from '../lib/avatar'
 import { getPushSubscriptionStatus, isPushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push'
+import { ProfileModal } from './ProfileModal'
+import { UserAvatar } from './UserAvatar'
 import './TopBar.css'
 
 export function TopBar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
@@ -53,13 +57,28 @@ export function TopBar() {
           aria-expanded={menuOpen}
           aria-label="Account menu"
         >
-          {initials(user.username)}
+          <UserAvatar
+            username={user.username}
+            colorIndex={hashIndex(user.username)}
+            size={30}
+            avatarUrl={user.avatar_filename ? getUserAvatarUrl(user.id, user.avatar_filename) : null}
+          />
         </button>
         {menuOpen && (
           <>
             <div className="top-bar-menu-scrim" onClick={() => setMenuOpen(false)} />
             <div className="top-bar-menu" role="menu">
-              <div className="top-bar-menu-username">{user.username}</div>
+              <div className="top-bar-menu-username">{user.display_name || user.username}</div>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  setProfileModalOpen(true)
+                }}
+              >
+                Profile settings
+              </button>
               {user.is_site_admin && (
                 <button
                   type="button"
@@ -90,6 +109,7 @@ export function TopBar() {
           </>
         )}
       </div>
+      {profileModalOpen && <ProfileModal onClose={() => setProfileModalOpen(false)} />}
     </header>
   )
 }

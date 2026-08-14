@@ -39,6 +39,8 @@ class MyRoomItem(RoomRead):
 class RoomMemberRead(BaseModel):
     user_id: uuid.UUID
     username: str
+    display_name: str | None
+    avatar_filename: str | None
     role: RoomRole
     joined_at: datetime
 

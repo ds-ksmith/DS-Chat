@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
 import { createInvite, listRoomInvites, revokeInvite } from '../api/invites'
+import { getUserAvatarUrl } from '../api/users'
 import {
   changeMemberRole,
   deleteRoom,
@@ -230,8 +231,13 @@ export function RoomInfoPanel({
         <div className="room-info-label">Members</div>
         {members.map((m, i) => (
           <div key={m.user_id} className="room-info-member-row">
-            <UserAvatar username={m.username} colorIndex={i} size={24} />
-            <span className="room-info-member-name">{m.username}</span>
+            <UserAvatar
+              username={m.username}
+              colorIndex={i}
+              size={24}
+              avatarUrl={m.avatar_filename ? getUserAvatarUrl(m.user_id, m.avatar_filename) : null}
+            />
+            <span className="room-info-member-name">{m.display_name || m.username}</span>
             <span className={`role-badge role-badge-${m.role}`}>{m.role}</span>
             {myRole === 'owner' && m.user_id !== user?.id && (
               <div className="room-info-member-actions">

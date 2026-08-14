@@ -214,7 +214,12 @@ async def list_room_members_endpoint(
     memberships = await list_room_members(db, room_id)
     return [
         RoomMemberRead(
-            user_id=m.user_id, username=m.user.username, role=m.role, joined_at=m.joined_at
+            user_id=m.user_id,
+            username=m.user.username,
+            display_name=m.user.display_name,
+            avatar_filename=m.user.avatar_filename,
+            role=m.role,
+            joined_at=m.joined_at,
         )
         for m in memberships
     ]
@@ -260,6 +265,8 @@ async def change_member_role_endpoint(
     return RoomMemberRead(
         user_id=membership.user_id,
         username=membership.user.username,
+        display_name=membership.user.display_name,
+        avatar_filename=membership.user.avatar_filename,
         role=membership.role,
         joined_at=membership.joined_at,
     )

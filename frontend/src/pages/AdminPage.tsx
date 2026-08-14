@@ -17,7 +17,9 @@ import {
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
+import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
+import { hashIndex } from '../lib/avatar'
 import type {
   AdminRoom,
   AdminUser,
@@ -29,6 +31,7 @@ import type {
   WebhookIncomingAdmin,
 } from '../types'
 import { TopBar } from '../components/TopBar'
+import { UserAvatar } from '../components/UserAvatar'
 import './AdminPage.css'
 
 type Tab = 'users' | 'rooms' | 'bots' | 'audit' | 'settings'
@@ -243,6 +246,7 @@ export function AdminPage() {
           <table className="admin-table">
             <thead>
               <tr>
+                <th></th>
                 <th>Username</th>
                 <th>Email</th>
                 <th>Status</th>
@@ -253,7 +257,15 @@ export function AdminPage() {
             <tbody>
               {users.map((u) => (
                 <tr key={u.id}>
-                  <td>{u.username}</td>
+                  <td>
+                    <UserAvatar
+                      username={u.username}
+                      colorIndex={hashIndex(u.username)}
+                      size={28}
+                      avatarUrl={u.avatar_filename ? getUserAvatarUrl(u.id, u.avatar_filename) : null}
+                    />
+                  </td>
+                  <td>{u.display_name || u.username}</td>
                   <td>{u.email}</td>
                   <td>
                     <span className={`status-badge ${u.is_active ? 'active' : 'inactive'}`}>

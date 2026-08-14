@@ -13,6 +13,8 @@ class AdminUserRead(BaseModel):
     is_bot: bool
     is_site_admin: bool
     is_active: bool
+    display_name: str | None
+    avatar_filename: str | None
     created_at: datetime
 
 

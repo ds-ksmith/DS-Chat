@@ -182,3 +182,21 @@
   font-size: 0.76rem;
   color: var(--ds-muted);
 }
+
+.profile-modal-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.profile-modal-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+
+.modal-hidden-file-input {
+  display: none;
+}

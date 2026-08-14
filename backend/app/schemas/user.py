@@ -18,4 +18,10 @@ class UserRead(BaseModel):
     email: EmailStr
     is_bot: bool
     is_site_admin: bool
+    display_name: str | None
+    avatar_filename: str | None
     created_at: datetime
+
+
+class ProfileUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=50)
