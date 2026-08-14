@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +14,8 @@ from app.schemas.admin import (
     ResetPasswordRequest,
     TransferOwnershipRequest,
 )
+from app.schemas.site_invite import SiteInviteCreate, SiteInviteRead
+from app.schemas.smtp_settings import SmtpSettingsRead, SmtpSettingsUpdate
 from app.schemas.webhook import EventSubscriptionAdminRead, WebhookIncomingAdminRead
 from app.services.admin_service import (
     CannotActOnSelfError,
@@ -29,6 +31,15 @@ from app.services.admin_service import (
     transfer_ownership_admin,
 )
 from app.services.audit import list_audit_log
+from app.services.email_service import SmtpNotConfiguredError, send_test_email
+from app.services.site_invite_service import (
+    SiteInviteNotFoundError,
+    SiteInviteNotPendingError,
+    create_site_invite,
+    list_site_invites,
+    revoke_site_invite,
+)
+from app.services.smtp_settings_service import get_smtp_settings, upsert_smtp_settings
 from app.services.webhook_service import (
     list_all_event_subscriptions_admin,
     list_all_incoming_webhooks_admin,
@@ -272,3 +283,99 @@ async def list_event_subscriptions_admin_endpoint(
         )
         for s in subscriptions
     ]
+
+
+@router.post("/invites", response_model=SiteInviteRead, status_code=201)
+async def create_site_invite_endpoint(
+    data: SiteInviteCreate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    return await create_site_invite(db, current_user, str(request.base_url), data.email)
+
+
+@router.get("/invites", response_model=list[SiteInviteRead])
+async def list_site_invites_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    return await list_site_invites(db)
+
+
+@router.delete("/invites/{invite_id}", response_model=SiteInviteRead)
+async def revoke_site_invite_endpoint(
+    invite_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    try:
+        return await revoke_site_invite(db, current_user, invite_id)
+    except SiteInviteNotFoundError:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    except SiteInviteNotPendingError:
+        raise HTTPException(status_code=400, detail="Invite is no longer pending")
+
+
+@router.get("/settings/smtp", response_model=SmtpSettingsRead | None)
+async def get_smtp_settings_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    cfg = await get_smtp_settings(db)
+    if cfg is None:
+        return None
+    return SmtpSettingsRead(
+        host=cfg.host,
+        port=cfg.port,
+        username=cfg.username,
+        has_password=bool(cfg.password_encrypted),
+        from_address=cfg.from_address,
+        use_tls=cfg.use_tls,
+        updated_at=cfg.updated_at,
+    )
+
+
+@router.put("/settings/smtp", response_model=SmtpSettingsRead)
+async def update_smtp_settings_endpoint(
+    data: SmtpSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    cfg = await upsert_smtp_settings(
+        db,
+        host=data.host,
+        port=data.port,
+        username=data.username,
+        password=data.password,
+        from_address=data.from_address,
+        use_tls=data.use_tls,
+    )
+    return SmtpSettingsRead(
+        host=cfg.host,
+        port=cfg.port,
+        username=cfg.username,
+        has_password=bool(cfg.password_encrypted),
+        from_address=cfg.from_address,
+        use_tls=cfg.use_tls,
+        updated_at=cfg.updated_at,
+    )
+
+
+@router.post("/settings/smtp/test", status_code=204)
+async def test_smtp_settings_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    try:
+        await send_test_email(db, current_user.email)
+    except SmtpNotConfiguredError:
+        raise HTTPException(status_code=400, detail="SMTP is not configured yet")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to send test email: {exc}")

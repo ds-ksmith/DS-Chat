@@ -4,6 +4,8 @@ import type {
   AdminUser,
   AuditLogEntry,
   EventSubscriptionAdmin,
+  SiteInvite,
+  SmtpSettings,
   WebhookIncomingAdmin,
 } from '../types'
 
@@ -63,4 +65,43 @@ export function listAllIncomingWebhooks(): Promise<WebhookIncomingAdmin[]> {
 
 export function listAllEventSubscriptions(): Promise<EventSubscriptionAdmin[]> {
   return apiFetch<EventSubscriptionAdmin[]>('/api/admin/event-subscriptions')
+}
+
+export function inviteUser(email: string): Promise<SiteInvite> {
+  return apiFetch<SiteInvite>('/api/admin/invites', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function listSiteInvites(): Promise<SiteInvite[]> {
+  return apiFetch<SiteInvite[]>('/api/admin/invites')
+}
+
+export function revokeSiteInvite(inviteId: string): Promise<SiteInvite> {
+  return apiFetch<SiteInvite>(`/api/admin/invites/${inviteId}`, { method: 'DELETE' })
+}
+
+export function getSmtpSettings(): Promise<SmtpSettings | null> {
+  return apiFetch<SmtpSettings | null>('/api/admin/settings/smtp')
+}
+
+export interface SmtpSettingsPayload {
+  host: string
+  port: number
+  username?: string | null
+  password?: string | null
+  from_address: string
+  use_tls: boolean
+}
+
+export function updateSmtpSettings(payload: SmtpSettingsPayload): Promise<SmtpSettings> {
+  return apiFetch<SmtpSettings>('/api/admin/settings/smtp', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function sendTestSmtpEmail(): Promise<void> {
+  return apiFetch<void>('/api/admin/settings/smtp/test', { method: 'POST' })
 }

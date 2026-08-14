@@ -228,3 +228,67 @@
   font-size: 0.95rem;
   margin: var(--sp-6) 0 var(--sp-3);
 }
+
+.admin-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 480px;
+}
+
+.admin-settings-row {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.admin-settings-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--ds-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.admin-settings-field-narrow {
+  flex: 0 0 120px;
+}
+
+.admin-settings-field input {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 9px 11px;
+  font-size: 0.9rem;
+  color: var(--ds-text);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.admin-settings-field input:focus {
+  border-color: var(--ds-accent);
+  outline: none;
+}
+
+.admin-settings-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--ds-text);
+}
+
+.admin-settings-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.admin-settings-test-result {
+  font-size: 0.84rem;
+  color: var(--ds-muted);
+  margin: 0;
+}

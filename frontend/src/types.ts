@@ -206,3 +206,22 @@ export interface EventSubscriptionAdmin extends EventSubscription {
   room_name: string | null
   created_by_username: string
 }
+
+export interface SiteInvite {
+  id: string
+  email: string
+  invited_by: string
+  status: InviteStatus
+  expires_at: string
+  created_at: string
+}
+
+export interface SmtpSettings {
+  host: string
+  port: number
+  username: string | null
+  has_password: boolean
+  from_address: string
+  use_tls: boolean
+  updated_at: string
+}

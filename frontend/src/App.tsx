@@ -3,6 +3,7 @@ import { AuthProvider } from './context/AuthContext'
 import { AdminRoute } from './components/AdminRoute'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
+import { SignupPage } from './pages/SignupPage'
 import { ChatShellPage } from './pages/ChatShellPage'
 import { AdminPage } from './pages/AdminPage'
 
@@ -11,6 +12,7 @@ function App() {
     <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
         <Route
           path="/rooms"
           element={

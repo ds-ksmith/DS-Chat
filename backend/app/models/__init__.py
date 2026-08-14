@@ -9,6 +9,8 @@ from app.models.message_image import MessageImage
 from app.models.message_reaction import MessageReaction
 from app.models.push_subscription import PushSubscription
 from app.models.room import Room
+from app.models.site_invite import SiteInvite
+from app.models.smtp_settings import SmtpSettings
 from app.models.user import User
 from app.models.webhook_incoming import WebhookIncoming
 
@@ -23,6 +25,8 @@ __all__ = [
     "MessageReaction",
     "RoomInvite",
     "InviteStatus",
+    "SiteInvite",
+    "SmtpSettings",
     "PushSubscription",
     "AdminAuditLog",
     "ApiToken",

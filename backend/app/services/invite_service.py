@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import InviteStatus, RoomInvite, RoomMembership, RoomRole, User
+from app.models import InviteStatus, Room, RoomInvite, RoomMembership, RoomRole, User
+from app.services.email_service import send_email
 
 
 class TargetUserNotFoundError(Exception):
@@ -38,7 +39,11 @@ class InviteExpiredError(Exception):
 
 
 async def create_invite(
-    db: AsyncSession, room_id: uuid.UUID, invited_by: uuid.UUID, target_username: str
+    db: AsyncSession,
+    room_id: uuid.UUID,
+    invited_by: uuid.UUID,
+    target_username: str,
+    base_url: str,
 ) -> RoomInvite:
     result = await db.execute(select(User).where(User.username == target_username))
     target = result.scalar_one_or_none()
@@ -73,6 +78,15 @@ async def create_invite(
     await db.commit()
     await db.refresh(invite)
     invite.target_user = target
+
+    room = await db.get(Room, room_id)
+    await send_email(
+        db,
+        target.email,
+        f"You've been invited to #{room.name}" if room else "You've been invited to a room",
+        f"You've been invited to join a room on KeepItTalking.\n\n"
+        f"Open the app to accept: {base_url.rstrip('/')}",
+    )
     return invite
 
 

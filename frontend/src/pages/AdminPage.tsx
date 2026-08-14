@@ -1,19 +1,25 @@
-import { Fragment, useEffect, useState } from 'react'
+import { Fragment, useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import {
   archiveRoom,
   deactivateUser,
   demoteUser,
+  getSmtpSettings,
+  inviteUser,
   listAdminRooms,
   listAdminUsers,
   listAllEventSubscriptions,
   listAllIncomingWebhooks,
   listAuditLog,
+  listSiteInvites,
   promoteUser,
   reactivateUser,
   resetUserPassword,
+  revokeSiteInvite,
+  sendTestSmtpEmail,
   transferOwnershipAdmin,
   unarchiveRoom,
+  updateSmtpSettings,
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
@@ -28,6 +34,8 @@ import type {
   AuditLogEntry,
   Bot,
   EventSubscriptionAdmin,
+  SiteInvite,
+  SmtpSettings,
   WebhookIncomingAdmin,
 } from '../types'
 import { TopBar } from '../components/TopBar'
@@ -57,6 +65,22 @@ export function AdminPage() {
   const [justCreatedToken, setJustCreatedToken] = useState<string | null>(null)
   const [incomingWebhooks, setIncomingWebhooks] = useState<WebhookIncomingAdmin[]>([])
   const [eventSubscriptions, setEventSubscriptions] = useState<EventSubscriptionAdmin[]>([])
+
+  const [siteInvites, setSiteInvites] = useState<SiteInvite[]>([])
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [invitingBusy, setInvitingBusy] = useState(false)
+
+  const [smtpSettings, setSmtpSettings] = useState<SmtpSettings | null>(null)
+  const [smtpLoaded, setSmtpLoaded] = useState(false)
+  const [smtpHost, setSmtpHost] = useState('')
+  const [smtpPort, setSmtpPort] = useState('587')
+  const [smtpUsername, setSmtpUsername] = useState('')
+  const [smtpPassword, setSmtpPassword] = useState('')
+  const [smtpFromAddress, setSmtpFromAddress] = useState('')
+  const [smtpUseTls, setSmtpUseTls] = useState(true)
+  const [smtpSaving, setSmtpSaving] = useState(false)
+  const [smtpTestBusy, setSmtpTestBusy] = useState(false)
+  const [smtpTestResult, setSmtpTestResult] = useState<string | null>(null)
 
   function reportError(err: unknown) {
     setError(err instanceof ApiError ? err.message : String(err))
@@ -88,8 +112,31 @@ export function AdminPage() {
     listAllEventSubscriptions().then(setEventSubscriptions).catch(reportError)
   }
 
+  function loadSiteInvites() {
+    listSiteInvites().then(setSiteInvites).catch(reportError)
+  }
+
+  function loadSmtpSettings() {
+    getSmtpSettings()
+      .then((cfg) => {
+        setSmtpSettings(cfg)
+        setSmtpLoaded(true)
+        if (cfg) {
+          setSmtpHost(cfg.host)
+          setSmtpPort(String(cfg.port))
+          setSmtpUsername(cfg.username ?? '')
+          setSmtpFromAddress(cfg.from_address)
+          setSmtpUseTls(cfg.use_tls)
+        }
+      })
+      .catch(reportError)
+  }
+
   useEffect(() => {
-    if (tab === 'users') loadUsers()
+    if (tab === 'users') {
+      loadUsers()
+      loadSiteInvites()
+    }
     if (tab === 'rooms') {
       loadRooms()
       if (users.length === 0) loadUsers() // needed to resolve usernames for ownership transfer
@@ -99,6 +146,7 @@ export function AdminPage() {
       loadWebhooksAdmin()
     }
     if (tab === 'audit') loadAuditLog()
+    if (tab === 'settings') loadSmtpSettings()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -210,6 +258,64 @@ export function AdminPage() {
     })
   }
 
+  async function handleInviteUser() {
+    const email = inviteEmail.trim()
+    if (!email) return
+    setInvitingBusy(true)
+    setError(null)
+    try {
+      await inviteUser(email)
+      setInviteEmail('')
+      loadSiteInvites()
+    } catch (err) {
+      reportError(err)
+    } finally {
+      setInvitingBusy(false)
+    }
+  }
+
+  async function handleRevokeSiteInvite(invite: SiteInvite) {
+    await withBusy(invite.id, async () => {
+      const updated = await revokeSiteInvite(invite.id)
+      setSiteInvites((prev) => prev.map((i) => (i.id === updated.id ? updated : i)))
+    })
+  }
+
+  async function handleSaveSmtpSettings(e: FormEvent) {
+    e.preventDefault()
+    setSmtpSaving(true)
+    setError(null)
+    try {
+      const updated = await updateSmtpSettings({
+        host: smtpHost.trim(),
+        port: Number(smtpPort),
+        username: smtpUsername.trim() || null,
+        password: smtpPassword || undefined,
+        from_address: smtpFromAddress.trim(),
+        use_tls: smtpUseTls,
+      })
+      setSmtpSettings(updated)
+      setSmtpPassword('')
+    } catch (err) {
+      reportError(err)
+    } finally {
+      setSmtpSaving(false)
+    }
+  }
+
+  async function handleSendTestEmail() {
+    setSmtpTestBusy(true)
+    setSmtpTestResult(null)
+    try {
+      await sendTestSmtpEmail()
+      setSmtpTestResult('Test email sent — check your inbox.')
+    } catch (err) {
+      setSmtpTestResult(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setSmtpTestBusy(false)
+    }
+  }
+
   return (
     <div className="admin-page">
       <TopBar />
@@ -243,6 +349,49 @@ export function AdminPage() {
         {error && <p className="admin-error">{error}</p>}
 
         {tab === 'users' && (
+          <>
+          <div className="admin-create-form">
+            <input
+              type="email"
+              placeholder="Email address to invite"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={invitingBusy || !inviteEmail.trim()}
+              onClick={handleInviteUser}
+            >
+              {invitingBusy ? 'Sending…' : 'Send invite'}
+            </button>
+          </div>
+
+          {siteInvites.length > 0 && (
+            <div className="admin-token-list">
+              {siteInvites.map((invite) => (
+                <div key={invite.id} className="admin-token-row">
+                  <span className="admin-token-scopes">{invite.email}</span>
+                  <span className="admin-token-meta">
+                    {invite.status}
+                    {invite.status === 'pending' &&
+                      ` · expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+                  </span>
+                  {invite.status === 'pending' && (
+                    <button
+                      type="button"
+                      className="admin-token-revoke"
+                      disabled={busyId === invite.id}
+                      onClick={() => handleRevokeSiteInvite(invite)}
+                    >
+                      Revoke
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
           <table className="admin-table">
             <thead>
               <tr>
@@ -300,6 +449,7 @@ export function AdminPage() {
               ))}
             </tbody>
           </table>
+          </>
         )}
 
         {tab === 'rooms' && (
@@ -523,9 +673,88 @@ export function AdminPage() {
         )}
 
         {tab === 'settings' && (
-          <p className="admin-placeholder">
-            System settings are coming in a future phase — there's nothing configurable yet.
-          </p>
+          <>
+            <h2 className="admin-subheading">SMTP (outgoing email)</h2>
+            {!smtpLoaded && <p className="admin-placeholder">Loading…</p>}
+            {smtpLoaded && (
+              <form className="admin-settings-form" onSubmit={handleSaveSmtpSettings}>
+                <div className="admin-settings-row">
+                  <label className="admin-settings-field">
+                    Host
+                    <input
+                      type="text"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      placeholder="smtp.example.com"
+                      required
+                    />
+                  </label>
+                  <label className="admin-settings-field admin-settings-field-narrow">
+                    Port
+                    <input
+                      type="number"
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(e.target.value)}
+                      min={1}
+                      max={65535}
+                      required
+                    />
+                  </label>
+                </div>
+                <div className="admin-settings-row">
+                  <label className="admin-settings-field">
+                    Username
+                    <input
+                      type="text"
+                      value={smtpUsername}
+                      onChange={(e) => setSmtpUsername(e.target.value)}
+                    />
+                  </label>
+                  <label className="admin-settings-field">
+                    Password
+                    <input
+                      type="password"
+                      value={smtpPassword}
+                      onChange={(e) => setSmtpPassword(e.target.value)}
+                      placeholder={smtpSettings?.has_password ? 'Leave blank to keep current' : ''}
+                    />
+                  </label>
+                </div>
+                <label className="admin-settings-field">
+                  From address
+                  <input
+                    type="email"
+                    value={smtpFromAddress}
+                    onChange={(e) => setSmtpFromAddress(e.target.value)}
+                    placeholder="noreply@example.com"
+                    required
+                  />
+                </label>
+                <label className="admin-settings-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={smtpUseTls}
+                    onChange={(e) => setSmtpUseTls(e.target.checked)}
+                  />
+                  Use TLS
+                </label>
+                <div className="admin-settings-actions">
+                  <button type="submit" className="btn-primary" disabled={smtpSaving}>
+                    {smtpSaving ? 'Saving…' : 'Save'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={smtpTestBusy || !smtpSettings}
+                    onClick={handleSendTestEmail}
+                  >
+                    {smtpTestBusy ? 'Sending…' : 'Send test email'}
+                  </button>
+                </div>
+                {smtpTestResult && <p className="admin-settings-test-result">{smtpTestResult}</p>}
+              </form>
+            )}
+          </>
         )}
       </div>
     </div>

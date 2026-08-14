@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles, site invites & email)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
@@ -7,9 +7,10 @@ via Redis pub/sub, Web Push notifications for offline room members, a
 site-admin portal (user/room/bot management + an audit log), a bot/
 extension layer (scoped API tokens, live bot WebSocket access, incoming and
 outgoing webhooks, message editing), image uploads in chat messages, emoji
-reactions on messages, and self-service user profiles (display name,
-avatar). See `../ARCHITECTURE.md` for the full system design and the
-phased build plan.
+reactions on messages, self-service user profiles (display name, avatar),
+and admin-issued email invites for new accounts plus email notifications
+for room invites. See `../ARCHITECTURE.md` for the full system design and
+the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -117,18 +118,22 @@ app/
                            require_room_member, require_room_role,
                            require_site_admin, require_scope
   security.py            argon2 password hashing + token generate/hash (sha256)
+  crypto.py               Fernet encrypt/decrypt keyed from SESSION_SECRET --
+                             the only reversible secret this app stores in
+                             the database (SMTP password), see Site invites
+                             & email below
   storage.py              uploaded-image validation (Pillow), downscaling
                              (optionally square-cropped, for avatars), and
                              on-disk save/read -- see Image uploads below
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
                              messages, message_images, message_reactions,
-                             room_invites, push_subscriptions,
-                             admin_audit_log, api_tokens, webhooks_incoming,
-                             event_subscriptions)
+                             room_invites, site_invites, smtp_settings,
+                             push_subscriptions, admin_audit_log, api_tokens,
+                             webhooks_incoming, event_subscriptions)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, users, invites, push, admin, bots,
-                               webhooks, health
+  routers/                  auth, rooms, users, invites, signup, push, admin,
+                               bots, webhooks, health
   services/                  business logic called by routers
   ws/                        connection_manager (local sockets), presence +
                                broadcaster (Redis), /ws/chat handler
@@ -414,6 +419,58 @@ TopBar) — `MessageRead` deliberately does **not** carry them; the frontend
 resolves both live from the room's member list instead of freezing them
 per-message, which is the more correct behavior for a field the sender can
 change after the fact.
+
+## Site invites & email
+
+Two related gaps closed together: creating a new account was CLI-only, and
+neither a brand-new invitee nor an existing user invited to a room got any
+notification. Site admins (only) invite a brand-new person by email from
+the Admin portal; both that signup-invite and the existing room-invite flow
+send an email.
+
+**Email sending** (`app/services/email_service.py`, using `aiosmtplib`):
+`send_email(db, to, subject, body)` is the fire-and-forget path used by
+invite flows — if `SmtpSettings` isn't configured yet it logs at debug and
+returns (same "silently skip if unconfigured" UX push notifications already
+use for a missing VAPID key), and it never raises on delivery failure (an
+SMTP outage must not block an invite/membership action that already
+succeeded in the database). `send_test_email(db, to)` is the one exception —
+used only by the admin "send test email" button, it raises so the UI can
+show *why* it failed instead of a silent no-op. Plain-text bodies only, no
+HTML templates, matching this codebase's existing minimalism.
+
+**SMTP configuration** (`app/models/smtp_settings.py`, `app/routers/admin.py`'s
+`/settings/smtp` endpoints) lives in the database, not the env file — the
+Admin Settings tab edits it at runtime with no redeploy. It's the first
+reversible secret this app stores in the database (`password_hash` is
+one-way, API tokens are looked up by hash and never decrypted), so it's
+encrypted at rest via `app/crypto.py`: a Fernet key derived from the
+already-required `SESSION_SECRET` rather than a new env var. A blank
+password on update means "keep the current one" — the frontend never has
+the plaintext to send back, only whether one is set (`has_password`).
+
+**Site invites** (`app/models/site_invite.py`, `app/services/site_invite_service.py`) —
+distinct from `RoomInvite` (existing user, specific room): this targets an
+email address for the site, no room involved. The raw token exists only in
+the email link, stored hashed (`security.hash_token`, the same convention
+API tokens use — it's a bearer secret looked up by itself, not
+`RoomInvite.token`'s current unhashed/unused column). `POST /api/signup`
+(`app/routers/signup.py`) is the first genuinely public,
+unauthenticated endpoint in this app that creates a `User` row — it calls
+the existing `auth_service.register_user` directly for identical
+hashing/uniqueness handling, and logs the new user in immediately (same
+session-cookie line `auth.py`'s `login()` uses) so they land in the app
+already signed in. No new rate limiting on it — the unguessable, single-use,
+expiring token is the actual protection, inheriting the same "no rate
+limiting on human/bot traffic" gap already documented below, not a new one.
+
+**Room-invite email**: `invite_service.create_invite` sends one email to
+the target user after creating the `RoomInvite`, using the live request's
+`base_url` for the link — no new "public URL" config needed.
+
+Scope cuts: no outgoing-webhook event type for these (matching image
+uploads/reactions), no resend for a site invite (revoke + re-invite covers
+it), no HTML email templates.
 
 ## Notes / scope decisions
 

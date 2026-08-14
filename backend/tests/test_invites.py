@@ -1,8 +1,26 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from app.models import RoomInvite
+from app.models import RoomInvite, User
 from tests.conftest import login_as, register_and_login
+
+
+async def _make_admin(db_session, user_id: str) -> None:
+    user = await db_session.get(User, uuid.UUID(user_id))
+    user.is_site_admin = True
+    await db_session.commit()
+
+
+async def _configure_smtp(client):
+    resp = await client.put(
+        "/api/admin/settings/smtp",
+        json={
+            "host": "smtp.example.com",
+            "port": 587,
+            "from_address": "noreply@example.com",
+        },
+    )
+    assert resp.status_code == 200, resp.text
 
 
 async def _create_private_room(client, name="secret"):
@@ -171,3 +189,45 @@ async def test_expired_invite_rejected_on_accept(client, db_session):
     await login_as(client, "bob")
     resp = await client.post(f"/api/invites/{invite['id']}/accept")
     assert resp.status_code == 400
+
+
+async def test_create_invite_sends_email_to_target(client, db_session, monkeypatch):
+    calls = []
+
+    async def fake_send(message, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.services.email_service.aiosmtplib.send", fake_send)
+
+    alice = await register_and_login(client, db_session, username="alice")
+    await _make_admin(db_session, alice["id"])
+    await _configure_smtp(client)
+    room = await _create_private_room(client)
+    await register_and_login(client, db_session, username="bob")
+    await login_as(client, "alice")
+
+    resp = await client.post(
+        f"/api/rooms/{room['id']}/invites", json={"target_username": "bob"}
+    )
+    assert resp.status_code == 201
+    assert len(calls) == 1
+    assert calls[0]["hostname"] == "smtp.example.com"
+
+
+async def test_create_invite_succeeds_even_if_email_delivery_fails(client, db_session, monkeypatch):
+    async def fake_send(message, **kwargs):
+        raise ConnectionRefusedError("boom")
+
+    monkeypatch.setattr("app.services.email_service.aiosmtplib.send", fake_send)
+
+    alice = await register_and_login(client, db_session, username="alice")
+    await _make_admin(db_session, alice["id"])
+    await _configure_smtp(client)
+    room = await _create_private_room(client)
+    await register_and_login(client, db_session, username="bob")
+    await login_as(client, "alice")
+
+    resp = await client.post(
+        f"/api/rooms/{room['id']}/invites", json={"target_username": "bob"}
+    )
+    assert resp.status_code == 201

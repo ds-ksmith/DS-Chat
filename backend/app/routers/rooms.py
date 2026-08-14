@@ -390,12 +390,15 @@ def _to_invite_read(invite) -> InviteRead:
 async def create_invite_endpoint(
     room_id: uuid.UUID,
     data: InviteCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     await require_room_role(room_id, current_user, db, RoomRole.admin)
     try:
-        invite = await create_invite(db, room_id, current_user.id, data.target_username)
+        invite = await create_invite(
+            db, room_id, current_user.id, data.target_username, str(request.base_url)
+        )
     except TargetUserNotFoundError:
         raise HTTPException(status_code=404, detail="No user with that username")
     except AlreadyMemberError:
