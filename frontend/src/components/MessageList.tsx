@@ -37,21 +37,29 @@ export function MessageList({ messages, members, onEdit }: MessageListProps) {
       {messages.map((msg, i) => {
         const mine = msg.user_id === user?.id
         const prev = messages[i - 1]
-        const showAvatar = !mine && (!prev || prev.user_id !== msg.user_id)
-        const showName = showAvatar
+        // Mattermost-style grouping: every message shows who sent it, but
+        // consecutive messages from the same sender only repeat the
+        // avatar/name/timestamp header on the first one in the run --
+        // applies uniformly, including to your own messages.
+        const isGroupStart = !prev || prev.user_id !== msg.user_id
         const editing = editingId === msg.id
 
         return (
-          <div key={msg.id} className={`message-row${mine ? ' message-row-mine' : ''}`}>
-            {!mine && (
-              <div className="message-avatar-slot">
-                {showAvatar && (
-                  <UserAvatar username={msg.username} colorIndex={senderColorIndex(msg.username, members)} />
-                )}
-              </div>
-            )}
-            <div className="message-bubble-wrap">
-              {showName && <div className="message-author">{msg.username}</div>}
+          <div key={msg.id} className={`message-row${isGroupStart ? ' message-row-start' : ''}`}>
+            <div className="message-avatar-slot">
+              {isGroupStart && (
+                <UserAvatar username={msg.username} colorIndex={senderColorIndex(msg.username, members)} />
+              )}
+            </div>
+            <div className="message-content">
+              {isGroupStart && (
+                <div className="message-header">
+                  <span className="message-author">{msg.username}</span>
+                  <span className="message-time">
+                    {new Date(msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                </div>
+              )}
               {editing ? (
                 <input
                   autoFocus
@@ -65,25 +73,22 @@ export function MessageList({ messages, members, onEdit }: MessageListProps) {
                   onBlur={() => commitEdit(msg.id)}
                 />
               ) : (
-                <div className={`message-bubble${mine ? ' message-bubble-mine' : ''}`}>
+                <div className="message-text">
                   {msg.content}
-                  {mine && (
-                    <button
-                      type="button"
-                      className="message-edit-link"
-                      onClick={() => startEdit(msg)}
-                      aria-label="Edit message"
-                    >
-                      Edit
-                    </button>
-                  )}
+                  {msg.edited_at && <span className="message-edited"> (edited)</span>}
                 </div>
               )}
-              <div className="message-time">
-                {new Date(msg.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                {msg.edited_at && <span className="message-edited"> (edited)</span>}
-              </div>
             </div>
+            {mine && !editing && (
+              <button
+                type="button"
+                className="message-edit-link"
+                onClick={() => startEdit(msg)}
+                aria-label="Edit message"
+              >
+                Edit
+              </button>
+            )}
           </div>
         )
       })}
