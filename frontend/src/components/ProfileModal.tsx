@@ -28,9 +28,9 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     try {
       const updated = await updateProfile(displayName.trim() || null)
       updateUser(updated)
+      onClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
-    } finally {
       setSavingName(false)
     }
   }

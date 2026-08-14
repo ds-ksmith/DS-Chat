@@ -11,6 +11,7 @@ import { OfflineBanner } from '../components/OfflineBanner'
 import { RoomInfoPanel } from '../components/RoomInfoPanel'
 import { Sidebar } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
+import { useAuth } from '../context/AuthContext'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type { MyRoomItem, RoomMember } from '../types'
 import './ChatShellPage.css'
@@ -20,6 +21,7 @@ type ModalKind = 'new' | 'browse' | 'invites' | null
 export function ChatShellPage() {
   const { roomId } = useParams<{ roomId?: string }>()
   const navigate = useNavigate()
+  const { user } = useAuth()
   const width = useWindowWidth()
   const isMobile = width < MOBILE_BREAKPOINT
 
@@ -65,7 +67,13 @@ export function ChatShellPage() {
 
   useEffect(() => {
     refreshMembers()
-  }, [refreshMembers])
+    // Also re-run when the logged-in user's own profile changes (display
+    // name/avatar) -- refreshMembers() itself doesn't change identity when
+    // only roomId is the same, so without this the currently open room's
+    // member list (and anything resolving avatar/name from it, like
+    // MessageList) would keep showing the pre-edit profile until the room
+    // is reopened.
+  }, [refreshMembers, user?.display_name, user?.avatar_filename])
 
   function goToRoom(id: string) {
     navigate(`/rooms/${id}`)
