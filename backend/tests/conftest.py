@@ -14,6 +14,7 @@ from alembic.config import Config
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.database import get_db
 from app.main import create_app
@@ -84,8 +85,17 @@ def ws_client():
     # the `db_session`/`app` fixtures' engine, which belongs to pytest's
     # loop. No per-test rollback here (see test_ws_chat.py for the
     # unique-name convention that keeps tests independent without it).
+    #
+    # poolclass=NullPool: with pooling, a WS test that does more than one
+    # DB round trip per message (e.g. the offline-push lookup) can hit a
+    # race where the pooled connection returned by the WS handler's session
+    # close hasn't finished being checked back in before the test's next
+    # (synchronous, same-portal) REST call checks a connection back out --
+    # surfaces as "connection is closed". A fresh connection per session
+    # sidesteps it; fine for tests, not something prod needs (prod isn't
+    # juggling a background portal thread against the main test thread).
     application = create_app()
-    test_engine = create_async_engine(TEST_DATABASE_URL)
+    test_engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     test_session_factory = async_sessionmaker(test_engine, expire_on_commit=False)
 
     async def _get_db():

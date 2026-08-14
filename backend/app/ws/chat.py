@@ -6,8 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import RoomMembership, User
+from app.models import Room, RoomMembership, User
 from app.services.message_service import create_message
+from app.services.push_service import send_push_to_user
+from app.ws.connection_manager import ConnectionManager
 
 router = APIRouter(tags=["ws"])
 
@@ -27,6 +29,31 @@ async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UU
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+async def _notify_offline_members(
+    db: AsyncSession,
+    manager: ConnectionManager,
+    room_id: uuid.UUID,
+    sender: User,
+    content: str,
+) -> None:
+    result = await db.execute(
+        select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
+    )
+    member_ids = {row[0] for row in result.all()}
+    offline_ids = member_ids - manager.connected_user_ids(room_id)
+    if not offline_ids:
+        return
+
+    room = await db.get(Room, room_id)
+    payload = {
+        "title": f"#{room.name}" if room else "New message",
+        "body": f"{sender.username}: {content}"[:120],
+        "room_id": str(room_id),
+    }
+    for user_id in offline_ids:
+        await send_push_to_user(db, user_id, payload)
 
 
 @router.websocket("/ws/chat")
@@ -63,7 +90,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         {"type": "error", "detail": "Not a member of this room"}
                     )
                     continue
-                manager.join(envelope.room_id, websocket)
+                manager.join(envelope.room_id, websocket, user.id)
                 joined_rooms.add(envelope.room_id)
                 await websocket.send_json({"type": "joined", "room_id": str(envelope.room_id)})
 
@@ -99,6 +126,9 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         "content": message.content,
                         "created_at": message.created_at.isoformat(),
                     },
+                )
+                await _notify_offline_members(
+                    db, manager, envelope.room_id, user, envelope.content
                 )
 
             else:

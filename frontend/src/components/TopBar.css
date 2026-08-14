@@ -94,3 +94,15 @@
 .top-bar-menu button[role='menuitem']:hover {
   background: var(--ds-surface-2);
 }
+
+.top-bar-menu button[role='menuitem']:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.top-bar-menu-error {
+  color: var(--ds-danger);
+  font-size: 0.74rem;
+  padding: 2px 8px 6px;
+  max-width: 220px;
+}

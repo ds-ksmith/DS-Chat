@@ -2,16 +2,25 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const READ_CACHE_EXPIRATION = {
-  maxEntries: 50,
-  maxAgeSeconds: 7 * 24 * 60 * 60, // 7 days
-}
-
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // generateSW (Phase 3) can't add custom event listeners, and push /
+      // notificationclick need exactly that -- injectManifest means we hand-
+      // write the service worker (src/sw.ts); its runtime-caching routes are
+      // registered there directly instead of via the `workbox` option below
+      // (which only applies to generateSW).
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      injectManifest: {
+        // Workbox's default globPatterns exclude the manifest's own output
+        // dir, which is fine, but be explicit about what the app shell
+        // precache should contain.
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+      },
       registerType: 'autoUpdate',
       manifest: {
         name: 'KeepItTalking',
@@ -28,77 +37,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        navigateFallbackDenylist: [/^\/api/, /^\/ws/],
-        // urlPattern uses function matchers against url.pathname rather than
-        // RegExp (which Workbox tests against the *full href*, origin
-        // included -- a `^/api/` anchor would silently never match).
-        runtimeCaching: [
-          // Never serve a stale cached "who am I" response.
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/auth/'),
-            handler: 'NetworkOnly',
-          },
-          // Cache-and-refresh: show the last known list/history immediately,
-          // update from the network in the background. Routes default to
-          // matching GET only, so mutations to these same paths are
-          // untouched and still go straight to network.
-          {
-            urlPattern: ({ url }) => url.pathname === '/api/rooms/mine',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-rooms-mine',
-              expiration: READ_CACHE_EXPIRATION,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.pathname === '/api/rooms',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-rooms-open',
-              expiration: READ_CACHE_EXPIRATION,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              /^\/api\/rooms\/[^/]+\/messages$/.test(url.pathname),
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-room-messages',
-              expiration: READ_CACHE_EXPIRATION,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) =>
-              /^\/api\/rooms\/[^/]+\/members$/.test(url.pathname),
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-room-members',
-              expiration: READ_CACHE_EXPIRATION,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            urlPattern: ({ url }) => url.pathname === '/api/invites/mine',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'api-invites-mine',
-              expiration: READ_CACHE_EXPIRATION,
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          // Defensive default: anything else under /api/ (including any
-          // future GET endpoint) stays network-only until explicitly opted
-          // in above.
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-            handler: 'NetworkOnly',
           },
         ],
       },

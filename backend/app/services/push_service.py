@@ -1,0 +1,98 @@
+import asyncio
+import json
+import logging
+import uuid
+
+from pywebpush import WebPushException, webpush
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.config import settings
+from app.models import PushSubscription
+from app.schemas.push import PushSubscriptionCreate
+
+logger = logging.getLogger(__name__)
+
+
+async def subscribe(
+    db: AsyncSession, user_id: uuid.UUID, data: PushSubscriptionCreate
+) -> PushSubscription:
+    # Upsert by endpoint: the same device/browser re-subscribing (e.g. after
+    # a key rotation, or logging in as someone else on a shared device)
+    # updates the existing row rather than erroring on the unique constraint.
+    stmt = (
+        pg_insert(PushSubscription)
+        .values(
+            user_id=user_id,
+            endpoint=data.endpoint,
+            p256dh_key=data.keys.p256dh,
+            auth_key=data.keys.auth,
+        )
+        .on_conflict_do_update(
+            index_elements=[PushSubscription.endpoint],
+            set_={
+                "user_id": user_id,
+                "p256dh_key": data.keys.p256dh,
+                "auth_key": data.keys.auth,
+            },
+        )
+        .returning(PushSubscription)
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.scalar_one()
+
+
+async def unsubscribe(db: AsyncSession, user_id: uuid.UUID, endpoint: str) -> None:
+    await db.execute(
+        delete(PushSubscription).where(
+            PushSubscription.user_id == user_id, PushSubscription.endpoint == endpoint
+        )
+    )
+    await db.commit()
+
+
+def _send_one(subscription: PushSubscription, payload: dict) -> None:
+    webpush(
+        subscription_info={
+            "endpoint": subscription.endpoint,
+            "keys": {"p256dh": subscription.p256dh_key, "auth": subscription.auth_key},
+        },
+        data=json.dumps(payload),
+        vapid_private_key=settings.vapid_private_key,
+        vapid_claims={"sub": settings.vapid_subject},
+    )
+
+
+async def send_push_to_user(db: AsyncSession, user_id: uuid.UUID, payload: dict) -> None:
+    """Called (awaited) from the WS handler after broadcasting to connected
+    clients, so it never delays delivery to anyone actually online. Runs
+    sequentially against the caller's session rather than firing background
+    asyncio.create_task()s -- those can easily outlive the request/test event
+    loop they were created on, and AsyncSession isn't safe to touch from two
+    coroutines concurrently, so a fire-and-forget task per subscription would
+    risk exactly that. Each webpush() call itself still runs off the event
+    loop via asyncio.to_thread (pywebpush is synchronous)."""
+    if not settings.vapid_private_key:
+        logger.debug("VAPID keys not configured; skipping push to %s", user_id)
+        return
+
+    result = await db.execute(
+        select(PushSubscription).where(PushSubscription.user_id == user_id)
+    )
+    subscriptions = list(result.scalars().all())
+
+    for subscription in subscriptions:
+        try:
+            await asyncio.to_thread(_send_one, subscription, payload)
+        except WebPushException as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status in (404, 410):
+                # Subscription is gone (browser unsubscribed, expired, etc.)
+                await db.execute(
+                    delete(PushSubscription).where(PushSubscription.id == subscription.id)
+                )
+                await db.commit()
+            else:
+                logger.warning("Push delivery failed for %s: %s", subscription.id, exc)

@@ -1,9 +1,10 @@
-# KeepItTalking backend (Phase 1 + 2)
+# KeepItTalking backend (Phase 1 + 2 + 4)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL. Implements auth, room CRUD
-(open and private), room roles (owner/admin/member) and invites, and a
-single-instance WebSocket chat endpoint. See `../ARCHITECTURE.md` for the
-full system design and the phased build plan.
+(open and private), room roles (owner/admin/member) and invites, a
+single-instance WebSocket chat endpoint, and Web Push notifications for
+offline room members. See `../ARCHITECTURE.md` for the full system design
+and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -55,7 +56,17 @@ There's no public sign-up. Create accounts directly with the CLI (add
 .venv/bin/python -m app.cli create-user alice alice@example.com "some-password"
 ```
 
-### 5. Run the dev server
+### 5. (Optional) Set up push notifications
+
+Push works without any setup — `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` are
+unset by default and push delivery is silently skipped. To enable it:
+
+```bash
+.venv/bin/python -m app.cli generate-vapid-keys
+# paste the three printed lines into backend/.env
+```
+
+### 6. Run the dev server
 
 ```bash
 .venv/bin/uvicorn app.main:app --reload
@@ -63,7 +74,7 @@ There's no public sign-up. Create accounts directly with the CLI (add
 
 API docs: http://localhost:8000/docs. WebSocket chat endpoint: `ws://localhost:8000/ws/chat`.
 
-### 6. Run tests
+### 7. Run tests
 
 Tests run against a real Postgres database (`chatapp_test` by default — native
 `ENUM`/`UUID` types aren't faithfully reproduced by SQLite), with each test
@@ -82,16 +93,31 @@ app/
   database.py          async engine/session, get_db() dependency
   dependencies.py       get_current_user, require_room_member, require_room_role
   security.py            argon2 password hashing
-  cli.py                  `python -m app.cli create-user` (account provisioning)
+  cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
-                             messages, room_invites)
+                             messages, room_invites, push_subscriptions)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, invites, health
+  routers/                  auth, rooms, invites, push, health
   services/                  business logic called by routers
   ws/                        WebSocket connection manager + /ws/chat handler
 alembic/                      migrations
 tests/                         pytest + httpx/TestClient tests
 ```
+
+## Push notifications (Phase 4)
+
+`POST /api/push/subscribe` (upserts by `endpoint`) / `DELETE /api/push/subscribe`
+manage a user's `push_subscriptions` rows; `GET /api/push/vapid-public-key` gives
+the frontend the key it needs for `PushManager.subscribe()`. On every chat
+message, `app/ws/chat.py` computes `room members - ConnectionManager.
+connected_user_ids(room_id)` (who's actually connected to *that room* right
+now, tracked alongside the existing WebSocket registry) and sends each
+offline member a push via `pywebpush`, awaited inline against the same
+request-scoped session rather than fired as a background task — the
+broadcast to online members already happened by that point, so nothing
+online-facing is delayed, and it sidesteps `asyncio.create_task()`s outliving
+the session/event loop they were created on. An expired/invalid subscription
+(pywebpush 404/410) is deleted automatically.
 
 ## Room roles and invites (Phase 2)
 

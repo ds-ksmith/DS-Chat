@@ -6,6 +6,7 @@ created by an operator running this script directly on the app server.
 
 import argparse
 import asyncio
+import base64
 
 from pydantic import ValidationError
 
@@ -33,6 +34,34 @@ async def _create_user(username: str, email: str, password: str, is_admin: bool)
     print(f"Created user {username!r} (id={user.id}, admin={is_admin})")
 
 
+def _generate_vapid_keys() -> None:
+    # py_vapid works in DER/PEM internally, but both pywebpush's
+    # vapid_private_key argument and the browser's PushManager
+    # applicationServerKey expect base64url-encoded *raw* key bytes -- the
+    # format used in every Web Push tutorial/example. Encode explicitly
+    # rather than relying on py_vapid's own (PEM-oriented) save helpers.
+    from py_vapid import Vapid02
+
+    vapid = Vapid02()
+    vapid.generate_keys()
+
+    private_raw = vapid.private_key.private_numbers().private_value.to_bytes(32, "big")
+    private_b64 = base64.urlsafe_b64encode(private_raw).decode().rstrip("=")
+
+    from cryptography.hazmat.primitives import serialization
+
+    public_raw = vapid.public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+    public_b64 = base64.urlsafe_b64encode(public_raw).decode().rstrip("=")
+
+    print("Add these to backend/.env:")
+    print(f"VAPID_PUBLIC_KEY={public_b64}")
+    print(f"VAPID_PRIVATE_KEY={private_b64}")
+    print("VAPID_SUBJECT=mailto:you@example.com")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -43,10 +72,14 @@ def main() -> None:
     create_user.add_argument("password")
     create_user.add_argument("--admin", action="store_true", help="Grant is_site_admin")
 
+    subparsers.add_parser("generate-vapid-keys", help="Generate a VAPID key pair for push notifications")
+
     args = parser.parse_args()
 
     if args.command == "create-user":
         asyncio.run(_create_user(args.username, args.email, args.password, args.admin))
+    elif args.command == "generate-vapid-keys":
+        _generate_vapid_keys()
 
 
 if __name__ == "__main__":
