@@ -42,7 +42,13 @@ async def db_session():
     engine = create_async_engine(TEST_DATABASE_URL)
     async with engine.connect() as conn:
         await conn.begin()
-        session = AsyncSession(bind=conn, join_transaction_mode="create_savepoint")
+        # expire_on_commit=False matches app/database.py's production session
+        # factory -- without it, objects loaded earlier in a request (e.g.
+        # current_user) go stale after any service-layer commit and touching
+        # them raises MissingGreenlet on the next sync attribute access.
+        session = AsyncSession(
+            bind=conn, join_transaction_mode="create_savepoint", expire_on_commit=False
+        )
         yield session
         await session.close()
         await conn.rollback()
@@ -106,6 +112,12 @@ async def register_and_login(
     data = UserCreate(username=username, email=f"{username}@example.com", password=password)
     await register_user(db_session, data)
 
+    return await login_as(client, username, password)
+
+
+async def login_as(client: AsyncClient, username: str, password: str = "password123"):
+    # Switch the shared `client`'s session cookie to an already-created user,
+    # without trying to register them again.
     resp = await client.post(
         "/api/auth/login",
         json={"username_or_email": username, "password": password},

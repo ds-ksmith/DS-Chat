@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 
 from app.models import Room, RoomMembership, RoomRole
-from tests.conftest import register_and_login
+from tests.conftest import login_as, register_and_login
 
 
 async def test_create_room_requires_auth(client):
@@ -75,3 +75,183 @@ async def test_join_private_room_400(client, db_session):
 
     resp = await client.post(f"/api/rooms/{private_room.id}/join")
     assert resp.status_code == 400
+
+
+async def test_create_private_room_excluded_from_open_list_but_in_mine(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    resp = await client.post("/api/rooms", json={"name": "secret", "is_private": True})
+    assert resp.status_code == 201
+    assert resp.json()["is_private"] is True
+
+    open_names = {r["name"] for r in (await client.get("/api/rooms")).json()}
+    assert "secret" not in open_names
+
+    mine = (await client.get("/api/rooms/mine")).json()
+    assert mine[0]["name"] == "secret"
+    assert mine[0]["role"] == "owner"
+
+
+async def test_update_room_requires_admin(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"description": "nope"})
+    assert resp.status_code == 403
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"description": "updated"})
+    assert resp.status_code == 200
+    assert resp.json()["description"] == "updated"
+
+
+async def test_delete_room_owner_only(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    resp = await client.delete(f"/api/rooms/{room_id}")
+    assert resp.status_code == 403
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.delete(f"/api/rooms/{room_id}")
+    assert resp.status_code == 204
+
+    result = await db_session.execute(
+        select(RoomMembership).where(RoomMembership.room_id == uuid.UUID(room_id))
+    )
+    assert result.scalar_one_or_none() is None
+
+
+async def test_leave_room(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    resp = await client.post(f"/api/rooms/{room_id}/leave")
+    assert resp.status_code == 400  # owner must transfer first
+
+    await client.post("/api/auth/logout")
+    await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+    resp = await client.post(f"/api/rooms/{room_id}/leave")
+    assert resp.status_code == 204
+
+    resp = await client.get(f"/api/rooms/{room_id}/messages")
+    assert resp.status_code == 403  # no longer a member
+
+
+async def test_remove_member(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.delete(f"/api/rooms/{room_id}/members/{bob['id']}")
+    assert resp.status_code == 204
+
+    resp = await client.delete(f"/api/rooms/{room_id}/members/{bob['id']}")
+    assert resp.status_code == 404
+
+
+async def test_admin_cannot_remove_another_admin(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    carol = await register_and_login(client, db_session, username="carol")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.patch(f"/api/rooms/{room_id}/members/{bob['id']}", json={"role": "admin"})
+    assert resp.status_code == 200
+    assert resp.json()["role"] == "admin"
+    resp = await client.patch(f"/api/rooms/{room_id}/members/{carol['id']}", json={"role": "admin"})
+    assert resp.status_code == 200
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "bob")
+    resp = await client.delete(f"/api/rooms/{room_id}/members/{carol['id']}")
+    assert resp.status_code == 403
+
+
+async def test_cannot_remove_owner(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    await client.patch(f"/api/rooms/{room_id}/members/{bob['id']}", json={"role": "admin"})
+
+    resp = await client.delete(f"/api/rooms/{room_id}/members/{(await client.get('/api/auth/me')).json()['id']}")
+    assert resp.status_code == 400
+
+
+async def test_transfer_ownership(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.post(
+        f"/api/rooms/{room_id}/transfer-ownership", json={"new_owner_user_id": bob["id"]}
+    )
+    assert resp.status_code == 200
+    assert resp.json()["owner_id"] == bob["id"]
+
+    resp = await client.post(f"/api/rooms/{room_id}/leave")
+    assert resp.status_code == 204  # alice is admin now, not owner, so she can leave
+
+    result = await db_session.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == uuid.UUID(room_id), RoomMembership.user_id == uuid.UUID(bob["id"])
+        )
+    )
+    assert result.scalar_one().role == RoomRole.owner
+
+
+async def test_change_member_role_owner_only(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+    resp = await client.patch(f"/api/rooms/{room_id}/members/{bob['id']}", json={"role": "admin"})
+    assert resp.status_code == 403  # bob is a plain member, not owner
+
+
+async def test_list_room_members(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    resp = await client.get(f"/api/rooms/{room_id}/members")
+    assert resp.status_code == 200
+    members = resp.json()
+    assert len(members) == 1
+    assert members[0]["username"] == "alice"
+    assert members[0]["role"] == "owner"

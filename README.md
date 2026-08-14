@@ -4,19 +4,22 @@ A web-based team chat service (Mattermost-style, no threaded conversations),
 invite-only. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design
 and phased build plan.
 
-**Phase 1** (this state of the repo): auth, open-room CRUD, and single-instance
-WebSocket chat, backend + a minimal frontend. Later phases (private rooms,
-push notifications, Redis fan-out, the admin portal, the bot/extension
-system, and production deployment) are tracked as issues in the repo's issue
-tracker, prioritized.
+**Phase 1**: auth, open-room CRUD, and single-instance WebSocket chat, backend
++ a minimal frontend. **Phase 2**: private rooms, room roles (owner/admin/
+member), and room invites — backend only, see below. Later phases (push
+notifications, Redis fan-out, the admin portal, the bot/extension system, and
+production deployment) are tracked as issues in the repo's issue tracker,
+prioritized.
 
 ## Structure
 
 - [`backend/`](backend/) — FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL. See
-  [`backend/README.md`](backend/README.md) for local setup, migrations, and
-  how to create a user (registration is invite-only — there's no public
-  sign-up endpoint).
+  [`backend/README.md`](backend/README.md) for local setup, migrations, how to
+  create a user (site registration is invite-only — no public sign-up
+  endpoint), and the Phase 2 room-roles/invites API.
 - [`frontend/`](frontend/) — React + Vite PWA (login, room list, chat view).
+  Still Phase-1-only: it doesn't yet call any of the Phase 2 endpoints. A UI
+  redesign is happening separately; frontend work resumes once that lands.
 
 ## Quickstart
 

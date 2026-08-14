@@ -1,7 +1,8 @@
-# KeepItTalking backend (Phase 1)
+# KeepItTalking backend (Phase 1 + 2)
 
-FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL. Implements auth, open-room CRUD,
-and a single-instance WebSocket chat endpoint. See `../ARCHITECTURE.md` for the
+FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL. Implements auth, room CRUD
+(open and private), room roles (owner/admin/member) and invites, and a
+single-instance WebSocket chat endpoint. See `../ARCHITECTURE.md` for the
 full system design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
@@ -79,29 +80,48 @@ app/
   main.py            create_app(), session middleware, router/WS mounting
   config.py           environment-driven settings (pydantic-settings)
   database.py          async engine/session, get_db() dependency
-  dependencies.py       get_current_user, require_room_member
+  dependencies.py       get_current_user, require_room_member, require_room_role
   security.py            argon2 password hashing
   cli.py                  `python -m app.cli create-user` (account provisioning)
-  models/                 SQLAlchemy models (users, rooms, room_memberships, messages)
+  models/                 SQLAlchemy models (users, rooms, room_memberships,
+                             messages, room_invites)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, health
+  routers/                  auth, rooms, invites, health
   services/                  business logic called by routers
   ws/                        WebSocket connection manager + /ws/chat handler
 alembic/                      migrations
 tests/                         pytest + httpx/TestClient tests
 ```
 
+## Room roles and invites (Phase 2)
+
+Rooms can be `open` (anyone can join via `POST /api/rooms/{id}/join`) or
+`private` (`is_private: true` at creation — joinable only via invite). Room
+roles are `owner` > `admin` > `member`:
+- **member**: post messages, leave the room
+- **admin**: edit room settings, create/list/revoke invites, remove plain members
+- **owner**: everything admin can, plus delete the room, remove admins, change
+  member roles, and transfer ownership
+
+Invite flow: an admin+ calls `POST /api/rooms/{id}/invites` with an existing
+`target_username`; the invited user sees it via `GET /api/invites/mine` and
+calls `POST /api/invites/{id}/accept` (or `/decline`). `GET /api/rooms/mine`
+lists every room (open + private) the current user belongs to, alongside
+their role.
+
 ## Notes / scope decisions
 
-- Invite-only: no `POST /api/auth/register`. Accounts are provisioned with
-  `python -m app.cli create-user` (see step 4 above). A more self-service
-  invite flow (per-user tokens, or an admin-portal "generate invite" button)
-  is a natural phase-2/6 follow-up, not built now.
+- Invite-only site registration: no `POST /api/auth/register`. Accounts are
+  provisioned with `python -m app.cli create-user` (see step 4 above). This is
+  separate from *room* invites above — site accounts vs. room membership.
+- Room invites are by **username only** — `room_invites.target_email` exists
+  in the schema (per `ARCHITECTURE.md`) but is unused, since there's no
+  email-delivery mechanism anywhere in the stack yet.
 - Sessions are signed cookies (Starlette `SessionMiddleware`), not a server-side
   session table — see `ARCHITECTURE.md`'s rationale (simplest way to carry auth
   through a WebSocket handshake). This means there's currently no way to force-
   revoke a session server-side; that needs a real session table later.
 - No CSRF token yet — `SameSite=Lax` cookies plus a same-origin frontend dev
   proxy (see `../frontend/vite.config.ts`) is the accepted phase-1 mitigation.
-- `rooms.is_private` exists in the schema but the API never sets it `True` yet;
-  private rooms/invites are phase 2 (tracked as a Gitea issue).
+- Deleting a room explicitly deletes its messages/memberships/invites first
+  (`room_service.delete_room`) rather than relying on DB-level cascades.

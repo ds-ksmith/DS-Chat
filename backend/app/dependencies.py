@@ -5,7 +5,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import RoomMembership, User
+from app.models import RoomMembership, RoomRole, User
+
+_ROLE_RANK = {RoomRole.member: 0, RoomRole.admin: 1, RoomRole.owner: 2}
 
 
 async def get_current_user(
@@ -34,4 +36,13 @@ async def require_room_member(
     membership = result.scalar_one_or_none()
     if membership is None:
         raise HTTPException(status_code=403, detail="Not a member of this room")
+    return membership
+
+
+async def require_room_role(
+    room_id: uuid.UUID, user: User, db: AsyncSession, minimum: RoomRole
+) -> RoomMembership:
+    membership = await require_room_member(room_id, user, db)
+    if _ROLE_RANK[membership.role] < _ROLE_RANK[minimum]:
+        raise HTTPException(status_code=403, detail="Insufficient room role")
     return membership
