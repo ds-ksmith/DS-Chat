@@ -42,7 +42,7 @@ from app.schemas.webhook import (
     WebhookIncomingCreate,
     WebhookIncomingRead,
 )
-from app.services.message_service import list_recent_messages
+from app.services.message_service import get_reactions_for_messages, list_recent_messages
 from app.services.room_service import (
     CannotRemoveOwnerError,
     DuplicateRoomError,
@@ -295,6 +295,7 @@ async def get_room_messages_endpoint(
     require_scope(request, "read:messages")
     await require_room_member(room_id, current_user, db)
     messages = await list_recent_messages(db, room_id, limit)
+    reactions_by_message = await get_reactions_for_messages(db, [m.id for m in messages])
     return [
         MessageRead(
             id=m.id,
@@ -303,6 +304,7 @@ async def get_room_messages_endpoint(
             username=m.user.username,
             content=m.content,
             image_id=m.image_id,
+            reactions=reactions_by_message.get(m.id, []),
             created_at=m.created_at,
             edited_at=m.edited_at,
         )

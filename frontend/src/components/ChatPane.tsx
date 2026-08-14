@@ -54,6 +54,13 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
           m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
         ),
       )
+    } else if (envelope.type === 'reaction_update') {
+      setHistory((prev) =>
+        prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
+      )
+      setLive((prev) =>
+        prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
+      )
     } else if (envelope.type === 'error') {
       setWsError(envelope.detail)
     }
@@ -61,7 +68,7 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
 
   const onUnauthenticated = useCallback(() => navigate('/login'), [navigate])
 
-  const { connected, send, sendEdit } = useChatSocket({ roomId: room.id, onMessage, onUnauthenticated })
+  const { connected, send, sendEdit, sendReaction } = useChatSocket({ roomId: room.id, onMessage, onUnauthenticated })
 
   return (
     <section className="chat-pane">
@@ -99,7 +106,13 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
         </p>
       )}
 
-      <MessageList roomId={room.id} messages={[...history, ...live]} members={members} onEdit={sendEdit} />
+      <MessageList
+        roomId={room.id}
+        messages={[...history, ...live]}
+        members={members}
+        onEdit={sendEdit}
+        onReact={sendReaction}
+      />
       <Composer roomId={room.id} roomName={room.name} disabled={!connected} onSend={send} />
     </section>
   )

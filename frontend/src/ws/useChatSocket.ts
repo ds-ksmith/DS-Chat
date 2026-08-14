@@ -96,5 +96,11 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
     ws.send(JSON.stringify({ type: 'edit', room_id: roomId, message_id: messageId, content }))
   }, [roomId])
 
-  return { connected, send, sendEdit }
+  const sendReaction = useCallback((messageId: string, emoji: string) => {
+    const ws = socketRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({ type: 'reaction', room_id: roomId, message_id: messageId, emoji }))
+  }, [roomId])
+
+  return { connected, send, sendEdit, sendReaction }
 }

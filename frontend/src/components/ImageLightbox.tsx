@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import './ImageLightbox.css'
 
 interface ImageLightboxProps {
@@ -7,13 +7,7 @@ interface ImageLightboxProps {
 }
 
 export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  useEscapeKey(onClose)
 
   return (
     <div className="image-lightbox" onClick={onClose}>

@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Message, Room, RoomMembership, User
+from app.schemas.message import ReactionSummary
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
 from app.ws.broadcaster import RoomBroadcaster
@@ -49,6 +50,7 @@ def _message_payload(message: Message, username: str) -> dict:
         "username": username,
         "content": message.content,
         "image_id": str(message.image_id) if message.image_id else None,
+        "reactions": [],
         "created_at": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
     }
@@ -83,3 +85,21 @@ async def broadcast_message_update(
     }
     await broadcaster.publish(room_id, payload)
     await dispatch_event(db, "message.updated", room_id, payload)
+
+
+async def broadcast_reaction_update(
+    broadcaster: RoomBroadcaster,
+    room_id: uuid.UUID,
+    message_id: uuid.UUID,
+    reactions: list[ReactionSummary],
+) -> None:
+    payload = {
+        "type": "reaction_update",
+        "id": str(message_id),
+        "room_id": str(room_id),
+        "reactions": [r.model_dump() for r in reactions],
+    }
+    await broadcaster.publish(room_id, payload)
+    # Deliberately no dispatch_event() call -- reactions don't get an
+    # outgoing-webhook event type, matching the same scope cut made for
+    # image uploads (see backend/README.md).

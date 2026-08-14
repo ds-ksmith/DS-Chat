@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomImage } from '../api/rooms'
+import { EmojiPicker } from './EmojiPicker'
 import './Composer.css'
 
 interface ComposerProps {
@@ -15,6 +16,7 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const online = useOnlineStatus()
@@ -69,6 +71,24 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
     })
   }
 
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current
+    setEmojiPickerOpen(false)
+    if (!el) {
+      setValue((v) => v + emoji)
+      return
+    }
+    const start = el.selectionStart ?? value.length
+    const end = el.selectionEnd ?? value.length
+    setValue(value.slice(0, start) + emoji + value.slice(end))
+    requestAnimationFrame(() => {
+      el.focus()
+      const cursor = start + emoji.length
+      el.setSelectionRange(cursor, cursor)
+      autoGrow()
+    })
+  }
+
   return (
     <div className="composer">
       {pendingImage && (
@@ -116,6 +136,25 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
             </svg>
           )}
         </button>
+        <div className="composer-emoji-wrap">
+          <button
+            type="button"
+            className="composer-emoji-trigger"
+            onClick={() => setEmojiPickerOpen((v) => !v)}
+            disabled={disabled}
+            aria-label="Insert an emoji"
+          >
+            🙂
+          </button>
+          {emojiPickerOpen && (
+            <EmojiPicker
+              onPick={insertEmoji}
+              onClose={() => setEmojiPickerOpen(false)}
+              placement="above"
+              align="left"
+            />
+          )}
+        </div>
         <textarea
           ref={textareaRef}
           rows={1}

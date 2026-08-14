@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
@@ -6,8 +6,9 @@ WebSocket chat endpoint that fans out across multiple app-server instances
 via Redis pub/sub, Web Push notifications for offline room members, a
 site-admin portal (user/room/bot management + an audit log), a bot/
 extension layer (scoped API tokens, live bot WebSocket access, incoming and
-outgoing webhooks, message editing), and image uploads in chat messages. See
-`../ARCHITECTURE.md` for the full system design and the phased build plan.
+outgoing webhooks, message editing), image uploads in chat messages, and
+emoji reactions on messages. See `../ARCHITECTURE.md` for the full system
+design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -119,9 +120,10 @@ app/
                              and on-disk save/read -- see Image uploads below
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
-                             messages, message_images, room_invites,
-                             push_subscriptions, admin_audit_log, api_tokens,
-                             webhooks_incoming, event_subscriptions)
+                             messages, message_images, message_reactions,
+                             room_invites, push_subscriptions,
+                             admin_audit_log, api_tokens, webhooks_incoming,
+                             event_subscriptions)
   schemas/                 Pydantic request/response models
   routers/                  auth, rooms, invites, push, admin, bots, webhooks, health
   services/                  business logic called by routers
@@ -348,6 +350,31 @@ navigates away before hitting Send) leaks an orphaned file on disk — no
 cleanup job for this yet. Not a security issue, since serving still goes
 through the same room-membership gate as everything else; just an eventual
 disk-space housekeeping item.
+
+## Emoji & reactions
+
+An emoji picker in the frontend composer is purely client-side (a static
+curated unicode list, no backend involvement). Message **reactions** are
+full-stack: `message_reactions` (`app/models/message_reaction.py`) has
+`message_id`, `user_id`, `emoji`, and a `UniqueConstraint` on all three
+backing toggle semantics — the same user reacting with the same emoji on
+the same message twice removes it (Slack/Mattermost convention).
+`message_service.toggle_reaction` is a plain select-then-delete-or-insert,
+no upsert needed.
+
+WS `"reaction"` envelope (`room_id`, `message_id`, `emoji`) toggles a
+reaction; the server broadcasts the message's **full recomputed** reaction
+list (`{"type": "reaction_update", "id", "room_id", "reactions": [...]}`),
+not an add/remove delta — same approach `message_update` already uses for
+edits, keeping client-side state a simple replace rather than a merge.
+`GET /{room_id}/messages` embeds each message's `reactions` too
+(`message_service.get_reactions_for_messages`, batched, not N+1), so a page
+reload doesn't lose reaction state that only ever arrived over WS.
+
+Scope cuts: no outgoing-webhook event type for reactions (`VALID_EVENT_TYPES`
+in `webhook_service.py` is unchanged — same restraint as image uploads), no
+reaction-count limit or rate limiting, no custom/uploaded emoji (unicode
+only, curated client-side list in `frontend/src/lib/emoji.ts`).
 
 ## Notes / scope decisions
 

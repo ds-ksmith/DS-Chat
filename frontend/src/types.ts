@@ -51,6 +51,12 @@ export interface MyInvite extends Invite {
   invited_by_username: string
 }
 
+export interface ReactionSummary {
+  emoji: string
+  count: number
+  user_ids: string[]
+}
+
 export interface Message {
   id: string
   room_id: string
@@ -58,6 +64,7 @@ export interface Message {
   username: string
   content: string | null
   image_id: string | null
+  reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
 }
@@ -70,6 +77,7 @@ export interface ChatMessageEnvelope {
   username: string
   content: string | null
   image_id: string | null
+  reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
 }
@@ -80,6 +88,13 @@ export interface ChatMessageUpdateEnvelope {
   room_id: string
   content: string
   edited_at: string | null
+}
+
+export interface ChatReactionUpdateEnvelope {
+  type: 'reaction_update'
+  id: string
+  room_id: string
+  reactions: ReactionSummary[]
 }
 
 export interface ChatJoinedEnvelope {
@@ -95,6 +110,7 @@ export interface ChatErrorEnvelope {
 export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
+  | ChatReactionUpdateEnvelope
   | ChatJoinedEnvelope
   | ChatErrorEnvelope
 

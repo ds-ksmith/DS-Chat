@@ -6,14 +6,19 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import ApiToken, MessageImage, RoomMembership, User
+from app.models import ApiToken, Message, MessageImage, RoomMembership, User
 from app.services.bot_service import resolve_token
-from app.services.message_events import broadcast_message_update, broadcast_new_message
+from app.services.message_events import (
+    broadcast_message_update,
+    broadcast_new_message,
+    broadcast_reaction_update,
+)
 from app.services.message_service import (
     MessageNotFoundError,
     NotMessageAuthorError,
     create_message,
     edit_message,
+    toggle_reaction,
 )
 
 router = APIRouter(tags=["ws"])
@@ -27,6 +32,7 @@ class ClientEnvelope(BaseModel):
     content: str | None = None
     image_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
+    emoji: str | None = None
 
 
 async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -162,6 +168,38 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     )
                     continue
                 await broadcast_message_update(db, broadcaster, envelope.room_id, message)
+
+            elif envelope.type == "reaction":
+                if (
+                    envelope.room_id is None
+                    or envelope.message_id is None
+                    or not envelope.emoji
+                    or len(envelope.emoji) > 8
+                ):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "room_id, message_id, and emoji required"}
+                    )
+                    continue
+                if _missing_scope(api_token, "write:messages"):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "Token missing required scope: write:messages"}
+                    )
+                    continue
+                if envelope.room_id not in joined_rooms or not await _is_room_member(
+                    db, envelope.room_id, user.id
+                ):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "Not a member of this room"}
+                    )
+                    continue
+                target_message = await db.get(Message, envelope.message_id)
+                if target_message is None or target_message.room_id != envelope.room_id:
+                    await websocket.send_json({"type": "error", "detail": "Message not found"})
+                    continue
+                reactions = await toggle_reaction(db, envelope.message_id, user.id, envelope.emoji)
+                await broadcast_reaction_update(
+                    broadcaster, envelope.room_id, envelope.message_id, reactions
+                )
 
             else:
                 await websocket.send_json(

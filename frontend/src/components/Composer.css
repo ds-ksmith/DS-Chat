@@ -53,6 +53,35 @@
   display: none;
 }
 
+.composer-emoji-wrap {
+  position: relative;
+  flex: none;
+}
+
+.composer-emoji-trigger {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  font-size: 1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.composer-emoji-trigger:hover:not(:disabled) {
+  border-color: var(--ds-accent);
+}
+
+.composer-emoji-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .composer-attach {
   width: 36px;
   height: 36px;

@@ -3,6 +3,7 @@ import { getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { senderColorIndex } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, RoomMember } from '../types'
+import { EmojiPicker } from './EmojiPicker'
 import { ImageLightbox } from './ImageLightbox'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
@@ -12,14 +13,20 @@ interface MessageListProps {
   messages: (Message | ChatMessageEnvelope)[]
   members: RoomMember[]
   onEdit: (messageId: string, content: string) => void
+  onReact: (messageId: string, emoji: string) => void
 }
 
-export function MessageList({ roomId, messages, members, onEdit }: MessageListProps) {
+export function MessageList({ roomId, messages, members, onEdit, onReact }: MessageListProps) {
   const { user } = useAuth()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const [reactingId, setReactingId] = useState<string | null>(null)
+
+  function usernameFor(userId: string): string {
+    return members.find((m) => m.user_id === userId)?.username ?? 'someone'
+  }
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
@@ -92,18 +99,62 @@ export function MessageList({ roomId, messages, members, onEdit }: MessageListPr
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}
+                  {msg.reactions.length > 0 && (
+                    <div className="message-reaction-pills">
+                      {msg.reactions.map((r) => {
+                        const mineReaction = !!user && r.user_ids.includes(user.id)
+                        return (
+                          <button
+                            key={r.emoji}
+                            type="button"
+                            className={`message-reaction-pill${mineReaction ? ' message-reaction-pill-mine' : ''}`}
+                            title={r.user_ids.map(usernameFor).join(', ')}
+                            onClick={() => onReact(msg.id, r.emoji)}
+                          >
+                            <span>{r.emoji}</span>
+                            <span>{r.count}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </>
               )}
             </div>
-            {mine && !editing && (
-              <button
-                type="button"
-                className="message-edit-link"
-                onClick={() => startEdit(msg)}
-                aria-label="Edit message"
-              >
-                Edit
-              </button>
+            {!editing && (
+              <div className="message-row-actions">
+                <div className="message-reaction-wrap">
+                  <button
+                    type="button"
+                    className="message-reaction-trigger"
+                    onClick={() => setReactingId(reactingId === msg.id ? null : msg.id)}
+                    aria-label="Add reaction"
+                  >
+                    🙂
+                  </button>
+                  {reactingId === msg.id && (
+                    <EmojiPicker
+                      onPick={(emoji) => {
+                        onReact(msg.id, emoji)
+                        setReactingId(null)
+                      }}
+                      onClose={() => setReactingId(null)}
+                      placement="below"
+                      align="right"
+                    />
+                  )}
+                </div>
+                {mine && (
+                  <button
+                    type="button"
+                    className="message-edit-link"
+                    onClick={() => startEdit(msg)}
+                    aria-label="Edit message"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )

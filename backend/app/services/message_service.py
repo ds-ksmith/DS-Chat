@@ -1,11 +1,13 @@
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message
+from app.models import Message, MessageReaction
+from app.schemas.message import ReactionSummary
 
 
 class MessageNotFoundError(Exception):
@@ -59,3 +61,53 @@ async def list_recent_messages(
     messages = list(result.scalars().all())
     messages.reverse()
     return messages
+
+
+async def get_reactions_for_messages(
+    db: AsyncSession, message_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, list[ReactionSummary]]:
+    if not message_ids:
+        return {}
+
+    result = await db.execute(
+        select(MessageReaction)
+        .where(MessageReaction.message_id.in_(message_ids))
+        .order_by(MessageReaction.created_at)
+    )
+    # Grouped in Python rather than a GROUP BY/array_agg query -- the row
+    # count per room-history page is small, and this keeps the ordering
+    # (first-reacted emoji first, first-reacted user first within it)
+    # trivial instead of relying on Postgres-specific aggregate ordering.
+    by_message: dict[uuid.UUID, dict[str, list[str]]] = defaultdict(dict)
+    for reaction in result.scalars().all():
+        emoji_map = by_message[reaction.message_id]
+        emoji_map.setdefault(reaction.emoji, []).append(str(reaction.user_id))
+
+    return {
+        message_id: [
+            ReactionSummary(emoji=emoji, count=len(user_ids), user_ids=user_ids)
+            for emoji, user_ids in emoji_map.items()
+        ]
+        for message_id, emoji_map in by_message.items()
+    }
+
+
+async def toggle_reaction(
+    db: AsyncSession, message_id: uuid.UUID, user_id: uuid.UUID, emoji: str
+) -> list[ReactionSummary]:
+    result = await db.execute(
+        select(MessageReaction).where(
+            MessageReaction.message_id == message_id,
+            MessageReaction.user_id == user_id,
+            MessageReaction.emoji == emoji,
+        )
+    )
+    existing = result.scalar_one_or_none()
+    if existing is not None:
+        await db.delete(existing)
+    else:
+        db.add(MessageReaction(message_id=message_id, user_id=user_id, emoji=emoji))
+    await db.commit()
+
+    reactions = await get_reactions_for_messages(db, [message_id])
+    return reactions.get(message_id, [])
