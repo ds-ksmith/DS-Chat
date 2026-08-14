@@ -99,8 +99,8 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
         </p>
       )}
 
-      <MessageList messages={[...history, ...live]} members={members} onEdit={sendEdit} />
-      <Composer roomName={room.name} disabled={!connected} onSend={send} />
+      <MessageList roomId={room.id} messages={[...history, ...live]} members={members} onEdit={sendEdit} />
+      <Composer roomId={room.id} roomName={room.name} disabled={!connected} onSend={send} />
     </section>
   )
 }

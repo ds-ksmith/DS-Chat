@@ -5,6 +5,7 @@ from app.models.event_subscription import EventSubscription
 from app.models.invite import InviteStatus, RoomInvite
 from app.models.membership import RoomMembership, RoomRole
 from app.models.message import Message
+from app.models.message_image import MessageImage
 from app.models.push_subscription import PushSubscription
 from app.models.room import Room
 from app.models.user import User
@@ -17,6 +18,7 @@ __all__ = [
     "RoomMembership",
     "RoomRole",
     "Message",
+    "MessageImage",
     "RoomInvite",
     "InviteStatus",
     "PushSubscription",

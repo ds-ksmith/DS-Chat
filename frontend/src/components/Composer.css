@@ -49,8 +49,82 @@
   cursor: not-allowed;
 }
 
+.composer-file-input {
+  display: none;
+}
+
+.composer-attach {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ds-muted);
+  border: 1px solid var(--ds-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.composer-attach:hover:not(:disabled) {
+  color: var(--ds-text);
+  border-color: var(--ds-accent);
+}
+
+.composer-attach:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-spinner {
+  animation: composer-spin 0.8s linear infinite;
+}
+
+@keyframes composer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.composer-attachment {
+  position: relative;
+  width: fit-content;
+}
+
+.composer-attachment-thumb {
+  max-height: 72px;
+  max-width: 140px;
+  border-radius: var(--radius);
+  border: 1px solid var(--ds-border);
+  display: block;
+  object-fit: cover;
+}
+
+.composer-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  color: var(--ds-text);
+  font-size: 0.7rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
 .composer-status {
   font-size: 0.76rem;
   color: var(--ds-muted);
   padding-left: 2px;
+}
+
+.composer-error {
+  color: var(--ds-danger, #e5484d);
 }

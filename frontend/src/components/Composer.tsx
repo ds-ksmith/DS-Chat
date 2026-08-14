@@ -1,16 +1,22 @@
-import { useRef, useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
+import { uploadRoomImage } from '../api/rooms'
 import './Composer.css'
 
 interface ComposerProps {
+  roomId: string
   roomName: string
   disabled?: boolean
-  onSend: (content: string) => void
+  onSend: (content: string, imageId?: string) => void
 }
 
-export function Composer({ roomName, disabled, onSend }: ComposerProps) {
+export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
+  const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const online = useOnlineStatus()
 
   function autoGrow() {
@@ -22,9 +28,10 @@ export function Composer({ roomName, disabled, onSend }: ComposerProps) {
 
   function handleSend() {
     const trimmed = value.trim()
-    if (!trimmed) return
-    onSend(trimmed)
+    if (!trimmed && !pendingImage) return
+    onSend(trimmed, pendingImage?.id)
     setValue('')
+    removePendingImage()
     requestAnimationFrame(autoGrow)
   }
 
@@ -35,9 +42,80 @@ export function Composer({ roomName, disabled, onSend }: ComposerProps) {
     }
   }
 
+  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+
+    setUploadError(null)
+    setUploading(true)
+    try {
+      const { id } = await uploadRoomImage(roomId, file)
+      setPendingImage((prev) => {
+        if (prev) URL.revokeObjectURL(prev.previewUrl)
+        return { id, previewUrl: URL.createObjectURL(file) }
+      })
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function removePendingImage() {
+    setPendingImage((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl)
+      return null
+    })
+  }
+
   return (
     <div className="composer">
+      {pendingImage && (
+        <div className="composer-attachment">
+          <img src={pendingImage.previewUrl} alt="" className="composer-attachment-thumb" />
+          <button
+            type="button"
+            className="composer-attachment-remove"
+            onClick={removePendingImage}
+            aria-label="Remove attached image"
+          >
+            ×
+          </button>
+        </div>
+      )}
+      {uploadError && <div className="composer-status composer-error">{uploadError}</div>}
       <div className="composer-box">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/gif,image/webp"
+          className="composer-file-input"
+          onChange={handleFileSelected}
+        />
+        <button
+          type="button"
+          className="composer-attach"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={disabled || uploading}
+          aria-label="Attach an image"
+        >
+          {uploading ? (
+            <svg className="composer-spinner" width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2.4" fill="none" strokeDasharray="30 14" />
+            </svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path
+                d="M13.5 6.5 8 12a2.1 2.1 0 0 0 3 3l5.5-5.5a4 4 0 0 0-5.7-5.7L4.8 9.8a5.7 5.7 0 0 0 8 8"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
         <textarea
           ref={textareaRef}
           rows={1}
@@ -54,7 +132,7 @@ export function Composer({ roomName, disabled, onSend }: ComposerProps) {
           type="button"
           className="composer-send"
           onClick={handleSend}
-          disabled={disabled || !value.trim()}
+          disabled={disabled || (!value.trim() && !pendingImage)}
           aria-label="Send message"
         >
           <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">

@@ -1,21 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
+import { getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { senderColorIndex } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, RoomMember } from '../types'
+import { ImageLightbox } from './ImageLightbox'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
 
 interface MessageListProps {
+  roomId: string
   messages: (Message | ChatMessageEnvelope)[]
   members: RoomMember[]
   onEdit: (messageId: string, content: string) => void
 }
 
-export function MessageList({ messages, members, onEdit }: MessageListProps) {
+export function MessageList({ roomId, messages, members, onEdit }: MessageListProps) {
   const { user } = useAuth()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end' })
@@ -23,7 +27,7 @@ export function MessageList({ messages, members, onEdit }: MessageListProps) {
 
   function startEdit(msg: Message | ChatMessageEnvelope) {
     setEditingId(msg.id)
-    setDraft(msg.content)
+    setDraft(msg.content ?? '')
   }
 
   function commitEdit(messageId: string) {
@@ -73,10 +77,22 @@ export function MessageList({ messages, members, onEdit }: MessageListProps) {
                   onBlur={() => commitEdit(msg.id)}
                 />
               ) : (
-                <div className="message-text">
-                  {msg.content}
-                  {msg.edited_at && <span className="message-edited"> (edited)</span>}
-                </div>
+                <>
+                  {msg.image_id && (
+                    <img
+                      src={getRoomImageUrl(roomId, msg.image_id)}
+                      alt=""
+                      className="message-image"
+                      onClick={() => setLightboxSrc(getRoomImageUrl(roomId, msg.image_id!))}
+                    />
+                  )}
+                  {msg.content && (
+                    <div className="message-text">
+                      {msg.content}
+                      {msg.edited_at && <span className="message-edited"> (edited)</span>}
+                    </div>
+                  )}
+                </>
               )}
             </div>
             {mine && !editing && (
@@ -93,6 +109,7 @@ export function MessageList({ messages, members, onEdit }: MessageListProps) {
         )
       })}
       <div ref={bottomRef} />
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
     </div>
   )
 }

@@ -56,7 +56,8 @@ export interface Message {
   room_id: string
   user_id: string
   username: string
-  content: string
+  content: string | null
+  image_id: string | null
   created_at: string
   edited_at: string | null
 }
@@ -67,7 +68,8 @@ export interface ChatMessageEnvelope {
   room_id: string
   user_id: string
   username: string
-  content: string
+  content: string | null
+  image_id: string | null
   created_at: string
   edited_at: string | null
 }

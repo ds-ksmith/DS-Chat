@@ -1,13 +1,13 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
 WebSocket chat endpoint that fans out across multiple app-server instances
 via Redis pub/sub, Web Push notifications for offline room members, a
-site-admin portal (user/room/bot management + an audit log), and a bot/
+site-admin portal (user/room/bot management + an audit log), a bot/
 extension layer (scoped API tokens, live bot WebSocket access, incoming and
-outgoing webhooks, message editing). See `../ARCHITECTURE.md` for the full
-system design and the phased build plan.
+outgoing webhooks, message editing), and image uploads in chat messages. See
+`../ARCHITECTURE.md` for the full system design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -115,11 +115,13 @@ app/
                            require_room_member, require_room_role,
                            require_site_admin, require_scope
   security.py            argon2 password hashing + token generate/hash (sha256)
+  storage.py              uploaded-image validation (Pillow), downscaling,
+                             and on-disk save/read -- see Image uploads below
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
-                             messages, room_invites, push_subscriptions,
-                             admin_audit_log, api_tokens, webhooks_incoming,
-                             event_subscriptions)
+                             messages, message_images, room_invites,
+                             push_subscriptions, admin_audit_log, api_tokens,
+                             webhooks_incoming, event_subscriptions)
   schemas/                 Pydantic request/response models
   routers/                  auth, rooms, invites, push, admin, bots, webhooks, health
   services/                  business logic called by routers
@@ -312,6 +314,40 @@ Invite flow: an admin+ calls `POST /api/rooms/{id}/invites` with an existing
 calls `POST /api/invites/{id}/accept` (or `/decline`). `GET /api/rooms/mine`
 lists every room (open + private) the current user belongs to, alongside
 their role.
+
+## Image uploads
+
+A message can carry an image (`Message.image_id`, nullable), a caption
+(`Message.content`, nullable), or both — a `CheckConstraint` requires at
+least one. Images live on the app server's local disk (`<repo root>/uploads`,
+resolved the same way `app/main.py` locates `frontend/dist` — see
+`app/storage.py`), not S3, matching this project's plain-two-servers
+deployment; see `../DEPLOYMENT.md` for the production directory and its
+(currently missing) backup coverage.
+
+- `POST /api/rooms/{room_id}/images` (room-member gated, multipart) —
+  `app/storage.read_capped` rejects (413) as soon as the streamed byte count
+  passes 8 MB, before buffering the whole body. `app/storage.process_image`
+  then opens the result with Pillow to confirm it's a genuinely decodable
+  image (not just a spoofed `Content-Type` header — 400 if not) and
+  downscales it so its longer side is ≤2000px, except GIF, left untouched so
+  animation isn't collapsed to a single frame. Returns the new
+  `message_images` row's id; the frontend attaches it to a message
+  afterward, it isn't a message by itself.
+- `GET /api/rooms/{room_id}/images/{image_id}` (room-member gated) — 404s if
+  the image doesn't belong to that room, otherwise streams it with
+  `Cache-Control: private, max-age=31536000, immutable` (content-addressed
+  by a generated UUID filename, so once served it never changes).
+- The WS `"message"` handler (`app/ws/chat.py`) accepts an optional
+  `image_id`, validated against the room before attaching. Push notification
+  bodies (`app/services/message_events.py`) say "`{username} sent an image`"
+  for an image-only message instead of a body that's just `"username: "`.
+
+Known gap: an uploaded-but-never-sent image (a user attaches a file, then
+navigates away before hitting Send) leaks an orphaned file on disk — no
+cleanup job for this yet. Not a security issue, since serving still goes
+through the same room-membership gate as everything else; just an eventual
+disk-space housekeeping item.
 
 ## Notes / scope decisions
 

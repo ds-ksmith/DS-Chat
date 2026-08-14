@@ -11,6 +11,7 @@ class MessageRead(BaseModel):
     room_id: uuid.UUID
     user_id: uuid.UUID
     username: str
-    content: str
+    content: str | None
+    image_id: uuid.UUID | None
     created_at: datetime
     edited_at: datetime | None

@@ -11,7 +11,7 @@ from app.ws.presence import Presence
 
 
 async def _notify_offline_members(
-    db: AsyncSession, presence: Presence, room_id: uuid.UUID, sender: User, content: str
+    db: AsyncSession, presence: Presence, room_id: uuid.UUID, sender: User, message: Message
 ) -> None:
     result = await db.execute(
         select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
@@ -26,9 +26,14 @@ async def _notify_offline_members(
         return
 
     room = await db.get(Room, room_id)
+    body = (
+        f"{sender.username}: {message.content}"[:120]
+        if message.content
+        else f"{sender.username} sent an image"
+    )
     payload = {
         "title": f"#{room.name}" if room else "New message",
-        "body": f"{sender.username}: {content}"[:120],
+        "body": body,
         "room_id": str(room_id),
     }
     for user_id in offline_ids:
@@ -43,6 +48,7 @@ def _message_payload(message: Message, username: str) -> dict:
         "user_id": str(message.user_id),
         "username": username,
         "content": message.content,
+        "image_id": str(message.image_id) if message.image_id else None,
         "created_at": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
     }
@@ -61,7 +67,7 @@ async def broadcast_new_message(
     trigger identical fan-out/push/event behavior."""
     payload = _message_payload(message, sender.username)
     await broadcaster.publish(room_id, payload)
-    await _notify_offline_members(db, presence, room_id, sender, message.content)
+    await _notify_offline_members(db, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
 
 

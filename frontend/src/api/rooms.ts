@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, ApiError, NetworkError } from './client'
 import type { Message, MyRoomItem, Room, RoomListItem, RoomMember, RoomRole } from '../types'
 
 export function listRooms(): Promise<RoomListItem[]> {
@@ -70,4 +70,40 @@ export function transferOwnership(roomId: string, newOwnerUserId: string): Promi
 
 export function getRoomMessages(roomId: string): Promise<Message[]> {
   return apiFetch<Message[]>(`/api/rooms/${roomId}/messages`)
+}
+
+// Not apiFetch: that wrapper always sets Content-Type: application/json,
+// which would stomp the multipart boundary the browser needs to set itself
+// for a file upload.
+export async function uploadRoomImage(roomId: string, file: File): Promise<{ id: string }> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let response: Response
+  try {
+    response = await fetch(`/api/rooms/${roomId}/images`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+  } catch {
+    throw new NetworkError()
+  }
+
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const body = await response.json()
+      detail = body.detail ?? detail
+    } catch {
+      // response had no JSON body
+    }
+    throw new ApiError(response.status, detail)
+  }
+
+  return (await response.json()) as { id: string }
+}
+
+export function getRoomImageUrl(roomId: string, imageId: string): string {
+  return `/api/rooms/${roomId}/images/${imageId}`
 }

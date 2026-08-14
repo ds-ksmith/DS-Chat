@@ -9,6 +9,10 @@
 #     0 3 * * * /usr/local/bin/chatapp-backup-postgres.sh
 #
 # See ../DEPLOYMENT.md for the full data-server setup this fits into.
+#
+# Covers Postgres only. Uploaded chat images live on the app server's disk
+# (/srv/chatapp/uploads, see app/storage.py), not here -- see DEPLOYMENT.md
+# §7 for that gap.
 
 set -euo pipefail
 

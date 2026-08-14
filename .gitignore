@@ -22,3 +22,6 @@ dist-ssr/
 ## Test / coverage
 .pytest_cache/
 .coverage
+
+## Uploaded content (local-disk image storage, see backend/app/routers/rooms.py)
+/uploads/

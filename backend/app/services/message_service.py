@@ -17,9 +17,13 @@ class NotMessageAuthorError(Exception):
 
 
 async def create_message(
-    db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID, content: str
+    db: AsyncSession,
+    room_id: uuid.UUID,
+    user_id: uuid.UUID,
+    content: str | None = None,
+    image_id: uuid.UUID | None = None,
 ) -> Message:
-    message = Message(room_id=room_id, user_id=user_id, content=content)
+    message = Message(room_id=room_id, user_id=user_id, content=content, image_id=image_id)
     db.add(message)
     await db.commit()
     await db.refresh(message)
