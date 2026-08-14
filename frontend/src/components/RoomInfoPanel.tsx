@@ -9,11 +9,29 @@ import {
   transferOwnership,
   updateRoom,
 } from '../api/rooms'
+import {
+  createEventSubscription,
+  createIncomingWebhook,
+  listEventSubscriptions,
+  listIncomingWebhooks,
+  revokeEventSubscription,
+  revokeIncomingWebhook,
+} from '../api/webhooks'
 import { useAuth } from '../context/AuthContext'
-import type { Invite, MyRoomItem, RoomMember, RoomRole } from '../types'
+import type {
+  EventSubscription,
+  EventType,
+  Invite,
+  MyRoomItem,
+  RoomMember,
+  RoomRole,
+  WebhookIncoming,
+} from '../types'
 import { RoomAvatar } from './RoomAvatar'
 import { UserAvatar } from './UserAvatar'
 import './RoomInfoPanel.css'
+
+const EVENT_TYPES: EventType[] = ['message.created', 'message.updated']
 
 interface RoomInfoPanelProps {
   room: MyRoomItem
@@ -46,6 +64,15 @@ export function RoomInfoPanel({
   const [descDraft, setDescDraft] = useState(room.description ?? '')
   const [roomError, setRoomError] = useState<string | null>(null)
 
+  const [integrationsOpen, setIntegrationsOpen] = useState(false)
+  const [incomingWebhooks, setIncomingWebhooks] = useState<WebhookIncoming[]>([])
+  const [webhookDescription, setWebhookDescription] = useState('')
+  const [eventSubscriptions, setEventSubscriptions] = useState<EventSubscription[]>([])
+  const [targetUrl, setTargetUrl] = useState('')
+  const [selectedEventTypes, setSelectedEventTypes] = useState<EventType[]>([])
+  const [newSigningSecret, setNewSigningSecret] = useState<string | null>(null)
+  const [integrationsError, setIntegrationsError] = useState<string | null>(null)
+
   const canManage = myRole === 'admin' || myRole === 'owner'
 
   useEffect(() => {
@@ -53,8 +80,12 @@ export function RoomInfoPanel({
     setDescDraft(room.description ?? '')
     if (canManage) {
       listRoomInvites(room.id).then(setPendingInvites).catch(() => setPendingInvites([]))
+      listIncomingWebhooks(room.id).then(setIncomingWebhooks).catch(() => setIncomingWebhooks([]))
+      listEventSubscriptions(room.id).then(setEventSubscriptions).catch(() => setEventSubscriptions([]))
     } else {
       setPendingInvites([])
+      setIncomingWebhooks([])
+      setEventSubscriptions([])
     }
   }, [room.id, room.name, room.description, canManage])
 
@@ -75,6 +106,50 @@ export function RoomInfoPanel({
   async function handleRevoke(inviteId: string) {
     await revokeInvite(room.id, inviteId)
     setPendingInvites(await listRoomInvites(room.id))
+  }
+
+  async function handleCreateWebhook(e: FormEvent) {
+    e.preventDefault()
+    setIntegrationsError(null)
+    try {
+      await createIncomingWebhook(room.id, webhookDescription.trim())
+      setWebhookDescription('')
+      setIncomingWebhooks(await listIncomingWebhooks(room.id))
+    } catch (err) {
+      setIntegrationsError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleRevokeWebhook(webhookId: string) {
+    await revokeIncomingWebhook(room.id, webhookId)
+    setIncomingWebhooks(await listIncomingWebhooks(room.id))
+  }
+
+  function toggleEventType(eventType: EventType) {
+    setSelectedEventTypes((prev) =>
+      prev.includes(eventType) ? prev.filter((t) => t !== eventType) : [...prev, eventType],
+    )
+  }
+
+  async function handleCreateSubscription(e: FormEvent) {
+    e.preventDefault()
+    setIntegrationsError(null)
+    const url = targetUrl.trim()
+    if (!url || selectedEventTypes.length === 0) return
+    try {
+      const created = await createEventSubscription(room.id, selectedEventTypes, url)
+      setNewSigningSecret(created.signing_secret)
+      setTargetUrl('')
+      setSelectedEventTypes([])
+      setEventSubscriptions(await listEventSubscriptions(room.id))
+    } catch (err) {
+      setIntegrationsError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleRevokeSubscription(subscriptionId: string) {
+    await revokeEventSubscription(room.id, subscriptionId)
+    setEventSubscriptions(await listEventSubscriptions(room.id))
   }
 
   async function handleRemove(userId: string) {
@@ -247,6 +322,105 @@ export function RoomInfoPanel({
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {canManage && (
+        <div className="room-info-section">
+          <button
+            type="button"
+            className="room-info-settings-toggle"
+            onClick={() => setIntegrationsOpen((v) => !v)}
+          >
+            Integrations {integrationsOpen ? '−' : '+'}
+          </button>
+          {integrationsOpen && (
+            <div className="room-info-integrations">
+              {integrationsError && <p className="room-info-error">{integrationsError}</p>}
+
+              <div className="room-info-integration-group">
+                <div className="room-info-label">Incoming webhooks</div>
+                {incomingWebhooks.map((w) => (
+                  <div key={w.id} className="room-info-webhook-row">
+                    <div className="room-info-webhook-info">
+                      <code>{`${window.location.origin}/api/webhooks/incoming/${w.token}`}</code>
+                      {w.description && <span className="room-info-webhook-desc">{w.description}</span>}
+                    </div>
+                    <button
+                      type="button"
+                      className="room-info-danger-link"
+                      onClick={() => handleRevokeWebhook(w.id)}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+                <form className="room-info-invite-form" onSubmit={handleCreateWebhook}>
+                  <input
+                    type="text"
+                    placeholder="Description (optional)"
+                    value={webhookDescription}
+                    onChange={(e) => setWebhookDescription(e.target.value)}
+                  />
+                  <button type="submit" className="btn-secondary">
+                    Add
+                  </button>
+                </form>
+              </div>
+
+              <div className="room-info-integration-group">
+                <div className="room-info-label">Outgoing event subscriptions</div>
+                {eventSubscriptions.map((s) => (
+                  <div key={s.id} className="room-info-webhook-row">
+                    <div className="room-info-webhook-info">
+                      <code>{s.target_url}</code>
+                      <span className="room-info-webhook-desc">{s.event_types.join(', ')}</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="room-info-danger-link"
+                      onClick={() => handleRevokeSubscription(s.id)}
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+                <form className="room-info-subscription-form" onSubmit={handleCreateSubscription}>
+                  <input
+                    type="text"
+                    placeholder="https://example.com/hook"
+                    value={targetUrl}
+                    onChange={(e) => setTargetUrl(e.target.value)}
+                  />
+                  <div className="room-info-event-types">
+                    {EVENT_TYPES.map((eventType) => (
+                      <label key={eventType} className="room-info-event-type-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={selectedEventTypes.includes(eventType)}
+                          onChange={() => toggleEventType(eventType)}
+                        />
+                        {eventType}
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="submit"
+                    className="btn-secondary"
+                    disabled={!targetUrl.trim() || selectedEventTypes.length === 0}
+                  >
+                    Add
+                  </button>
+                </form>
+                {newSigningSecret && (
+                  <p className="room-info-signing-secret">
+                    New signing secret (copy it now, it won't be shown again):{' '}
+                    <code>{newSigningSecret}</code>
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

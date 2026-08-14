@@ -14,12 +14,12 @@ from app.schemas.admin import (
     ResetPasswordRequest,
     TransferOwnershipRequest,
 )
+from app.schemas.webhook import EventSubscriptionAdminRead, WebhookIncomingAdminRead
 from app.services.admin_service import (
     CannotActOnSelfError,
     RoomNotFoundError,
     TargetNotRoomMemberError,
     UserNotFoundError,
-    list_audit_log,
     list_rooms_admin,
     list_users,
     reset_user_password,
@@ -27,6 +27,11 @@ from app.services.admin_service import (
     set_user_active,
     set_user_site_admin,
     transfer_ownership_admin,
+)
+from app.services.audit import list_audit_log
+from app.services.webhook_service import (
+    list_all_event_subscriptions_admin,
+    list_all_incoming_webhooks_admin,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -222,4 +227,48 @@ async def list_audit_log_endpoint(
             created_at=e.created_at,
         )
         for e in entries
+    ]
+
+
+@router.get("/webhooks/incoming", response_model=list[WebhookIncomingAdminRead])
+async def list_incoming_webhooks_admin_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    webhooks = await list_all_incoming_webhooks_admin(db)
+    return [
+        WebhookIncomingAdminRead(
+            id=w.id,
+            room_id=w.room_id,
+            token=w.token,
+            created_by=w.created_by,
+            description=w.description,
+            created_at=w.created_at,
+            room_name=w.room.name,
+            created_by_username=w.creator.username,
+        )
+        for w in webhooks
+    ]
+
+
+@router.get("/event-subscriptions", response_model=list[EventSubscriptionAdminRead])
+async def list_event_subscriptions_admin_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    subscriptions = await list_all_event_subscriptions_admin(db)
+    return [
+        EventSubscriptionAdminRead(
+            id=s.id,
+            room_id=s.room_id,
+            event_types=s.event_types,
+            target_url=s.target_url,
+            created_by=s.created_by,
+            created_at=s.created_at,
+            room_name=s.room.name if s.room else None,
+            created_by_username=s.creator.username,
+        )
+        for s in subscriptions
     ]

@@ -1,5 +1,11 @@
 import { apiFetch } from './client'
-import type { AdminRoom, AdminUser, AuditLogEntry } from '../types'
+import type {
+  AdminRoom,
+  AdminUser,
+  AuditLogEntry,
+  EventSubscriptionAdmin,
+  WebhookIncomingAdmin,
+} from '../types'
 
 export function listAdminUsers(): Promise<AdminUser[]> {
   return apiFetch<AdminUser[]>('/api/admin/users')
@@ -49,4 +55,12 @@ export function transferOwnershipAdmin(roomId: string, newOwnerId: string): Prom
 
 export function listAuditLog(limit = 50, offset = 0): Promise<AuditLogEntry[]> {
   return apiFetch<AuditLogEntry[]>(`/api/admin/audit-log?limit=${limit}&offset=${offset}`)
+}
+
+export function listAllIncomingWebhooks(): Promise<WebhookIncomingAdmin[]> {
+  return apiFetch<WebhookIncomingAdmin[]>('/api/admin/webhooks/incoming')
+}
+
+export function listAllEventSubscriptions(): Promise<EventSubscriptionAdmin[]> {
+  return apiFetch<EventSubscriptionAdmin[]>('/api/admin/event-subscriptions')
 }

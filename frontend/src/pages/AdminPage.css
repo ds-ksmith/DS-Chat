@@ -141,3 +141,90 @@
 .admin-load-more {
   margin-top: var(--sp-4);
 }
+
+.admin-create-form {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.admin-create-form input {
+  flex: 1;
+  max-width: 280px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--ds-text);
+  font-size: 0.84rem;
+}
+
+.admin-bot-detail {
+  background: var(--ds-void-2);
+}
+
+.admin-token-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
+}
+
+.admin-token-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: 0.8rem;
+}
+
+.admin-token-scopes {
+  font-family: var(--mono);
+  color: var(--ds-text);
+}
+
+.admin-token-meta {
+  color: var(--ds-muted);
+  flex: 1;
+}
+
+.admin-token-revoke {
+  background: transparent;
+  border: none;
+  color: var(--ds-danger);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.admin-issue-token {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.admin-scope-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  color: var(--ds-muted);
+}
+
+.admin-new-token {
+  margin-top: var(--sp-3);
+  font-size: 0.8rem;
+  color: var(--ds-accent);
+}
+
+.admin-new-token code {
+  background: var(--ds-surface-2);
+  padding: 3px 8px;
+  border-radius: 6px;
+  word-break: break-all;
+}
+
+.admin-subheading {
+  font-size: 0.95rem;
+  margin: var(--sp-6) 0 var(--sp-3);
+}

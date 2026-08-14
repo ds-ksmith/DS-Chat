@@ -1,11 +1,13 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and invites, a
 WebSocket chat endpoint that fans out across multiple app-server instances
-via Redis pub/sub, Web Push notifications for offline room members, and a
-site-admin portal (user/room management + an audit log). See
-`../ARCHITECTURE.md` for the full system design and the phased build plan.
+via Redis pub/sub, Web Push notifications for offline room members, a
+site-admin portal (user/room/bot management + an audit log), and a bot/
+extension layer (scoped API tokens, live bot WebSocket access, incoming and
+outgoing webhooks, message editing). See `../ARCHITECTURE.md` for the full
+system design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -108,15 +110,17 @@ app/
   main.py            create_app(), session middleware, router/WS mounting
   config.py           environment-driven settings (pydantic-settings)
   database.py          async engine/session, get_db() dependency
-  dependencies.py       get_current_user, require_room_member, require_room_role,
-                           require_site_admin
-  security.py            argon2 password hashing
+  dependencies.py       get_current_user (session cookie or Bearer token),
+                           require_room_member, require_room_role,
+                           require_site_admin, require_scope
+  security.py            argon2 password hashing + token generate/hash (sha256)
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
                              messages, room_invites, push_subscriptions,
-                             admin_audit_log)
+                             admin_audit_log, api_tokens, webhooks_incoming,
+                             event_subscriptions)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, invites, push, admin, health
+  routers/                  auth, rooms, invites, push, admin, bots, webhooks, health
   services/                  business logic called by routers
   ws/                        connection_manager (local sockets), presence +
                                broadcaster (Redis), /ws/chat handler
@@ -147,14 +151,89 @@ Every `/api/admin/*` route (`app/routers/admin.py`) requires
   (actor, action, target type/id, JSON metadata) in the same transaction as
   the change, listed newest-first via `GET /api/admin/audit-log`.
 
-Two items from the original phase scope are deliberately not here yet:
-- **Bot/integration management** — nothing to manage until Phase 7 builds
-  the actual bot data model (`api_tokens`, `webhooks_incoming`,
-  `event_subscriptions` per `ARCHITECTURE.md` §4); it'll be built alongside
-  that data model instead of as an empty panel now.
+Bot/integration management (deferred from this phase originally) is now in
+place — see Phase 7 below. One item is still deliberately not here:
 - **System settings** — no settings storage or concrete setting exists yet.
   The frontend has an empty "Settings" tab as a placeholder for when one
   does.
+
+## Bot/extension system (Phase 7)
+
+Bots are `User` rows with `is_bot=True` (`app/services/bot_service.py`,
+admin-only, `/api/admin/bots/*`) — a generated-and-discarded password since
+bots never log in with one, and a `{username}@bots.example.com` placeholder
+email (`.local`/`.invalid` are rejected by `EmailStr`'s special-use-TLD
+check; a subdomain of the real, if reserved-for-docs, `.com` isn't). A bot
+authenticates instead with a **scoped API token** (`read:messages`,
+`write:messages`, `manage:rooms`) — shown once at issuance, stored as a
+SHA-256 hash (`security.hash_token`, deliberately *not* argon2: a bearer
+token has to be looked up by itself with no username to key off first,
+which argon2's per-call random salt makes impossible; a fast hash of a
+256-bit random token is the standard approach, same as GitHub/Stripe keys).
+
+**Auth**: `get_current_user` (`app/dependencies.py`) checks for an
+`Authorization: Bearer` header before falling back to the session cookie;
+a resolved token is stashed on `request.state.api_token` so `require_scope`
+can gate specific actions. A token-authenticated bot is subject to the
+*exact same* room-membership/role checks as a session-authenticated human
+on every existing endpoint — the token only narrows things further, it
+doesn't grant anything a plain room membership wouldn't. Only
+`read:messages`/`write:messages` are actually scope-gated (on
+`GET /api/rooms/{id}/messages` and the WS message/edit handlers) —
+`manage:rooms` is a recognized, issuable scope with no separate enforcement
+yet, so a bot's room-management ability is bounded by its ordinary room
+role, same as any user; wiring real `manage:rooms` gating into the dozen
+room-management endpoints was cut from this phase's scope (confirmed with
+the repo owner) as disproportionate to the win. The WS handshake
+(`app/ws/chat.py`) accepts the same header directly (bots set it on the
+handshake; browsers use the cookie) — same `/ws/chat` endpoint a human
+client uses, per `ARCHITECTURE.md`'s "same connection type" design.
+
+**Message editing**: `{"type": "edit", "room_id", "message_id", "content"}`
+over the existing WS connection (`message_service.edit_message` — 403 if
+you're not the author), broadcasts `{"type": "message_update", ...}` via the
+same `RoomBroadcaster.publish()` new messages use, so it fans out
+cross-instance for free. `Message.edited_at` (present in the schema since
+Phase 1, unused until now) is exposed on `MessageRead`. The frontend also
+gets a minimal "edit your own message" UI affordance (hover a bubble you
+own) — not asked for by the issue, but the only practical way to exercise
+the pipeline by hand instead of only via a scripted bot client, and it's a
+small addition once the WS envelope exists anyway.
+
+**Incoming webhooks** (`POST /api/rooms/{id}/webhooks/incoming`, room-admin
+managed, mirrors how invites are nested under rooms): a room-scoped URL
+with no auth beyond the token in it being correct
+(`webhooks_incoming.token` is stored **in the clear**, unlike API tokens —
+the room admin needs to view/copy the full URL anytime). `POST
+/api/webhooks/incoming/{token}` (public, no auth dependency) creates a
+message attributed to the webhook's creator and runs the identical
+post-message pipeline a WS-originated message does
+(`app/services/message_events.py`'s `broadcast_new_message`, shared by both
+call sites rather than duplicated).
+
+**Outgoing webhooks / event subscriptions** (`POST
+/api/rooms/{id}/event-subscriptions`, room-admin managed; room-scoped or
+global via `room_id=null`): fires an HMAC-SHA256-signed POST
+(`X-KeepItTalking-Signature: sha256=...`) on `message.created`/
+`message.updated`, delivered via a backgrounded `asyncio.create_task`
+(`app/services/webhook_delivery.py`) — safe to background here, unlike the
+Phase 4 push lesson, since there's no DB session involved, just the
+already-serialized payload and secret. Fire-once, no retry/backoff — a
+failed delivery is logged and dropped, documented limitation, not a
+guarantee.
+
+**SSRF protection** (`app/services/ssrf.py`): target URLs are validated at
+*subscription-creation time* — non-http(s) schemes rejected, hostname
+resolved and rejected if any address is private/loopback/link-local/
+reserved/multicast. Not re-validated per delivery, so DNS rebinding between
+creation and a later send isn't defended against — a real gap, deliberately
+left open (confirmed with the repo owner) rather than building the
+meaningfully more involved per-request IP-pinning that would close it.
+
+**Rate limiting**: `ARCHITECTURE.md` calls for rate-limiting bot API calls
+the same as human ones. Not implemented — there's no rate limiting
+anywhere in the app today (human or bot) to extend, and building one well
+is its own scope. Documented gap, not an oversight.
 
 ## Cross-instance broadcast (Phase 5)
 
@@ -186,15 +265,18 @@ below.
 `POST /api/push/subscribe` (upserts by `endpoint`) / `DELETE /api/push/subscribe`
 manage a user's `push_subscriptions` rows; `GET /api/push/vapid-public-key` gives
 the frontend the key it needs for `PushManager.subscribe()`. On every chat
-message, `app/ws/chat.py` computes `room members - Presence.
-connected_user_ids(room_id)` (who's actually connected to *that room* right
-now, across every app instance — see Phase 5 below) and sends each offline
-member a push via `pywebpush`, awaited inline against the same
-request-scoped session rather than fired as a background task — the
-broadcast to online members already happened by that point, so nothing
-online-facing is delayed, and it sidesteps `asyncio.create_task()`s outliving
-the session/event loop they were created on. An expired/invalid subscription
-(pywebpush 404/410) is deleted automatically.
+message, `app/services/message_events.py` computes `room members -
+Presence.connected_user_ids(room_id) - {sender}` (who's actually connected
+to *that room* right now, across every app instance — see Phase 5 below;
+the sender is subtracted explicitly rather than relied on to be "connected,"
+since that's only true for WS-originated messages, not the Phase 7
+incoming-webhook path) and sends each offline member a push via `pywebpush`,
+awaited inline against the same request-scoped session rather than fired as
+a background task — the broadcast to online members already happened by
+that point, so nothing online-facing is delayed, and it sidesteps
+`asyncio.create_task()`s outliving the session/event loop they were created
+on. An expired/invalid subscription (pywebpush 404/410) is deleted
+automatically.
 
 ## Room roles and invites (Phase 2)
 

@@ -58,6 +58,7 @@ export interface Message {
   username: string
   content: string
   created_at: string
+  edited_at: string | null
 }
 
 export interface ChatMessageEnvelope {
@@ -68,6 +69,15 @@ export interface ChatMessageEnvelope {
   username: string
   content: string
   created_at: string
+  edited_at: string | null
+}
+
+export interface ChatMessageUpdateEnvelope {
+  type: 'message_update'
+  id: string
+  room_id: string
+  content: string
+  edited_at: string | null
 }
 
 export interface ChatJoinedEnvelope {
@@ -80,7 +90,11 @@ export interface ChatErrorEnvelope {
   detail: string
 }
 
-export type ServerEnvelope = ChatMessageEnvelope | ChatJoinedEnvelope | ChatErrorEnvelope
+export type ServerEnvelope =
+  | ChatMessageEnvelope
+  | ChatMessageUpdateEnvelope
+  | ChatJoinedEnvelope
+  | ChatErrorEnvelope
 
 export interface AdminUser {
   id: string
@@ -112,4 +126,59 @@ export interface AuditLogEntry {
   target_id: string
   metadata: Record<string, unknown> | null
   created_at: string
+}
+
+export type ApiScope = 'read:messages' | 'write:messages' | 'manage:rooms'
+
+export interface Bot {
+  id: string
+  username: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface ApiToken {
+  id: string
+  owner_id: string
+  scopes: ApiScope[]
+  last_used_at: string | null
+  created_at: string
+}
+
+export interface ApiTokenCreated extends ApiToken {
+  token: string
+}
+
+export interface WebhookIncoming {
+  id: string
+  room_id: string
+  token: string
+  created_by: string
+  description: string | null
+  created_at: string
+}
+
+export interface WebhookIncomingAdmin extends WebhookIncoming {
+  room_name: string
+  created_by_username: string
+}
+
+export type EventType = 'message.created' | 'message.updated'
+
+export interface EventSubscription {
+  id: string
+  room_id: string | null
+  event_types: EventType[]
+  target_url: string
+  created_by: string
+  created_at: string
+}
+
+export interface EventSubscriptionCreated extends EventSubscription {
+  signing_secret: string
+}
+
+export interface EventSubscriptionAdmin extends EventSubscription {
+  room_name: string | null
+  created_by_username: string
 }

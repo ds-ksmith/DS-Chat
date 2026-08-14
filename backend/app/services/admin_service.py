@@ -2,10 +2,10 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.models import AdminAuditLog, Room, RoomMembership, RoomRole, User
+from app.models import Room, RoomMembership, RoomRole, User
 from app.security import hash_password
+from app.services.audit import record_audit_log
 
 
 class UserNotFoundError(Exception):
@@ -52,25 +52,6 @@ async def _get_membership(
     return membership
 
 
-def _log(
-    db: AsyncSession,
-    actor: User,
-    action: str,
-    target_type: str,
-    target_id: uuid.UUID,
-    metadata: dict | None = None,
-) -> None:
-    db.add(
-        AdminAuditLog(
-            actor_id=actor.id,
-            action=action,
-            target_type=target_type,
-            target_id=target_id,
-            metadata_=metadata,
-        )
-    )
-
-
 async def list_users(db: AsyncSession) -> list[User]:
     result = await db.execute(select(User).order_by(User.created_at))
     return list(result.scalars().all())
@@ -83,7 +64,7 @@ async def set_user_active(
         raise CannotActOnSelfError()
     user = await _get_user(db, target_user_id)
     user.is_active = active
-    _log(db, actor, "user.activate" if active else "user.deactivate", "user", user.id)
+    record_audit_log(db, actor, "user.activate" if active else "user.deactivate", "user", user.id)
     await db.commit()
     await db.refresh(user)
     return user
@@ -94,7 +75,7 @@ async def reset_user_password(
 ) -> None:
     user = await _get_user(db, target_user_id)
     user.password_hash = hash_password(new_password)
-    _log(db, actor, "user.reset_password", "user", user.id)
+    record_audit_log(db, actor, "user.reset_password", "user", user.id)
     await db.commit()
 
 
@@ -105,7 +86,7 @@ async def set_user_site_admin(
         raise CannotActOnSelfError()
     user = await _get_user(db, target_user_id)
     user.is_site_admin = is_admin
-    _log(db, actor, "user.promote" if is_admin else "user.demote", "user", user.id)
+    record_audit_log(db, actor, "user.promote" if is_admin else "user.demote", "user", user.id)
     await db.commit()
     await db.refresh(user)
     return user
@@ -126,7 +107,7 @@ async def set_room_archived(
 ) -> Room:
     room = await _get_room(db, room_id)
     room.is_archived = archived
-    _log(db, actor, "room.archive" if archived else "room.unarchive", "room", room.id)
+    record_audit_log(db, actor, "room.archive" if archived else "room.unarchive", "room", room.id)
     await db.commit()
     await db.refresh(room)
     return room
@@ -145,7 +126,7 @@ async def transfer_ownership_admin(
     new_owner_membership.role = RoomRole.owner
     current_owner_membership.role = RoomRole.admin
     room.owner_id = new_owner_id
-    _log(
+    record_audit_log(
         db,
         actor,
         "room.transfer_ownership",
@@ -156,16 +137,3 @@ async def transfer_ownership_admin(
     await db.commit()
     await db.refresh(room)
     return room
-
-
-async def list_audit_log(
-    db: AsyncSession, limit: int = 50, offset: int = 0
-) -> list[AdminAuditLog]:
-    result = await db.execute(
-        select(AdminAuditLog)
-        .options(selectinload(AdminAuditLog.actor))
-        .order_by(AdminAuditLog.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
-    return list(result.scalars().all())

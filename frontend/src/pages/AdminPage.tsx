@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   archiveRoom,
@@ -6,6 +6,8 @@ import {
   demoteUser,
   listAdminRooms,
   listAdminUsers,
+  listAllEventSubscriptions,
+  listAllIncomingWebhooks,
   listAuditLog,
   promoteUser,
   reactivateUser,
@@ -14,14 +16,25 @@ import {
   unarchiveRoom,
 } from '../api/admin'
 import { ApiError } from '../api/client'
+import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
 import { useAuth } from '../context/AuthContext'
-import type { AdminRoom, AdminUser, AuditLogEntry } from '../types'
+import type {
+  AdminRoom,
+  AdminUser,
+  ApiScope,
+  ApiToken,
+  AuditLogEntry,
+  Bot,
+  EventSubscriptionAdmin,
+  WebhookIncomingAdmin,
+} from '../types'
 import { TopBar } from '../components/TopBar'
 import './AdminPage.css'
 
-type Tab = 'users' | 'rooms' | 'audit' | 'settings'
+type Tab = 'users' | 'rooms' | 'bots' | 'audit' | 'settings'
 
 const AUDIT_PAGE_SIZE = 50
+const ALL_SCOPES: ApiScope[] = ['read:messages', 'write:messages', 'manage:rooms']
 
 export function AdminPage() {
   const { user: currentUser } = useAuth()
@@ -32,6 +45,15 @@ export function AdminPage() {
   const [auditHasMore, setAuditHasMore] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  const [bots, setBots] = useState<Bot[]>([])
+  const [newBotUsername, setNewBotUsername] = useState('')
+  const [expandedBotId, setExpandedBotId] = useState<string | null>(null)
+  const [tokensByBot, setTokensByBot] = useState<Record<string, ApiToken[]>>({})
+  const [newTokenScopes, setNewTokenScopes] = useState<ApiScope[]>([])
+  const [justCreatedToken, setJustCreatedToken] = useState<string | null>(null)
+  const [incomingWebhooks, setIncomingWebhooks] = useState<WebhookIncomingAdmin[]>([])
+  const [eventSubscriptions, setEventSubscriptions] = useState<EventSubscriptionAdmin[]>([])
 
   function reportError(err: unknown) {
     setError(err instanceof ApiError ? err.message : String(err))
@@ -54,11 +76,24 @@ export function AdminPage() {
       .catch(reportError)
   }
 
+  function loadBots() {
+    listBots().then(setBots).catch(reportError)
+  }
+
+  function loadWebhooksAdmin() {
+    listAllIncomingWebhooks().then(setIncomingWebhooks).catch(reportError)
+    listAllEventSubscriptions().then(setEventSubscriptions).catch(reportError)
+  }
+
   useEffect(() => {
     if (tab === 'users') loadUsers()
     if (tab === 'rooms') {
       loadRooms()
       if (users.length === 0) loadUsers() // needed to resolve usernames for ownership transfer
+    }
+    if (tab === 'bots') {
+      loadBots()
+      loadWebhooksAdmin()
     }
     if (tab === 'audit') loadAuditLog()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -119,6 +154,59 @@ export function AdminPage() {
     })
   }
 
+  async function handleCreateBot() {
+    const username = newBotUsername.trim()
+    if (!username) return
+    setError(null)
+    try {
+      await createBot(username)
+      setNewBotUsername('')
+      loadBots()
+    } catch (err) {
+      reportError(err)
+    }
+  }
+
+  function toggleExpandBot(botId: string) {
+    if (expandedBotId === botId) {
+      setExpandedBotId(null)
+      return
+    }
+    setExpandedBotId(botId)
+    setNewTokenScopes([])
+    setJustCreatedToken(null)
+    if (!tokensByBot[botId]) {
+      listApiTokens(botId)
+        .then((tokens) => setTokensByBot((prev) => ({ ...prev, [botId]: tokens })))
+        .catch(reportError)
+    }
+  }
+
+  function toggleScope(scope: ApiScope) {
+    setNewTokenScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    )
+  }
+
+  async function handleIssueToken(botId: string) {
+    if (newTokenScopes.length === 0) return
+    await withBusy(botId, async () => {
+      const created = await createApiToken(botId, newTokenScopes)
+      setJustCreatedToken(created.token)
+      setNewTokenScopes([])
+      const tokens = await listApiTokens(botId)
+      setTokensByBot((prev) => ({ ...prev, [botId]: tokens }))
+    })
+  }
+
+  async function handleRevokeToken(botId: string, tokenId: string) {
+    await withBusy(tokenId, async () => {
+      await revokeApiToken(tokenId)
+      const tokens = await listApiTokens(botId)
+      setTokensByBot((prev) => ({ ...prev, [botId]: tokens }))
+    })
+  }
+
   return (
     <div className="admin-page">
       <TopBar />
@@ -131,7 +219,7 @@ export function AdminPage() {
         </div>
 
         <div className="admin-tabs" role="tablist">
-          {(['users', 'rooms', 'audit', 'settings'] as const).map((t) => (
+          {(['users', 'rooms', 'bots', 'audit', 'settings'] as const).map((t) => (
             <button
               key={t}
               type="button"
@@ -142,6 +230,7 @@ export function AdminPage() {
             >
               {t === 'users' && 'Users'}
               {t === 'rooms' && 'Rooms'}
+              {t === 'bots' && 'Bots'}
               {t === 'audit' && 'Audit log'}
               {t === 'settings' && 'Settings'}
             </button>
@@ -235,6 +324,147 @@ export function AdminPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {tab === 'bots' && (
+          <>
+            <div className="admin-create-form">
+              <input
+                type="text"
+                placeholder="Bot username"
+                value={newBotUsername}
+                onChange={(e) => setNewBotUsername(e.target.value)}
+              />
+              <button type="button" className="btn-secondary" onClick={handleCreateBot}>
+                Create bot
+              </button>
+            </div>
+
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bots.map((b) => (
+                  <Fragment key={b.id}>
+                    <tr>
+                      <td>{b.username}</td>
+                      <td>
+                        <span className={`status-badge ${b.is_active ? 'active' : 'inactive'}`}>
+                          {b.is_active ? 'Active' : 'Deactivated'}
+                        </span>
+                      </td>
+                      <td>{new Date(b.created_at).toLocaleDateString()}</td>
+                      <td className="admin-actions">
+                        <button type="button" onClick={() => toggleExpandBot(b.id)}>
+                          {expandedBotId === b.id ? 'Hide tokens' : 'Manage tokens'}
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedBotId === b.id && (
+                      <tr>
+                        <td colSpan={4} className="admin-bot-detail">
+                          <div className="admin-token-list">
+                            {(tokensByBot[b.id] ?? []).map((t) => (
+                              <div key={t.id} className="admin-token-row">
+                                <span className="admin-token-scopes">{t.scopes.join(', ')}</span>
+                                <span className="admin-token-meta">
+                                  {t.last_used_at
+                                    ? `last used ${new Date(t.last_used_at).toLocaleDateString()}`
+                                    : 'never used'}
+                                </span>
+                                <button
+                                  type="button"
+                                  className="admin-token-revoke"
+                                  disabled={busyId === t.id}
+                                  onClick={() => handleRevokeToken(b.id, t.id)}
+                                >
+                                  Revoke
+                                </button>
+                              </div>
+                            ))}
+                            {(tokensByBot[b.id] ?? []).length === 0 && (
+                              <p className="admin-placeholder">No tokens yet.</p>
+                            )}
+                          </div>
+
+                          <div className="admin-issue-token">
+                            {ALL_SCOPES.map((scope) => (
+                              <label key={scope} className="admin-scope-checkbox">
+                                <input
+                                  type="checkbox"
+                                  checked={newTokenScopes.includes(scope)}
+                                  onChange={() => toggleScope(scope)}
+                                />
+                                {scope}
+                              </label>
+                            ))}
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              disabled={newTokenScopes.length === 0 || busyId === b.id}
+                              onClick={() => handleIssueToken(b.id)}
+                            >
+                              Issue token
+                            </button>
+                          </div>
+
+                          {justCreatedToken && (
+                            <p className="admin-new-token">
+                              New token (copy it now, it won't be shown again):{' '}
+                              <code>{justCreatedToken}</code>
+                            </p>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+
+            <h2 className="admin-subheading">Registered webhooks</h2>
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Room</th>
+                  <th>Type</th>
+                  <th>Details</th>
+                  <th>Created by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {incomingWebhooks.map((w) => (
+                  <tr key={w.id}>
+                    <td>#{w.room_name}</td>
+                    <td>Incoming</td>
+                    <td>{w.description || '—'}</td>
+                    <td>{w.created_by_username}</td>
+                  </tr>
+                ))}
+                {eventSubscriptions.map((s) => (
+                  <tr key={s.id}>
+                    <td>{s.room_name ? `#${s.room_name}` : 'Global'}</td>
+                    <td>Outgoing ({s.event_types.join(', ')})</td>
+                    <td>{s.target_url}</td>
+                    <td>{s.created_by_username}</td>
+                  </tr>
+                ))}
+                {incomingWebhooks.length === 0 && eventSubscriptions.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="admin-placeholder">
+                      No webhooks registered yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </>
         )}
 
         {tab === 'audit' && (

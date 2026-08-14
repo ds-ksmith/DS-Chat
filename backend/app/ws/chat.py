@@ -6,10 +6,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Room, RoomMembership, User
-from app.services.message_service import create_message
-from app.services.push_service import send_push_to_user
-from app.ws.presence import Presence
+from app.models import ApiToken, RoomMembership, User
+from app.services.bot_service import resolve_token
+from app.services.message_events import broadcast_message_update, broadcast_new_message
+from app.services.message_service import (
+    MessageNotFoundError,
+    NotMessageAuthorError,
+    create_message,
+    edit_message,
+)
 
 router = APIRouter(tags=["ws"])
 
@@ -20,6 +25,7 @@ class ClientEnvelope(BaseModel):
     type: str
     room_id: uuid.UUID | None = None
     content: str | None = None
+    message_id: uuid.UUID | None = None
 
 
 async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -31,46 +37,37 @@ async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UU
     return result.scalar_one_or_none() is not None
 
 
-async def _notify_offline_members(
-    db: AsyncSession,
-    presence: Presence,
-    room_id: uuid.UUID,
-    sender: User,
-    content: str,
-) -> None:
-    result = await db.execute(
-        select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
-    )
-    member_ids = {row[0] for row in result.all()}
-    offline_ids = member_ids - await presence.connected_user_ids(room_id)
-    if not offline_ids:
-        return
-
-    room = await db.get(Room, room_id)
-    payload = {
-        "title": f"#{room.name}" if room else "New message",
-        "body": f"{sender.username}: {content}"[:120],
-        "room_id": str(room_id),
-    }
-    for user_id in offline_ids:
-        await send_push_to_user(db, user_id, payload)
+def _missing_scope(api_token: ApiToken | None, scope: str) -> bool:
+    return api_token is not None and scope not in api_token.scopes
 
 
 @router.websocket("/ws/chat")
 async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)) -> None:
-    user_id_raw = websocket.session.get("user_id")
-    if not user_id_raw:
-        await websocket.close(code=WS_UNAUTHENTICATED)
-        return
+    api_token: ApiToken | None = None
 
-    user = await db.get(User, uuid.UUID(user_id_raw))
-    if user is None:
-        await websocket.close(code=WS_UNAUTHENTICATED)
-        return
+    # Bots authenticate by setting Authorization on the WS handshake itself
+    # (not a browser cookie) -- same connection type/endpoint a human client
+    # uses, just a different credential.
+    auth_header = websocket.headers.get("authorization")
+    if auth_header and auth_header.lower().startswith("bearer "):
+        resolved = await resolve_token(db, auth_header[len("bearer ") :].strip())
+        if resolved is None:
+            await websocket.close(code=WS_UNAUTHENTICATED)
+            return
+        user, api_token = resolved
+    else:
+        user_id_raw = websocket.session.get("user_id")
+        if not user_id_raw:
+            await websocket.close(code=WS_UNAUTHENTICATED)
+            return
+        user = await db.get(User, uuid.UUID(user_id_raw))
+        if user is None or not user.is_active:
+            await websocket.close(code=WS_UNAUTHENTICATED)
+            return
 
     await websocket.accept()
     manager = websocket.app.state.connection_manager
-    presence: Presence = websocket.app.state.presence
+    presence = websocket.app.state.presence
     broadcaster = websocket.app.state.broadcaster
     joined_rooms: set[uuid.UUID] = set()
 
@@ -111,6 +108,11 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         {"type": "error", "detail": "room_id and content required"}
                     )
                     continue
+                if _missing_scope(api_token, "write:messages"):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "Token missing required scope: write:messages"}
+                    )
+                    continue
                 if envelope.room_id not in joined_rooms or not await _is_room_member(
                     db, envelope.room_id, user.id
                 ):
@@ -119,21 +121,37 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     )
                     continue
                 message = await create_message(db, envelope.room_id, user.id, envelope.content)
-                await broadcaster.publish(
-                    envelope.room_id,
-                    {
-                        "type": "message",
-                        "id": str(message.id),
-                        "room_id": str(message.room_id),
-                        "user_id": str(message.user_id),
-                        "username": user.username,
-                        "content": message.content,
-                        "created_at": message.created_at.isoformat(),
-                    },
-                )
-                await _notify_offline_members(
-                    db, presence, envelope.room_id, user, envelope.content
-                )
+                await broadcast_new_message(db, broadcaster, presence, envelope.room_id, message, user)
+
+            elif envelope.type == "edit":
+                if envelope.room_id is None or envelope.message_id is None or not envelope.content:
+                    await websocket.send_json(
+                        {"type": "error", "detail": "room_id, message_id, and content required"}
+                    )
+                    continue
+                if _missing_scope(api_token, "write:messages"):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "Token missing required scope: write:messages"}
+                    )
+                    continue
+                if envelope.room_id not in joined_rooms or not await _is_room_member(
+                    db, envelope.room_id, user.id
+                ):
+                    await websocket.send_json(
+                        {"type": "error", "detail": "Not a member of this room"}
+                    )
+                    continue
+                try:
+                    message = await edit_message(db, envelope.message_id, user.id, envelope.content)
+                except MessageNotFoundError:
+                    await websocket.send_json({"type": "error", "detail": "Message not found"})
+                    continue
+                except NotMessageAuthorError:
+                    await websocket.send_json(
+                        {"type": "error", "detail": "You can only edit your own messages"}
+                    )
+                    continue
+                await broadcast_message_update(db, broadcaster, envelope.room_id, message)
 
             else:
                 await websocket.send_json(

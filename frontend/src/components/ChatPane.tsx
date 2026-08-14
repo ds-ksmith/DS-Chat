@@ -43,6 +43,17 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
   const onMessage = useCallback((envelope: ServerEnvelope) => {
     if (envelope.type === 'message') {
       setLive((prev) => [...prev, envelope])
+    } else if (envelope.type === 'message_update') {
+      setHistory((prev) =>
+        prev.map((m) =>
+          m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+        ),
+      )
+      setLive((prev) =>
+        prev.map((m) =>
+          m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+        ),
+      )
     } else if (envelope.type === 'error') {
       setWsError(envelope.detail)
     }
@@ -50,7 +61,7 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
 
   const onUnauthenticated = useCallback(() => navigate('/login'), [navigate])
 
-  const { connected, send } = useChatSocket({ roomId: room.id, onMessage, onUnauthenticated })
+  const { connected, send, sendEdit } = useChatSocket({ roomId: room.id, onMessage, onUnauthenticated })
 
   return (
     <section className="chat-pane">
@@ -88,7 +99,7 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
         </p>
       )}
 
-      <MessageList messages={[...history, ...live]} members={members} />
+      <MessageList messages={[...history, ...live]} members={members} onEdit={sendEdit} />
       <Composer roomName={room.name} disabled={!connected} onSend={send} />
     </section>
   )

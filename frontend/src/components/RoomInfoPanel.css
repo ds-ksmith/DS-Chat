@@ -206,6 +206,90 @@
   resize: vertical;
 }
 
+.room-info-integrations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin-top: var(--sp-2);
+}
+
+.room-info-integration-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-info-webhook-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: 0.78rem;
+}
+
+.room-info-webhook-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.room-info-webhook-info code {
+  background: var(--ds-surface-2);
+  padding: 3px 6px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  word-break: break-all;
+}
+
+.room-info-webhook-desc {
+  color: var(--ds-muted);
+  font-size: 0.74rem;
+}
+
+.room-info-subscription-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.room-info-subscription-form input {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--ds-text);
+  font-size: 0.82rem;
+}
+
+.room-info-event-types {
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+
+.room-info-event-type-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.74rem;
+  font-family: var(--mono);
+  color: var(--ds-muted);
+}
+
+.room-info-signing-secret {
+  font-size: 0.76rem;
+  color: var(--ds-accent);
+  margin: 0;
+}
+
+.room-info-signing-secret code {
+  background: var(--ds-surface-2);
+  padding: 3px 6px;
+  border-radius: 6px;
+  word-break: break-all;
+}
+
 .room-info-danger-link {
   background: transparent;
   border: none;

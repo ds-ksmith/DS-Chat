@@ -1,10 +1,15 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_room_member, require_room_role
+from app.dependencies import (
+    get_current_user,
+    require_room_member,
+    require_room_role,
+    require_scope,
+)
 from app.models import RoomRole, User
 from app.schemas.invite import InviteCreate, InviteRead
 from app.schemas.message import MessageRead
@@ -28,6 +33,13 @@ from app.services.invite_service import (
     list_room_invites,
     revoke_invite,
 )
+from app.schemas.webhook import (
+    EventSubscriptionCreate,
+    EventSubscriptionCreated,
+    EventSubscriptionRead,
+    WebhookIncomingCreate,
+    WebhookIncomingRead,
+)
 from app.services.message_service import list_recent_messages
 from app.services.room_service import (
     CannotRemoveOwnerError,
@@ -50,6 +62,18 @@ from app.services.room_service import (
     transfer_ownership,
     update_room,
 )
+from app.services.webhook_service import (
+    InvalidEventTypeError,
+    SubscriptionNotFoundError,
+    WebhookNotFoundError,
+    create_event_subscription,
+    create_incoming_webhook,
+    list_event_subscriptions,
+    list_incoming_webhooks,
+    revoke_event_subscription,
+    revoke_incoming_webhook,
+)
+from app.services.ssrf import UnsafeWebhookUrlError
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
 
@@ -252,10 +276,12 @@ async def transfer_ownership_endpoint(
 @router.get("/{room_id}/messages", response_model=list[MessageRead])
 async def get_room_messages_endpoint(
     room_id: uuid.UUID,
+    request: Request,
     limit: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    require_scope(request, "read:messages")
     await require_room_member(room_id, current_user, db)
     messages = await list_recent_messages(db, room_id, limit)
     return [
@@ -266,6 +292,7 @@ async def get_room_messages_endpoint(
             username=m.user.username,
             content=m.content,
             created_at=m.created_at,
+            edited_at=m.edited_at,
         )
         for m in messages
     ]
@@ -328,3 +355,93 @@ async def revoke_invite_endpoint(
         raise HTTPException(status_code=404, detail="Invite not found")
     except InviteNotPendingError:
         raise HTTPException(status_code=400, detail="Invite is no longer pending")
+
+
+@router.post("/{room_id}/webhooks/incoming", response_model=WebhookIncomingRead, status_code=201)
+async def create_incoming_webhook_endpoint(
+    room_id: uuid.UUID,
+    data: WebhookIncomingCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    return await create_incoming_webhook(db, current_user, room_id, data.description)
+
+
+@router.get("/{room_id}/webhooks/incoming", response_model=list[WebhookIncomingRead])
+async def list_incoming_webhooks_endpoint(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    return await list_incoming_webhooks(db, room_id)
+
+
+@router.delete("/{room_id}/webhooks/incoming/{webhook_id}", status_code=204)
+async def revoke_incoming_webhook_endpoint(
+    room_id: uuid.UUID,
+    webhook_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    try:
+        await revoke_incoming_webhook(db, room_id, webhook_id)
+    except WebhookNotFoundError:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+
+
+@router.post(
+    "/{room_id}/event-subscriptions", response_model=EventSubscriptionCreated, status_code=201
+)
+async def create_event_subscription_endpoint(
+    room_id: uuid.UUID,
+    data: EventSubscriptionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    try:
+        subscription, secret = await create_event_subscription(
+            db, current_user, room_id, data.event_types, data.target_url
+        )
+    except InvalidEventTypeError:
+        raise HTTPException(status_code=400, detail="Unrecognized event type")
+    except UnsafeWebhookUrlError:
+        raise HTTPException(
+            status_code=400, detail="target_url is not allowed (internal/private address)"
+        )
+    return EventSubscriptionCreated(
+        id=subscription.id,
+        room_id=subscription.room_id,
+        event_types=subscription.event_types,
+        target_url=subscription.target_url,
+        created_by=subscription.created_by,
+        created_at=subscription.created_at,
+        signing_secret=secret,
+    )
+
+
+@router.get("/{room_id}/event-subscriptions", response_model=list[EventSubscriptionRead])
+async def list_event_subscriptions_endpoint(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    return await list_event_subscriptions(db, room_id)
+
+
+@router.delete("/{room_id}/event-subscriptions/{subscription_id}", status_code=204)
+async def revoke_event_subscription_endpoint(
+    room_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_role(room_id, current_user, db, RoomRole.admin)
+    try:
+        await revoke_event_subscription(db, room_id, subscription_id)
+    except SubscriptionNotFoundError:
+        raise HTTPException(status_code=404, detail="Event subscription not found")

@@ -1,0 +1,79 @@
+import uuid
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models import Message, Room, RoomMembership, User
+from app.services.push_service import send_push_to_user
+from app.services.webhook_service import dispatch_event
+from app.ws.broadcaster import RoomBroadcaster
+from app.ws.presence import Presence
+
+
+async def _notify_offline_members(
+    db: AsyncSession, presence: Presence, room_id: uuid.UUID, sender: User, content: str
+) -> None:
+    result = await db.execute(
+        select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
+    )
+    member_ids = {row[0] for row in result.all()}
+    # Subtract the sender explicitly rather than relying on them being
+    # "connected" (true for the WS path, since they just sent this over an
+    # active connection -- not true for the incoming-webhook REST path,
+    # which has no WS connection for the attributed sender at all).
+    offline_ids = member_ids - await presence.connected_user_ids(room_id) - {sender.id}
+    if not offline_ids:
+        return
+
+    room = await db.get(Room, room_id)
+    payload = {
+        "title": f"#{room.name}" if room else "New message",
+        "body": f"{sender.username}: {content}"[:120],
+        "room_id": str(room_id),
+    }
+    for user_id in offline_ids:
+        await send_push_to_user(db, user_id, payload)
+
+
+def _message_payload(message: Message, username: str) -> dict:
+    return {
+        "type": "message",
+        "id": str(message.id),
+        "room_id": str(message.room_id),
+        "user_id": str(message.user_id),
+        "username": username,
+        "content": message.content,
+        "created_at": message.created_at.isoformat(),
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+    }
+
+
+async def broadcast_new_message(
+    db: AsyncSession,
+    broadcaster: RoomBroadcaster,
+    presence: Presence,
+    room_id: uuid.UUID,
+    message: Message,
+    sender: User,
+) -> None:
+    """The full side-effect sequence for a newly created message, shared by
+    the WS "message" handler and the incoming-webhook receiver so both
+    trigger identical fan-out/push/event behavior."""
+    payload = _message_payload(message, sender.username)
+    await broadcaster.publish(room_id, payload)
+    await _notify_offline_members(db, presence, room_id, sender, message.content)
+    await dispatch_event(db, "message.created", room_id, payload)
+
+
+async def broadcast_message_update(
+    db: AsyncSession, broadcaster: RoomBroadcaster, room_id: uuid.UUID, message: Message
+) -> None:
+    payload = {
+        "type": "message_update",
+        "id": str(message.id),
+        "room_id": str(room_id),
+        "content": message.content,
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+    }
+    await broadcaster.publish(room_id, payload)
+    await dispatch_event(db, "message.updated", room_id, payload)

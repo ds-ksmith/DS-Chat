@@ -13,3 +13,4 @@ class MessageRead(BaseModel):
     username: str
     content: str
     created_at: datetime
+    edited_at: datetime | None
