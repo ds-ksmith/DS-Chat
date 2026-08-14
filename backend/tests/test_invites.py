@@ -49,6 +49,11 @@ async def test_invite_accept_flow(client, db_session):
     assert resp.status_code == 201
     invite = resp.json()
     assert invite["status"] == "pending"
+    assert invite["target_username"] == "bob"
+
+    resp = await client.get(f"/api/rooms/{room['id']}/invites")
+    assert resp.status_code == 200
+    assert resp.json()[0]["target_username"] == "bob"
 
     await client.post("/api/auth/logout")
     await login_as(client, "bob")
@@ -58,6 +63,8 @@ async def test_invite_accept_flow(client, db_session):
     mine = resp.json()
     assert len(mine) == 1
     assert mine[0]["id"] == invite["id"]
+    assert mine[0]["room_name"] == room["name"]
+    assert mine[0]["invited_by_username"] == "alice"
 
     resp = await client.post(f"/api/invites/{invite['id']}/accept")
     assert resp.status_code == 200

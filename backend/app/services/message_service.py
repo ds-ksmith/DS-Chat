@@ -2,6 +2,7 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import Message
 
@@ -22,6 +23,7 @@ async def list_recent_messages(
     result = await db.execute(
         select(Message)
         .where(Message.room_id == room_id)
+        .options(selectinload(Message.user))
         .order_by(Message.created_at.desc())
         .limit(limit)
     )

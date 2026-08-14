@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
-from app.schemas.invite import InviteRead
+from app.schemas.invite import InviteRead, MyInviteRead
 from app.schemas.room import RoomMemberRead
 from app.services.invite_service import (
     InviteExpiredError,
@@ -21,12 +21,26 @@ from app.services.invite_service import (
 router = APIRouter(prefix="/api/invites", tags=["invites"])
 
 
-@router.get("/mine", response_model=list[InviteRead])
+@router.get("/mine", response_model=list[MyInviteRead])
 async def list_my_invites_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await list_my_invites(db, current_user.id)
+    invites = await list_my_invites(db, current_user.id)
+    return [
+        MyInviteRead(
+            id=i.id,
+            room_id=i.room_id,
+            invited_by=i.invited_by,
+            target_user_id=i.target_user_id,
+            status=i.status,
+            expires_at=i.expires_at,
+            created_at=i.created_at,
+            room_name=i.room.name,
+            invited_by_username=i.inviter.username,
+        )
+        for i in invites
+    ]
 
 
 @router.post("/{invite_id}/accept", response_model=RoomMemberRead)

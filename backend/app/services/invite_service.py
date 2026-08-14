@@ -72,14 +72,15 @@ async def create_invite(
     db.add(invite)
     await db.commit()
     await db.refresh(invite)
+    invite.target_user = target
     return invite
 
 
 async def list_room_invites(db: AsyncSession, room_id: uuid.UUID) -> list[RoomInvite]:
     result = await db.execute(
-        select(RoomInvite).where(
-            RoomInvite.room_id == room_id, RoomInvite.status == InviteStatus.pending
-        )
+        select(RoomInvite)
+        .where(RoomInvite.room_id == room_id, RoomInvite.status == InviteStatus.pending)
+        .options(selectinload(RoomInvite.target_user))
     )
     return list(result.scalars().all())
 
@@ -92,7 +93,7 @@ async def list_my_invites(db: AsyncSession, user_id: uuid.UUID) -> list[RoomInvi
             RoomInvite.status == InviteStatus.pending,
             RoomInvite.expires_at > datetime.now(timezone.utc),
         )
-        .options(selectinload(RoomInvite.room))
+        .options(selectinload(RoomInvite.room), selectinload(RoomInvite.inviter))
     )
     return list(result.scalars().all())
 

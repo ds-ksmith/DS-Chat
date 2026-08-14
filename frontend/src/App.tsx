@@ -2,8 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { LoginPage } from './pages/LoginPage'
-import { RoomListPage } from './pages/RoomListPage'
-import { ChatRoomPage } from './pages/ChatRoomPage'
+import { ChatShellPage } from './pages/ChatShellPage'
 
 function App() {
   return (
@@ -14,7 +13,7 @@ function App() {
           path="/rooms"
           element={
             <ProtectedRoute>
-              <RoomListPage />
+              <ChatShellPage />
             </ProtectedRoute>
           }
         />
@@ -22,7 +21,7 @@ function App() {
           path="/rooms/:roomId"
           element={
             <ProtectedRoute>
-              <ChatRoomPage />
+              <ChatShellPage />
             </ProtectedRoute>
           }
         />

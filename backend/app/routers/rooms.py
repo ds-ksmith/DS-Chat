@@ -257,7 +257,31 @@ async def get_room_messages_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     await require_room_member(room_id, current_user, db)
-    return await list_recent_messages(db, room_id, limit)
+    messages = await list_recent_messages(db, room_id, limit)
+    return [
+        MessageRead(
+            id=m.id,
+            room_id=m.room_id,
+            user_id=m.user_id,
+            username=m.user.username,
+            content=m.content,
+            created_at=m.created_at,
+        )
+        for m in messages
+    ]
+
+
+def _to_invite_read(invite) -> InviteRead:
+    return InviteRead(
+        id=invite.id,
+        room_id=invite.room_id,
+        invited_by=invite.invited_by,
+        target_user_id=invite.target_user_id,
+        target_username=invite.target_user.username if invite.target_user else None,
+        status=invite.status,
+        expires_at=invite.expires_at,
+        created_at=invite.created_at,
+    )
 
 
 @router.post("/{room_id}/invites", response_model=InviteRead, status_code=201)
@@ -269,13 +293,14 @@ async def create_invite_endpoint(
 ):
     await require_room_role(room_id, current_user, db, RoomRole.admin)
     try:
-        return await create_invite(db, room_id, current_user.id, data.target_username)
+        invite = await create_invite(db, room_id, current_user.id, data.target_username)
     except TargetUserNotFoundError:
         raise HTTPException(status_code=404, detail="No user with that username")
     except AlreadyMemberError:
         raise HTTPException(status_code=409, detail="That user is already a member")
     except DuplicateInviteError:
         raise HTTPException(status_code=409, detail="That user already has a pending invite")
+    return _to_invite_read(invite)
 
 
 @router.get("/{room_id}/invites", response_model=list[InviteRead])
@@ -285,7 +310,8 @@ async def list_room_invites_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     await require_room_role(room_id, current_user, db, RoomRole.admin)
-    return await list_room_invites(db, room_id)
+    invites = await list_room_invites(db, room_id)
+    return [_to_invite_read(i) for i in invites]
 
 
 @router.delete("/{room_id}/invites/{invite_id}", status_code=204)

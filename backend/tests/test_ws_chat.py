@@ -60,8 +60,8 @@ def test_ws_join_and_message_roundtrip(ws_client):
 
     resp = ws_client.get(f"/api/rooms/{room['id']}/messages")
     assert resp.status_code == 200
-    contents = [m["content"] for m in resp.json()]
-    assert "hello" in contents
+    history = resp.json()
+    assert any(m["content"] == "hello" and m["username"] == username for m in history)
 
 
 def test_ws_message_without_join_errors(ws_client):

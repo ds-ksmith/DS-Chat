@@ -1,0 +1,10 @@
+.user-avatar {
+  border-radius: var(--radius-pill);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--ds-text);
+  font-size: 0.68rem;
+}

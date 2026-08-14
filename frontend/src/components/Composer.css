@@ -1,0 +1,44 @@
+.composer {
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--ds-border);
+  background: var(--ds-surface);
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-end;
+}
+
+.composer textarea {
+  flex: 1;
+  resize: none;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 9px 12px;
+  color: var(--ds-text);
+  font-size: 0.88rem;
+  outline: none;
+  max-height: 120px;
+}
+
+.composer textarea:focus {
+  border-color: var(--ds-accent);
+}
+
+.composer-send {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius);
+  background: var(--ds-accent);
+  color: var(--ds-void);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.composer-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

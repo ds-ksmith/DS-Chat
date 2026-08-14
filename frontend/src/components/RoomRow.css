@@ -1,0 +1,52 @@
+.room-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px var(--sp-4);
+  cursor: pointer;
+  background: transparent;
+  border-left: 2px solid transparent;
+  text-decoration: none;
+  color: inherit;
+}
+
+.room-row:hover {
+  background: color-mix(in srgb, var(--ds-text) 5%, transparent);
+}
+
+.room-row-active,
+.room-row-active:hover {
+  background: var(--ds-surface-2);
+  border-left-color: var(--ds-accent);
+}
+
+.room-row-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.room-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--ds-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-row-lock {
+  flex: none;
+  color: var(--ds-muted);
+}
+
+.room-row-subtitle {
+  font-size: 0.8rem;
+  color: var(--ds-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}

@@ -10,5 +10,6 @@ class MessageRead(BaseModel):
     id: uuid.UUID
     room_id: uuid.UUID
     user_id: uuid.UUID
+    username: str
     content: str
     created_at: datetime

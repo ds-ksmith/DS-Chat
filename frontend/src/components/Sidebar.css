@@ -1,0 +1,105 @@
+.sidebar {
+  width: 300px;
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--ds-border);
+  background: var(--ds-void-2);
+  min-height: 0;
+}
+
+.sidebar-toolbar {
+  padding: var(--sp-3);
+  display: flex;
+  gap: var(--sp-2);
+  border-bottom: 1px solid var(--ds-border);
+}
+
+.sidebar-search {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 0 10px;
+  height: 36px;
+  color: var(--ds-muted);
+}
+
+.sidebar-search input {
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--ds-text);
+  font-size: 0.86rem;
+  width: 100%;
+}
+
+.sidebar-icon-btn {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  color: var(--ds-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.sidebar-icon-btn:hover {
+  background: var(--ds-surface-2);
+}
+
+.sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-2) 0;
+}
+
+.sidebar-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ds-text);
+  padding: 9px var(--sp-4);
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.sidebar-entry:hover {
+  background: color-mix(in srgb, var(--ds-text) 5%, transparent);
+}
+
+.sidebar-badge {
+  margin-left: auto;
+  background: var(--ds-accent);
+  color: var(--ds-void);
+  font-size: 0.68rem;
+  font-weight: 800;
+  border-radius: var(--radius-pill);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-section-label {
+  padding: 10px 16px 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ds-muted);
+  text-transform: uppercase;
+}

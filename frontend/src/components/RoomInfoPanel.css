@@ -1,0 +1,239 @@
+.room-info-panel {
+  width: 260px;
+  min-width: 260px;
+  border-left: 1px solid var(--ds-border);
+  background: var(--ds-void-2);
+  padding: var(--sp-4);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.room-info-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--sp-4);
+}
+
+.room-info-header-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-muted);
+}
+
+.room-info-close {
+  background: transparent;
+  border: none;
+  color: var(--ds-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 2px;
+}
+
+.room-info-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: var(--sp-6);
+}
+
+.room-info-name {
+  font-weight: 700;
+}
+
+.room-info-sub {
+  font-size: 0.78rem;
+  color: var(--ds-muted);
+}
+
+.room-info-section {
+  margin-bottom: var(--sp-6);
+}
+
+.room-info-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-muted);
+  margin-bottom: var(--sp-2);
+}
+
+.room-info-member-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+
+.room-info-member-name {
+  font-size: 0.84rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-info-member-actions {
+  display: flex;
+  gap: 6px;
+  width: 100%;
+  padding-left: 32px;
+}
+
+.room-info-member-actions button {
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  color: var(--ds-muted);
+  font-size: 0.7rem;
+  padding: 3px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.room-info-member-actions button:hover {
+  color: var(--ds-text);
+  border-color: var(--ds-accent);
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  text-transform: capitalize;
+  flex: none;
+}
+
+.role-badge-owner {
+  border: 1px solid color-mix(in srgb, var(--ds-highlight) 50%, transparent);
+  background: color-mix(in srgb, var(--ds-highlight) 14%, transparent);
+  color: var(--ds-highlight);
+}
+
+.role-badge-admin {
+  border: 1px solid color-mix(in srgb, var(--ds-accent-2) 50%, transparent);
+  background: color-mix(in srgb, var(--ds-accent-2) 14%, transparent);
+  color: #b9b3ff;
+}
+
+.role-badge-member {
+  border: 1px solid var(--ds-border);
+  background: transparent;
+  color: var(--ds-muted);
+}
+
+.room-info-invite-form {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.room-info-invite-form input {
+  flex: 1;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--ds-text);
+  font-size: 0.84rem;
+}
+
+.room-info-pending {
+  margin-top: var(--sp-2);
+}
+
+.room-info-pending-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--ds-text);
+  padding: 5px 0;
+}
+
+.room-info-error {
+  color: var(--ds-danger);
+  font-size: 0.78rem;
+  margin: 6px 0 0;
+}
+
+.room-info-settings-toggle {
+  background: transparent;
+  border: 1px solid var(--ds-border);
+  color: var(--ds-text);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+}
+
+.room-info-settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.room-info-settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.76rem;
+  color: var(--ds-muted);
+}
+
+.room-info-settings-form input,
+.room-info-settings-form textarea {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--ds-text);
+  font-size: 0.84rem;
+  font-family: var(--sans);
+  resize: vertical;
+}
+
+.room-info-danger-link {
+  background: transparent;
+  border: none;
+  color: var(--ds-danger);
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.room-info-leave {
+  margin-top: auto;
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ds-danger) 45%, transparent);
+  color: var(--ds-danger);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.room-info-leave:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ds-danger) 12%, transparent);
+}
+
+.room-info-leave:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
