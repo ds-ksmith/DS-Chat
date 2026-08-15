@@ -7,6 +7,7 @@ from app.models.membership import RoomMembership, RoomRole
 from app.models.message import Message
 from app.models.message_image import MessageImage
 from app.models.message_reaction import MessageReaction
+from app.models.password_reset import PasswordReset
 from app.models.push_subscription import PushSubscription
 from app.models.room import Room
 from app.models.site_invite import SiteInvite
@@ -24,6 +25,7 @@ __all__ = [
     "MessageImage",
     "MessageReaction",
     "InviteStatus",
+    "PasswordReset",
     "SiteInvite",
     "SmtpSettings",
     "PushSubscription",

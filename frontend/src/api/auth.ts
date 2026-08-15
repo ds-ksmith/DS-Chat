@@ -31,6 +31,31 @@ export function removeAvatar(): Promise<User> {
   return apiFetch<User>('/api/auth/me/avatar', { method: 'DELETE' })
 }
 
+export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  return apiFetch<void>('/api/auth/password', {
+    method: 'PATCH',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  })
+}
+
+export function requestPasswordReset(email: string): Promise<void> {
+  return apiFetch<void>('/api/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  })
+}
+
+export function validateResetToken(token: string): Promise<void> {
+  return apiFetch<void>(`/api/auth/reset-password/validate?token=${encodeURIComponent(token)}`)
+}
+
+export function completePasswordReset(token: string, newPassword: string): Promise<User> {
+  return apiFetch<User>('/api/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, new_password: newPassword }),
+  })
+}
+
 // Not apiFetch: that wrapper always sets Content-Type: application/json,
 // which would stomp the multipart boundary the browser needs to set itself
 // for a file upload. Mirrors api/rooms.ts's uploadRoomImage.

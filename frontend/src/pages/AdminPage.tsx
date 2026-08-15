@@ -368,14 +368,15 @@ export function AdminPage() {
           </div>
 
           {siteInvites.length > 0 && (
-            <div className="admin-token-list">
+            <div className="admin-invite-list">
+              <div className="admin-invite-list-label">Pending invites</div>
               {siteInvites.map((invite) => (
                 <div key={invite.id} className="admin-token-row">
                   <span className="admin-token-scopes">{invite.email}</span>
+                  <span className={`invite-status-badge invite-status-${invite.status}`}>{invite.status}</span>
                   <span className="admin-token-meta">
-                    {invite.status}
                     {invite.status === 'pending' &&
-                      ` · expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+                      `Expires ${new Date(invite.expires_at).toLocaleDateString()}`}
                   </span>
                   {invite.status === 'pending' && (
                     <button
@@ -426,24 +427,26 @@ export function AdminPage() {
                       {u.is_site_admin ? 'Site admin' : 'Member'}
                     </span>
                   </td>
-                  <td className="admin-actions">
-                    <button
-                      type="button"
-                      disabled={busyId === u.id || u.id === currentUser?.id}
-                      onClick={() => handleToggleActive(u)}
-                    >
-                      {u.is_active ? 'Deactivate' : 'Reactivate'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busyId === u.id || u.id === currentUser?.id}
-                      onClick={() => handleTogglePromote(u)}
-                    >
-                      {u.is_site_admin ? 'Demote' : 'Promote'}
-                    </button>
-                    <button type="button" disabled={busyId === u.id} onClick={() => handleResetPassword(u)}>
-                      Reset password
-                    </button>
+                  <td>
+                    <div className="admin-actions">
+                      <button
+                        type="button"
+                        disabled={busyId === u.id || u.id === currentUser?.id}
+                        onClick={() => handleToggleActive(u)}
+                      >
+                        {u.is_active ? 'Deactivate' : 'Reactivate'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busyId === u.id || u.id === currentUser?.id}
+                        onClick={() => handleTogglePromote(u)}
+                      >
+                        {u.is_site_admin ? 'Demote' : 'Promote'}
+                      </button>
+                      <button type="button" disabled={busyId === u.id} onClick={() => handleResetPassword(u)}>
+                        Reset password
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -475,13 +478,15 @@ export function AdminPage() {
                       </span>
                     </td>
                     <td>{r.member_count}</td>
-                    <td className="admin-actions">
-                      <button type="button" disabled={busyId === r.id} onClick={() => handleToggleArchive(r)}>
-                        {r.is_archived ? 'Unarchive' : 'Archive'}
-                      </button>
-                      <button type="button" disabled={busyId === r.id} onClick={() => toggleTransfer(r.id)}>
-                        {transferringRoomId === r.id ? 'Cancel' : 'Transfer ownership'}
-                      </button>
+                    <td>
+                      <div className="admin-actions">
+                        <button type="button" disabled={busyId === r.id} onClick={() => handleToggleArchive(r)}>
+                          {r.is_archived ? 'Unarchive' : 'Archive'}
+                        </button>
+                        <button type="button" disabled={busyId === r.id} onClick={() => toggleTransfer(r.id)}>
+                          {transferringRoomId === r.id ? 'Cancel' : 'Transfer ownership'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                   {transferringRoomId === r.id && (
@@ -536,10 +541,12 @@ export function AdminPage() {
                         </span>
                       </td>
                       <td>{new Date(b.created_at).toLocaleDateString()}</td>
-                      <td className="admin-actions">
-                        <button type="button" onClick={() => toggleExpandBot(b.id)}>
-                          {expandedBotId === b.id ? 'Hide tokens' : 'Manage tokens'}
-                        </button>
+                      <td>
+                        <div className="admin-actions">
+                          <button type="button" onClick={() => toggleExpandBot(b.id)}>
+                            {expandedBotId === b.id ? 'Hide tokens' : 'Manage tokens'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {expandedBotId === b.id && (

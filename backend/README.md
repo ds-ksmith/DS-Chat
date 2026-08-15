@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles, site invites & email)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles, site invites & email, password reset)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and direct
@@ -8,7 +8,8 @@ offline room members, a site-admin portal (user/room/bot management + an
 audit log), a bot/extension layer (scoped API tokens, live bot WebSocket
 access, incoming and outgoing webhooks, message editing), image uploads in
 chat messages, emoji reactions on messages, self-service user profiles
-(display name, avatar), and admin-issued email invites for new accounts
+(display name, avatar), self-service password change and a token-based
+forgot-password flow, and admin-issued email invites for new accounts
 plus email notifications when a user is added to a room. See
 `../ARCHITECTURE.md` for the full system design and the phased build plan.
 
@@ -128,7 +129,7 @@ app/
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
                              messages, message_images, message_reactions,
-                             site_invites, smtp_settings,
+                             site_invites, password_resets, smtp_settings,
                              push_subscriptions, admin_audit_log, api_tokens,
                              webhooks_incoming, event_subscriptions)
   schemas/                 Pydantic request/response models
@@ -474,6 +475,40 @@ request's `base_url` for the link — no new "public URL" config needed.
 Scope cuts: no outgoing-webhook event type for these (matching image
 uploads/reactions), no resend for a site invite (revoke + re-invite covers
 it), no HTML email templates.
+
+## Self-service password change and reset
+
+Two related, previously-missing pieces: a logged-in user changing their own
+password, and a "forgot password" flow for someone locked out.
+
+**Change password** (`PATCH /api/auth/password`, authenticated) — takes
+`current_password` + `new_password`; verifies the current one with
+`security.verify_password` before setting `password_hash =
+hash_password(new_password)`. Same self-service shape as `PATCH /api/auth/me`
+(profile update): mutate `current_user`, commit, done. No session
+invalidation elsewhere (there's no server-side session table to invalidate
+against — see Notes below), so other logged-in sessions for that account
+stay valid until they expire naturally.
+
+**Forgot password** (`app/models/password_reset.py`,
+`app/services/password_service.py`) — same hashed-token-with-expiry shape as
+site invites, but a shorter 15-minute lifetime (a reset link is meant to be
+used immediately, unlike a signup invite someone might not open for days) and
+a boolean `used` flag instead of an enum (there's no third state to track).
+`POST /api/auth/forgot-password` always returns `204`, whether or not the
+email matched an account — the response must never reveal which emails are
+registered, so a miss is a silent no-op (no row created, no email sent) after
+a single `SELECT`. `GET /api/auth/reset-password/validate` lets the frontend
+show a "this link is invalid" state before rendering the password form.
+`POST /api/auth/reset-password` completes it and — like signup — logs the
+user in immediately (`request.session["user_id"]`), since they've just proven
+they control the account's email.
+
+Scope cuts: no rate limiting on `/forgot-password` (inherits the same
+documented gap as every other endpoint below, not a new one — the
+unguessable expiring token is the actual protection once a request is made),
+no cleanup job for expired/used `password_resets` rows (same as
+`site_invites`, which has never had one either).
 
 ## Notes / scope decisions
 

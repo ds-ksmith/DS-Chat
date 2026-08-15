@@ -1,5 +1,5 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { removeAvatar, updateProfile, uploadAvatar } from '../api/auth'
+import { changePassword, removeAvatar, updateProfile, uploadAvatar } from '../api/auth'
 import { ApiError } from '../api/client'
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
@@ -18,6 +18,13 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [savingName, setSavingName] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [savingPassword, setSavingPassword] = useState(false)
 
   if (!user) return null
 
@@ -58,6 +65,28 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
       updateUser(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleChangePassword(e: FormEvent) {
+    e.preventDefault()
+    setPasswordError(null)
+    setPasswordSuccess(false)
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords don't match")
+      return
+    }
+    setSavingPassword(true)
+    try {
+      await changePassword(currentPassword, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordSuccess(true)
+    } catch (err) {
+      setPasswordError(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setSavingPassword(false)
     }
   }
 
@@ -120,6 +149,46 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             </button>
             <button type="submit" className="btn-primary" disabled={savingName}>
               Save
+            </button>
+          </div>
+        </form>
+
+        <hr className="modal-divider" />
+
+        <form onSubmit={handleChangePassword}>
+          <div className="modal-field-label">Change password</div>
+          <input
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Current password"
+            autoComplete="current-password"
+          />
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="New password"
+            autoComplete="new-password"
+            minLength={8}
+          />
+          <input
+            type="password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            autoComplete="new-password"
+            minLength={8}
+          />
+          {passwordError && <p className="modal-error">{passwordError}</p>}
+          {passwordSuccess && <p className="modal-success">Password updated.</p>}
+          <div className="modal-actions">
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}
+            >
+              {savingPassword ? 'Saving…' : 'Update password'}
             </button>
           </div>
         </form>

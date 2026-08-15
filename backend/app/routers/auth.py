@@ -1,15 +1,24 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
 from app.schemas.auth import LoginRequest
+from app.schemas.password import ForgotPasswordRequest, PasswordChange, ResetPasswordComplete
 from app.schemas.user import ProfileUpdate, UserRead
 from app.services.auth_service import (
     AccountDeactivatedError,
     InvalidCredentialsError,
     authenticate_user,
+)
+from app.services.password_service import (
+    InvalidCurrentPasswordError,
+    PasswordResetInvalidError,
+    change_password,
+    complete_password_reset,
+    request_password_reset,
+    validate_reset_token,
 )
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
@@ -120,3 +129,55 @@ async def remove_avatar(
         delete_image(previous_filename)
 
     return current_user
+
+
+@router.patch("/password", status_code=204)
+async def change_password_endpoint(
+    data: PasswordChange,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        await change_password(db, current_user, data.current_password, data.new_password)
+    except InvalidCurrentPasswordError:
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    return Response(status_code=204)
+
+
+@router.post("/forgot-password", status_code=204)
+async def forgot_password_endpoint(
+    data: ForgotPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    # Always 204, whether or not the email matched an account -- the
+    # response must not reveal which emails are registered.
+    await request_password_reset(db, data.email, str(request.base_url))
+    return Response(status_code=204)
+
+
+@router.get("/reset-password/validate", status_code=204)
+async def validate_reset_password_endpoint(
+    token: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    try:
+        await validate_reset_token(db, token)
+    except PasswordResetInvalidError:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired")
+    return Response(status_code=204)
+
+
+@router.post("/reset-password", response_model=UserRead)
+async def complete_reset_password_endpoint(
+    data: ResetPasswordComplete,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    try:
+        user = await complete_password_reset(db, data.token, data.new_password)
+    except PasswordResetInvalidError:
+        raise HTTPException(status_code=400, detail="This reset link is invalid or has expired")
+
+    request.session["user_id"] = str(user.id)
+    return user
