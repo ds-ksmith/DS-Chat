@@ -12,28 +12,18 @@ from app.dependencies import (
     require_scope,
 )
 from app.models import MessageImage, RoomRole, User
-from app.schemas.invite import InviteCreate, InviteRead
 from app.schemas.message import MessageRead
 from app.schemas.message_image import MessageImageCreated
 from app.schemas.room import (
     MyRoomItem,
     RoomCreate,
     RoomListItem,
+    RoomMemberAdd,
     RoomMemberRead,
     RoomMemberRoleUpdate,
     RoomRead,
     RoomUpdate,
     TransferOwnershipRequest,
-)
-from app.services.invite_service import (
-    AlreadyMemberError,
-    DuplicateInviteError,
-    InviteNotFoundError,
-    InviteNotPendingError,
-    TargetUserNotFoundError,
-    create_invite,
-    list_room_invites,
-    revoke_invite,
 )
 from app.schemas.webhook import (
     EventSubscriptionCreate,
@@ -44,6 +34,7 @@ from app.schemas.webhook import (
 )
 from app.services.message_service import get_reactions_for_messages, list_recent_messages
 from app.services.room_service import (
+    AlreadyMemberError,
     CannotRemoveOwnerError,
     DuplicateRoomError,
     InsufficientRoleError,
@@ -51,6 +42,8 @@ from app.services.room_service import (
     OwnerMustTransferError,
     RoomIsPrivateError,
     RoomNotFoundError,
+    TargetUserNotFoundError,
+    add_member,
     change_member_role,
     create_room,
     delete_room,
@@ -373,66 +366,32 @@ async def get_room_image_endpoint(
     )
 
 
-def _to_invite_read(invite) -> InviteRead:
-    return InviteRead(
-        id=invite.id,
-        room_id=invite.room_id,
-        invited_by=invite.invited_by,
-        target_user_id=invite.target_user_id,
-        target_username=invite.target_user.username if invite.target_user else None,
-        status=invite.status,
-        expires_at=invite.expires_at,
-        created_at=invite.created_at,
-    )
-
-
-@router.post("/{room_id}/invites", response_model=InviteRead, status_code=201)
-async def create_invite_endpoint(
+@router.post("/{room_id}/members", response_model=RoomMemberRead, status_code=201)
+async def add_member_endpoint(
     room_id: uuid.UUID,
-    data: InviteCreate,
+    data: RoomMemberAdd,
     request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await require_room_role(room_id, current_user, db, RoomRole.admin)
     try:
-        invite = await create_invite(
-            db, room_id, current_user.id, data.target_username, str(request.base_url)
-        )
+        room = await get_room(db, room_id)
+        await require_room_role(room_id, current_user, db, RoomRole.admin)
+        membership = await add_member(db, room, data.user_id, str(request.base_url))
+    except RoomNotFoundError:
+        raise HTTPException(status_code=404, detail="Room not found")
     except TargetUserNotFoundError:
-        raise HTTPException(status_code=404, detail="No user with that username")
+        raise HTTPException(status_code=404, detail="No user with that ID")
     except AlreadyMemberError:
         raise HTTPException(status_code=409, detail="That user is already a member")
-    except DuplicateInviteError:
-        raise HTTPException(status_code=409, detail="That user already has a pending invite")
-    return _to_invite_read(invite)
-
-
-@router.get("/{room_id}/invites", response_model=list[InviteRead])
-async def list_room_invites_endpoint(
-    room_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await require_room_role(room_id, current_user, db, RoomRole.admin)
-    invites = await list_room_invites(db, room_id)
-    return [_to_invite_read(i) for i in invites]
-
-
-@router.delete("/{room_id}/invites/{invite_id}", status_code=204)
-async def revoke_invite_endpoint(
-    room_id: uuid.UUID,
-    invite_id: uuid.UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await require_room_role(room_id, current_user, db, RoomRole.admin)
-    try:
-        await revoke_invite(db, room_id, invite_id)
-    except InviteNotFoundError:
-        raise HTTPException(status_code=404, detail="Invite not found")
-    except InviteNotPendingError:
-        raise HTTPException(status_code=400, detail="Invite is no longer pending")
+    return RoomMemberRead(
+        user_id=membership.user_id,
+        username=membership.user.username,
+        display_name=membership.user.display_name,
+        avatar_filename=membership.user.avatar_filename,
+        role=membership.role,
+        joined_at=membership.joined_at,
+    )
 
 
 @router.post("/{room_id}/webhooks/incoming", response_model=WebhookIncomingRead, status_code=201)

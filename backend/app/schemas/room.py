@@ -45,6 +45,10 @@ class RoomMemberRead(BaseModel):
     joined_at: datetime
 
 
+class RoomMemberAdd(BaseModel):
+    user_id: uuid.UUID
+
+
 class RoomMemberRoleUpdate(BaseModel):
     role: RoomRole
 

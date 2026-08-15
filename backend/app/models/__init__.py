@@ -2,7 +2,7 @@ from app.models.admin_audit_log import AdminAuditLog
 from app.models.api_token import ApiToken
 from app.models.base import Base
 from app.models.event_subscription import EventSubscription
-from app.models.invite import InviteStatus, RoomInvite
+from app.models.invite import InviteStatus
 from app.models.membership import RoomMembership, RoomRole
 from app.models.message import Message
 from app.models.message_image import MessageImage
@@ -23,7 +23,6 @@ __all__ = [
     "Message",
     "MessageImage",
     "MessageReaction",
-    "RoomInvite",
     "InviteStatus",
     "SiteInvite",
     "SmtpSettings",

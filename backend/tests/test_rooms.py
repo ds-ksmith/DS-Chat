@@ -245,6 +245,82 @@ async def test_change_member_role_owner_only(client, db_session):
     assert resp.status_code == 403  # bob is a plain member, not owner
 
 
+def _fake_send_email(monkeypatch):
+    calls = []
+
+    async def fake(db, to, subject, body):
+        calls.append({"to": to, "subject": subject, "body": body})
+
+    monkeypatch.setattr("app.services.room_service.send_email", fake)
+    return calls
+
+
+async def test_add_member_directly(client, db_session, monkeypatch):
+    calls = _fake_send_email(monkeypatch)
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.post(f"/api/rooms/{room_id}/members", json={"user_id": bob["id"]})
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["username"] == "bob"
+    assert resp.json()["role"] == "member"
+
+    result = await db_session.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == uuid.UUID(room_id), RoomMembership.user_id == uuid.UUID(bob["id"])
+        )
+    )
+    assert result.scalar_one().role == RoomRole.member
+
+    assert len(calls) == 1
+    assert calls[0]["to"] == bob["email"]
+    assert "added" in calls[0]["subject"].lower()
+
+
+async def test_add_member_requires_admin_role(client, db_session, monkeypatch):
+    _fake_send_email(monkeypatch)
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    carol = await register_and_login(client, db_session, username="carol")
+
+    resp = await client.post(f"/api/rooms/{room_id}/members", json={"user_id": carol["id"]})
+    assert resp.status_code == 403
+
+
+async def test_add_member_already_member_conflict(client, db_session, monkeypatch):
+    _fake_send_email(monkeypatch)
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.post(f"/api/rooms/{room_id}/members", json={"user_id": bob["id"]})
+    assert resp.status_code == 409
+
+
+async def test_add_member_unknown_user_404(client, db_session, monkeypatch):
+    _fake_send_email(monkeypatch)
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    resp = await client.post(f"/api/rooms/{room_id}/members", json={"user_id": str(uuid.uuid4())})
+    assert resp.status_code == 404
+
+
 async def test_list_room_members(client, db_session):
     await register_and_login(client, db_session, username="alice")
     room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]

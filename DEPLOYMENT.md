@@ -169,7 +169,7 @@ sudo -u chatapp /srv/chatapp/backend/.venv/bin/python -m app.cli generate-vapid-
 # paste the three printed lines into /etc/chatapp/env
 ```
 
-Optional: outgoing email (admin-invited signups, room-invite notifications).
+Optional: outgoing email (admin-invited signups, room membership notifications).
 Unlike everything else on this page, SMTP is **not** configured here —
 it's set through the Admin portal's Settings tab at runtime, no redeploy or
 env file edit needed. Skipped silently (logged, not an error) until an

@@ -5,8 +5,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, Room, RoomInvite, RoomMembership, RoomRole
+from app.models import Message, Room, RoomMembership, RoomRole, User
 from app.schemas.room import RoomCreate, RoomUpdate
+from app.services.email_service import send_email
 
 
 class DuplicateRoomError(Exception):
@@ -34,6 +35,14 @@ class InsufficientRoleError(Exception):
 
 
 class OwnerMustTransferError(Exception):
+    pass
+
+
+class TargetUserNotFoundError(Exception):
+    pass
+
+
+class AlreadyMemberError(Exception):
     pass
 
 
@@ -108,6 +117,41 @@ async def join_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) ->
     return membership
 
 
+async def add_member(
+    db: AsyncSession, room: Room, target_user_id: uuid.UUID, base_url: str
+) -> RoomMembership:
+    target = await db.get(User, target_user_id)
+    if target is None:
+        raise TargetUserNotFoundError()
+
+    existing = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room.id, RoomMembership.user_id == target_user_id
+        )
+    )
+    if existing.scalar_one_or_none() is not None:
+        raise AlreadyMemberError()
+
+    membership = RoomMembership(room_id=room.id, user_id=target_user_id, role=RoomRole.member)
+    db.add(membership)
+    await db.commit()
+
+    await send_email(
+        db,
+        target.email,
+        f"You've been added to #{room.name}",
+        f"You've been added to the #{room.name} room on KeepItTalking.\n\n"
+        f"Open the app: {base_url.rstrip('/')}",
+    )
+
+    result = await db.execute(
+        select(RoomMembership)
+        .where(RoomMembership.room_id == room.id, RoomMembership.user_id == target_user_id)
+        .options(selectinload(RoomMembership.user))
+    )
+    return result.scalar_one()
+
+
 async def update_room(db: AsyncSession, room: Room, data: RoomUpdate) -> Room:
     if data.name is not None:
         room.name = data.name
@@ -126,7 +170,6 @@ async def delete_room(db: AsyncSession, room: Room) -> None:
     # Explicit deletes rather than relying on ORM cascade + eager-loading —
     # simpler and more predictable in async code.
     await db.execute(delete(Message).where(Message.room_id == room.id))
-    await db.execute(delete(RoomInvite).where(RoomInvite.room_id == room.id))
     await db.execute(delete(RoomMembership).where(RoomMembership.room_id == room.id))
     await db.delete(room)
     await db.commit()

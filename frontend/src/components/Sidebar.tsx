@@ -9,8 +9,6 @@ interface SidebarProps {
   onSearchChange: (value: string) => void
   onOpenNewRoom: () => void
   onOpenBrowse: () => void
-  onOpenInvites: () => void
-  inviteCount: number
   unavailableOffline?: boolean
 }
 
@@ -21,8 +19,6 @@ export function Sidebar({
   onSearchChange,
   onOpenNewRoom,
   onOpenBrowse,
-  onOpenInvites,
-  inviteCount,
   unavailableOffline,
 }: SidebarProps) {
   const query = searchQuery.trim().toLowerCase()
@@ -52,15 +48,6 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-scroll">
-        <button type="button" className="sidebar-entry" onClick={onOpenInvites}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-            <path d="M22 6 12 13 2 6" />
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-          </svg>
-          Invites
-          {inviteCount > 0 && <span className="sidebar-badge">{inviteCount}</span>}
-        </button>
-
         <button type="button" className="sidebar-entry" onClick={onOpenBrowse}>
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
             <circle cx="9" cy="9" r="6" />

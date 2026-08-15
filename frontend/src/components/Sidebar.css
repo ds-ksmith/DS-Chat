@@ -80,21 +80,6 @@
   background: color-mix(in srgb, var(--ds-text) 5%, transparent);
 }
 
-.sidebar-badge {
-  margin-left: auto;
-  background: var(--ds-accent);
-  color: var(--ds-void);
-  font-size: 0.68rem;
-  font-weight: 800;
-  border-radius: var(--radius-pill);
-  min-width: 16px;
-  height: 16px;
-  padding: 0 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .sidebar-section-label {
   padding: 10px 16px 6px;
   font-size: 0.72rem;

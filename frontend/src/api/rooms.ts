@@ -46,6 +46,13 @@ export function listRoomMembers(roomId: string): Promise<RoomMember[]> {
   return apiFetch<RoomMember[]>(`/api/rooms/${roomId}/members`)
 }
 
+export function addRoomMember(roomId: string, userId: string): Promise<RoomMember> {
+  return apiFetch<RoomMember>(`/api/rooms/${roomId}/members`, {
+    method: 'POST',
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
 export function removeMember(roomId: string, userId: string): Promise<void> {
   return apiFetch<void>(`/api/rooms/${roomId}/members/${userId}`, { method: 'DELETE' })
 }

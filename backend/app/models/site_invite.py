@@ -16,7 +16,7 @@ def _default_expires_at() -> datetime:
 
 class SiteInvite(Base):
     """An admin-issued invite for someone with no account yet -- distinct
-    from RoomInvite, which targets an existing user for a specific room."""
+    from adding an existing user directly to a room."""
 
     __tablename__ = "site_invites"
 

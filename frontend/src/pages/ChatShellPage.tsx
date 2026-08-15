@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { NetworkError } from '../api/client'
-import { listMyInvites } from '../api/invites'
 import { listMyRooms, listRoomMembers } from '../api/rooms'
 import { BrowseRoomsModal } from '../components/BrowseRoomsModal'
 import { ChatPane } from '../components/ChatPane'
-import { InvitesModal } from '../components/InvitesModal'
 import { NewRoomModal } from '../components/NewRoomModal'
 import { OfflineBanner } from '../components/OfflineBanner'
 import { RoomInfoPanel } from '../components/RoomInfoPanel'
@@ -16,7 +14,7 @@ import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type { MyRoomItem, RoomMember } from '../types'
 import './ChatShellPage.css'
 
-type ModalKind = 'new' | 'browse' | 'invites' | null
+type ModalKind = 'new' | 'browse' | null
 
 export function ChatShellPage() {
   const { roomId } = useParams<{ roomId?: string }>()
@@ -28,7 +26,6 @@ export function ChatShellPage() {
   const [rooms, setRooms] = useState<MyRoomItem[]>([])
   const [search, setSearch] = useState('')
   const [members, setMembers] = useState<RoomMember[]>([])
-  const [inviteCount, setInviteCount] = useState(0)
   const [infoOpen, setInfoOpen] = useState(false)
   const [modal, setModal] = useState<ModalKind>(null)
   const [roomsUnavailableOffline, setRoomsUnavailableOffline] = useState(false)
@@ -60,12 +57,6 @@ export function ChatShellPage() {
   }, [refreshRooms])
 
   useEffect(() => {
-    listMyInvites()
-      .then((list) => setInviteCount(list.length))
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
     refreshMembers()
     // Also re-run when the logged-in user's own profile changes (display
     // name/avatar) -- refreshMembers() itself doesn't change identity when
@@ -92,8 +83,6 @@ export function ChatShellPage() {
             onSearchChange={setSearch}
             onOpenNewRoom={() => setModal('new')}
             onOpenBrowse={() => setModal('browse')}
-            onOpenInvites={() => setModal('invites')}
-            inviteCount={inviteCount}
             unavailableOffline={roomsUnavailableOffline && rooms.length === 0}
           />
         )}
@@ -151,16 +140,6 @@ export function ChatShellPage() {
         <BrowseRoomsModal
           onClose={() => setModal(null)}
           onJoined={(id) => {
-            setModal(null)
-            refreshRooms().then(() => goToRoom(id))
-          }}
-        />
-      )}
-      {modal === 'invites' && (
-        <InvitesModal
-          onClose={() => setModal(null)}
-          onInvitesChanged={setInviteCount}
-          onAccepted={(id) => {
             setModal(null)
             refreshRooms().then(() => goToRoom(id))
           }}

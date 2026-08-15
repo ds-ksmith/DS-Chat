@@ -1,8 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { ApiError } from '../api/client'
-import { createInvite, listRoomInvites, revokeInvite } from '../api/invites'
-import { getUserAvatarUrl } from '../api/users'
+import { getUserAvatarUrl, listUserDirectory } from '../api/users'
 import {
+  addRoomMember,
   changeMemberRole,
   deleteRoom,
   leaveRoom,
@@ -19,17 +19,19 @@ import {
   revokeIncomingWebhook,
 } from '../api/webhooks'
 import { useAuth } from '../context/AuthContext'
+import { useResizableWidth } from '../hooks/useResizableWidth'
 import type {
   EventSubscription,
   EventType,
-  Invite,
   MyRoomItem,
   RoomMember,
   RoomRole,
+  UserDirectoryEntry,
   WebhookIncoming,
 } from '../types'
 import { RoomAvatar } from './RoomAvatar'
 import { UserAvatar } from './UserAvatar'
+import { UserPicker } from './UserPicker'
 import './RoomInfoPanel.css'
 
 const EVENT_TYPES: EventType[] = ['message.created', 'message.updated']
@@ -55,10 +57,15 @@ export function RoomInfoPanel({
 }: RoomInfoPanelProps) {
   const { user } = useAuth()
   const myRole = room.role
+  const { width, startResize } = useResizableWidth({
+    storageKey: 'room-info-panel-width',
+    defaultWidth: 260,
+    min: 260,
+    max: 480,
+  })
 
-  const [inviteUsername, setInviteUsername] = useState('')
   const [inviteError, setInviteError] = useState<string | null>(null)
-  const [pendingInvites, setPendingInvites] = useState<Invite[]>([])
+  const [directoryUsers, setDirectoryUsers] = useState<UserDirectoryEntry[]>([])
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState(room.name)
@@ -80,33 +87,24 @@ export function RoomInfoPanel({
     setNameDraft(room.name)
     setDescDraft(room.description ?? '')
     if (canManage) {
-      listRoomInvites(room.id).then(setPendingInvites).catch(() => setPendingInvites([]))
       listIncomingWebhooks(room.id).then(setIncomingWebhooks).catch(() => setIncomingWebhooks([]))
       listEventSubscriptions(room.id).then(setEventSubscriptions).catch(() => setEventSubscriptions([]))
+      listUserDirectory().then(setDirectoryUsers).catch(() => setDirectoryUsers([]))
     } else {
-      setPendingInvites([])
       setIncomingWebhooks([])
       setEventSubscriptions([])
+      setDirectoryUsers([])
     }
   }, [room.id, room.name, room.description, canManage])
 
-  async function handleInvite(e: FormEvent) {
-    e.preventDefault()
-    const username = inviteUsername.trim()
-    if (!username) return
+  async function handleAddMember(target: UserDirectoryEntry) {
     setInviteError(null)
     try {
-      await createInvite(room.id, username)
-      setInviteUsername('')
-      setPendingInvites(await listRoomInvites(room.id))
+      await addRoomMember(room.id, target.id)
+      onMembersChanged()
     } catch (err) {
       setInviteError(err instanceof ApiError ? err.message : String(err))
     }
-  }
-
-  async function handleRevoke(inviteId: string) {
-    await revokeInvite(room.id, inviteId)
-    setPendingInvites(await listRoomInvites(room.id))
   }
 
   async function handleCreateWebhook(e: FormEvent) {
@@ -185,6 +183,29 @@ export function RoomInfoPanel({
     }
   }
 
+  function memberActions(m: RoomMember): { value: string; label: string }[] {
+    if (m.user_id === user?.id) return []
+    if (myRole === 'owner') {
+      const actions: { value: string; label: string }[] = []
+      if (m.role === 'member') actions.push({ value: 'promote', label: 'Promote to admin' })
+      if (m.role === 'admin') actions.push({ value: 'demote', label: 'Demote to member' })
+      actions.push({ value: 'transfer', label: 'Make owner' })
+      actions.push({ value: 'remove', label: 'Remove from room' })
+      return actions
+    }
+    if (myRole === 'admin' && m.role === 'member') {
+      return [{ value: 'remove', label: 'Remove from room' }]
+    }
+    return []
+  }
+
+  function handleMemberAction(userId: string, action: string) {
+    if (action === 'promote') handleRoleChange(userId, 'admin')
+    else if (action === 'demote') handleRoleChange(userId, 'member')
+    else if (action === 'transfer') handleTransfer(userId)
+    else if (action === 'remove') handleRemove(userId)
+  }
+
   async function handleLeave() {
     if (myRole === 'owner') return
     if (!confirm(`Leave #${room.name}?`)) return
@@ -210,7 +231,8 @@ export function RoomInfoPanel({
   }
 
   return (
-    <aside className="room-info-panel">
+    <aside className="room-info-panel" style={{ width }}>
+      <div className="room-info-resize-handle" onPointerDown={startResize} />
       <div className="room-info-header">
         <span className="room-info-header-label">Details</span>
         <button type="button" className="room-info-close" onClick={onClose} aria-label="Close">
@@ -229,107 +251,53 @@ export function RoomInfoPanel({
 
       <div className="room-info-section">
         <div className="room-info-label">Members</div>
-        {members.map((m, i) => (
-          <div key={m.user_id} className="room-info-member-row">
-            <UserAvatar
-              username={m.username}
-              colorIndex={i}
-              size={24}
-              avatarUrl={m.avatar_filename ? getUserAvatarUrl(m.user_id, m.avatar_filename) : null}
-            />
-            <span className="room-info-member-name">{m.display_name || m.username}</span>
-            <span className={`role-badge role-badge-${m.role}`}>{m.role}</span>
-            {myRole === 'owner' && m.user_id !== user?.id && (
-              <div className="room-info-member-actions">
-                {m.role === 'member' && (
-                  <button
-                    type="button"
-                    disabled={busyUserId === m.user_id}
-                    onClick={() => handleRoleChange(m.user_id, 'admin')}
-                    title="Promote to admin"
-                  >
-                    Promote
-                  </button>
-                )}
-                {m.role === 'admin' && (
-                  <button
-                    type="button"
-                    disabled={busyUserId === m.user_id}
-                    onClick={() => handleRoleChange(m.user_id, 'member')}
-                    title="Demote to member"
-                  >
-                    Demote
-                  </button>
-                )}
-                <button
-                  type="button"
+        {members.map((m, i) => {
+          const actions = memberActions(m)
+          return (
+            <div key={m.user_id} className="room-info-member-row">
+              <UserAvatar
+                username={m.username}
+                colorIndex={i}
+                size={24}
+                avatarUrl={m.avatar_filename ? getUserAvatarUrl(m.user_id, m.avatar_filename) : null}
+              />
+              <span className="room-info-member-name">{m.display_name || m.username}</span>
+              {actions.length > 0 ? (
+                <select
+                  className={`role-badge role-badge-${m.role} room-info-role-select`}
+                  value={m.role}
                   disabled={busyUserId === m.user_id}
-                  onClick={() => handleTransfer(m.user_id)}
-                  title="Transfer ownership"
+                  onChange={(e) => {
+                    const action = e.target.value
+                    if (action && action !== m.role) handleMemberAction(m.user_id, action)
+                  }}
+                  aria-label={`Role and actions for ${m.display_name || m.username}`}
                 >
-                  Make owner
-                </button>
-                <button
-                  type="button"
-                  className="room-info-danger-link"
-                  disabled={busyUserId === m.user_id}
-                  onClick={() => handleRemove(m.user_id)}
-                  title="Remove from room"
-                >
-                  Remove
-                </button>
-              </div>
-            )}
-            {myRole === 'admin' && m.role === 'member' && m.user_id !== user?.id && (
-              <div className="room-info-member-actions">
-                <button
-                  type="button"
-                  className="room-info-danger-link"
-                  disabled={busyUserId === m.user_id}
-                  onClick={() => handleRemove(m.user_id)}
-                  title="Remove from room"
-                >
-                  Remove
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+                  <option value={m.role}>{m.role[0].toUpperCase() + m.role.slice(1)}</option>
+                  {actions.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className={`role-badge role-badge-${m.role}`}>{m.role}</span>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {canManage && (
         <div className="room-info-section">
-          <div className="room-info-label">Invite someone</div>
-          <form className="room-info-invite-form" onSubmit={handleInvite}>
-            <input
-              type="text"
-              placeholder="Username"
-              value={inviteUsername}
-              onChange={(e) => setInviteUsername(e.target.value)}
-            />
-            <button type="submit" className="btn-secondary">
-              Invite
-            </button>
-          </form>
+          <div className="room-info-label">Add someone</div>
+          <UserPicker
+            users={directoryUsers}
+            excludeUserIds={members.map((m) => m.user_id)}
+            placeholder="Search users to add…"
+            onSelect={handleAddMember}
+          />
           {inviteError && <p className="room-info-error">{inviteError}</p>}
-
-          {pendingInvites.length > 0 && (
-            <div className="room-info-pending">
-              {pendingInvites.map((inv) => (
-                <div key={inv.id} className="room-info-pending-row">
-                  <span>{inv.target_username ?? 'Unknown user'}</span>
-                  <button
-                    type="button"
-                    className="room-info-danger-link"
-                    onClick={() => handleRevoke(inv.id)}
-                    title="Revoke invite"
-                  >
-                    Revoke
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       )}
 

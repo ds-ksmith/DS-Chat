@@ -24,6 +24,7 @@ import {
 import { ApiError } from '../api/client'
 import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
 import { getUserAvatarUrl } from '../api/users'
+import { UserPicker } from '../components/UserPicker'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
 import type {
@@ -52,6 +53,7 @@ export function AdminPage() {
   const [tab, setTab] = useState<Tab>('users')
   const [users, setUsers] = useState<AdminUser[]>([])
   const [rooms, setRooms] = useState<AdminRoom[]>([])
+  const [transferringRoomId, setTransferringRoomId] = useState<string | null>(null)
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([])
   const [auditHasMore, setAuditHasMore] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -191,18 +193,16 @@ export function AdminPage() {
     })
   }
 
-  async function handleTransferOwnership(r: AdminRoom) {
-    const username = prompt(`Transfer #${r.name} to which username? (must already be a member)`)
-    if (!username) return
-    const target = users.find((u) => u.username === username.trim())
-    if (!target) {
-      setError(`No known user named "${username}"`)
-      return
-    }
+  function toggleTransfer(roomId: string) {
+    setTransferringRoomId((prev) => (prev === roomId ? null : roomId))
+  }
+
+  async function handleTransferOwnership(r: AdminRoom, targetId: string) {
     await withBusy(r.id, async () => {
-      const updated = await transferOwnershipAdmin(r.id, target.id)
+      const updated = await transferOwnershipAdmin(r.id, targetId)
       setRooms((prev) => prev.map((x) => (x.id === updated.id ? updated : x)))
     })
+    setTransferringRoomId(null)
   }
 
   async function handleCreateBot() {
@@ -465,24 +465,38 @@ export function AdminPage() {
             </thead>
             <tbody>
               {rooms.map((r) => (
-                <tr key={r.id}>
-                  <td>#{r.name}</td>
-                  <td>{r.is_private ? 'Private' : 'Open'}</td>
-                  <td>
-                    <span className={`status-badge ${r.is_archived ? 'inactive' : 'active'}`}>
-                      {r.is_archived ? 'Archived' : 'Active'}
-                    </span>
-                  </td>
-                  <td>{r.member_count}</td>
-                  <td className="admin-actions">
-                    <button type="button" disabled={busyId === r.id} onClick={() => handleToggleArchive(r)}>
-                      {r.is_archived ? 'Unarchive' : 'Archive'}
-                    </button>
-                    <button type="button" disabled={busyId === r.id} onClick={() => handleTransferOwnership(r)}>
-                      Transfer ownership
-                    </button>
-                  </td>
-                </tr>
+                <Fragment key={r.id}>
+                  <tr>
+                    <td>#{r.name}</td>
+                    <td>{r.is_private ? 'Private' : 'Open'}</td>
+                    <td>
+                      <span className={`status-badge ${r.is_archived ? 'inactive' : 'active'}`}>
+                        {r.is_archived ? 'Archived' : 'Active'}
+                      </span>
+                    </td>
+                    <td>{r.member_count}</td>
+                    <td className="admin-actions">
+                      <button type="button" disabled={busyId === r.id} onClick={() => handleToggleArchive(r)}>
+                        {r.is_archived ? 'Unarchive' : 'Archive'}
+                      </button>
+                      <button type="button" disabled={busyId === r.id} onClick={() => toggleTransfer(r.id)}>
+                        {transferringRoomId === r.id ? 'Cancel' : 'Transfer ownership'}
+                      </button>
+                    </td>
+                  </tr>
+                  {transferringRoomId === r.id && (
+                    <tr>
+                      <td colSpan={5} className="admin-bot-detail">
+                        <UserPicker
+                          users={users}
+                          excludeUserIds={[r.owner_id]}
+                          placeholder="Search users to transfer ownership to…"
+                          onSelect={(target) => handleTransferOwnership(r, target.id)}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>

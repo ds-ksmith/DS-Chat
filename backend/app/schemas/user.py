@@ -25,3 +25,17 @@ class UserRead(BaseModel):
 
 class ProfileUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=50)
+
+
+class UserDirectoryRead(BaseModel):
+    """Lightweight entry for user-picker UIs (room invites, admin ownership
+    transfer) -- same visibility level as an avatar: any authenticated user
+    can see this much about anyone (excludes bots, which aren't invited
+    through these flows)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    username: str
+    display_name: str | None
+    avatar_filename: str | None

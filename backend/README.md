@@ -1,16 +1,16 @@
 # KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles, site invites & email)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
-CRUD (open and private), room roles (owner/admin/member) and invites, a
-WebSocket chat endpoint that fans out across multiple app-server instances
-via Redis pub/sub, Web Push notifications for offline room members, a
-site-admin portal (user/room/bot management + an audit log), a bot/
-extension layer (scoped API tokens, live bot WebSocket access, incoming and
-outgoing webhooks, message editing), image uploads in chat messages, emoji
-reactions on messages, self-service user profiles (display name, avatar),
-and admin-issued email invites for new accounts plus email notifications
-for room invites. See `../ARCHITECTURE.md` for the full system design and
-the phased build plan.
+CRUD (open and private), room roles (owner/admin/member) and direct
+membership management, a WebSocket chat endpoint that fans out across
+multiple app-server instances via Redis pub/sub, Web Push notifications for
+offline room members, a site-admin portal (user/room/bot management + an
+audit log), a bot/extension layer (scoped API tokens, live bot WebSocket
+access, incoming and outgoing webhooks, message editing), image uploads in
+chat messages, emoji reactions on messages, self-service user profiles
+(display name, avatar), and admin-issued email invites for new accounts
+plus email notifications when a user is added to a room. See
+`../ARCHITECTURE.md` for the full system design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -128,11 +128,11 @@ app/
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
                              messages, message_images, message_reactions,
-                             room_invites, site_invites, smtp_settings,
+                             site_invites, smtp_settings,
                              push_subscriptions, admin_audit_log, api_tokens,
                              webhooks_incoming, event_subscriptions)
   schemas/                 Pydantic request/response models
-  routers/                  auth, rooms, users, invites, signup, push, admin,
+  routers/                  auth, rooms, users, signup, push, admin,
                                bots, webhooks, health
   services/                  business logic called by routers
   ws/                        connection_manager (local sockets), presence +
@@ -309,21 +309,25 @@ that point, so nothing online-facing is delayed, and it sidesteps
 on. An expired/invalid subscription (pywebpush 404/410) is deleted
 automatically.
 
-## Room roles and invites (Phase 2)
+## Room roles and membership (Phase 2)
 
 Rooms can be `open` (anyone can join via `POST /api/rooms/{id}/join`) or
-`private` (`is_private: true` at creation — joinable only via invite). Room
-roles are `owner` > `admin` > `member`:
+`private` (`is_private: true` at creation — joinable only by being added).
+Room roles are `owner` > `admin` > `member`:
 - **member**: post messages, leave the room
-- **admin**: edit room settings, create/list/revoke invites, remove plain members
+- **admin**: edit room settings, add/remove plain members
 - **owner**: everything admin can, plus delete the room, remove admins, change
   member roles, and transfer ownership
 
-Invite flow: an admin+ calls `POST /api/rooms/{id}/invites` with an existing
-`target_username`; the invited user sees it via `GET /api/invites/mine` and
-calls `POST /api/invites/{id}/accept` (or `/decline`). `GET /api/rooms/mine`
-lists every room (open + private) the current user belongs to, alongside
-their role.
+Adding to a private room: an admin+ calls `POST /api/rooms/{id}/members` with
+an existing user's `user_id` — this adds them straight to
+`room_memberships` (no accept/decline step) and fires a "you've been added"
+notification email (see Site invites & email below; silently skipped if
+SMTP isn't configured). There used to be a separate accept/decline
+`RoomInvite` flow here; it was removed in favor of direct add + notify,
+since nothing meaningful was gained by making the target confirm first.
+`GET /api/rooms/mine` lists every room (open + private) the current user
+belongs to, alongside their role.
 
 ## Image uploads
 
@@ -423,10 +427,10 @@ change after the fact.
 ## Site invites & email
 
 Two related gaps closed together: creating a new account was CLI-only, and
-neither a brand-new invitee nor an existing user invited to a room got any
+neither a brand-new invitee nor an existing user added to a room got any
 notification. Site admins (only) invite a brand-new person by email from
-the Admin portal; both that signup-invite and the existing room-invite flow
-send an email.
+the Admin portal; being added directly to a room (see Room roles and
+membership above) sends a "you've been added" email too.
 
 **Email sending** (`app/services/email_service.py`, using `aiosmtplib`):
 `send_email(db, to, subject, body)` is the fire-and-forget path used by
@@ -450,11 +454,10 @@ password on update means "keep the current one" — the frontend never has
 the plaintext to send back, only whether one is set (`has_password`).
 
 **Site invites** (`app/models/site_invite.py`, `app/services/site_invite_service.py`) —
-distinct from `RoomInvite` (existing user, specific room): this targets an
-email address for the site, no room involved. The raw token exists only in
-the email link, stored hashed (`security.hash_token`, the same convention
-API tokens use — it's a bearer secret looked up by itself, not
-`RoomInvite.token`'s current unhashed/unused column). `POST /api/signup`
+distinct from adding an existing user to a room: this targets an email
+address for the site, no room involved. The raw token exists only in the
+email link, stored hashed (`security.hash_token`, the same convention API
+tokens use — it's a bearer secret looked up by itself). `POST /api/signup`
 (`app/routers/signup.py`) is the first genuinely public,
 unauthenticated endpoint in this app that creates a `User` row — it calls
 the existing `auth_service.register_user` directly for identical
@@ -464,9 +467,9 @@ already signed in. No new rate limiting on it — the unguessable, single-use,
 expiring token is the actual protection, inheriting the same "no rate
 limiting on human/bot traffic" gap already documented below, not a new one.
 
-**Room-invite email**: `invite_service.create_invite` sends one email to
-the target user after creating the `RoomInvite`, using the live request's
-`base_url` for the link — no new "public URL" config needed.
+**Room-membership email**: `room_service.add_member` sends one email to
+the target user after creating the `RoomMembership`, using the live
+request's `base_url` for the link — no new "public URL" config needed.
 
 Scope cuts: no outgoing-webhook event type for these (matching image
 uploads/reactions), no resend for a site invite (revoke + re-invite covers
@@ -475,18 +478,17 @@ it), no HTML email templates.
 ## Notes / scope decisions
 
 - Invite-only site registration: no `POST /api/auth/register`. Accounts are
-  provisioned with `python -m app.cli create-user` (see step 4 above). This is
-  separate from *room* invites above — site accounts vs. room membership.
-- Room invites are by **username only** — `room_invites.target_email` exists
-  in the schema (per `ARCHITECTURE.md`) but is unused, since there's no
-  email-delivery mechanism anywhere in the stack yet.
+  provisioned with `python -m app.cli create-user` (see step 4 above), or via
+  a site invite (see Site invites & email below). This is separate from
+  adding an existing user to a private room — site accounts vs. room
+  membership.
 - Sessions are signed cookies (Starlette `SessionMiddleware`), not a server-side
   session table — see `ARCHITECTURE.md`'s rationale (simplest way to carry auth
   through a WebSocket handshake). This means there's currently no way to force-
   revoke a session server-side; that needs a real session table later.
 - No CSRF token yet — `SameSite=Lax` cookies plus a same-origin frontend dev
   proxy (see `../frontend/vite.config.ts`) is the accepted phase-1 mitigation.
-- Deleting a room explicitly deletes its messages/memberships/invites first
+- Deleting a room explicitly deletes its messages/memberships first
   (`room_service.delete_room`) rather than relying on DB-level cascades.
 - `admin_audit_log` has no admin UI for filtering/searching yet — it's a
   flat newest-first list with `limit`/`offset` pagination, no filter by

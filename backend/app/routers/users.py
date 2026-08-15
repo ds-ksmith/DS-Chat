@@ -2,14 +2,29 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import User
+from app.schemas.user import UserDirectoryRead
 from app.storage import UPLOADS_DIR
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+
+@router.get("", response_model=list[UserDirectoryRead])
+async def list_users_directory_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User)
+        .where(User.is_active.is_(True), User.is_bot.is_(False))
+        .order_by(User.username)
+    )
+    return list(result.scalars().all())
 
 
 @router.get("/{user_id}/avatar")
