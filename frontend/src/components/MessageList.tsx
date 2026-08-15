@@ -5,6 +5,7 @@ import { avatarUrlFor, displayNameFor, senderColorIndex } from '../lib/messageGr
 import type { ChatMessageEnvelope, Message, RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
 import { ImageLightbox } from './ImageLightbox'
+import { MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
 
@@ -77,13 +78,17 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                 </div>
               )}
               {editing ? (
-                <input
+                <textarea
                   autoFocus
+                  rows={Math.min(10, draft.split('\n').length)}
                   className="message-edit-input"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitEdit(msg.id)
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      commitEdit(msg.id)
+                    }
                     if (e.key === 'Escape') setEditingId(null)
                   }}
                   onBlur={() => commitEdit(msg.id)}
@@ -100,7 +105,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                   )}
                   {msg.content && (
                     <div className="message-text">
-                      {msg.content}
+                      <MessageContent content={msg.content} />
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}
