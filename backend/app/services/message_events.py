@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Message, Room, RoomMembership, User
+from app.models import Message, MessageFile, Room, RoomMembership, User
 from app.schemas.message import ReactionSummary
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
@@ -27,11 +27,12 @@ async def _notify_offline_members(
         return
 
     room = await db.get(Room, room_id)
-    body = (
-        f"{sender.username}: {message.content}"[:120]
-        if message.content
-        else f"{sender.username} sent an image"
-    )
+    if message.content:
+        body = f"{sender.username}: {message.content}"[:120]
+    elif message.file_id:
+        body = f"{sender.username} sent a file"
+    else:
+        body = f"{sender.username} sent an image"
     payload = {
         "title": f"#{room.name}" if room else "New message",
         "body": body,
@@ -41,7 +42,17 @@ async def _notify_offline_members(
         await send_push_to_user(db, user_id, payload)
 
 
-def _message_payload(message: Message, username: str) -> dict:
+async def _message_payload(db: AsyncSession, message: Message, username: str) -> dict:
+    file_payload = None
+    if message.file_id:
+        message_file = await db.get(MessageFile, message.file_id)
+        if message_file:
+            file_payload = {
+                "id": str(message_file.id),
+                "filename": message_file.original_filename,
+                "size_bytes": message_file.size_bytes,
+                "content_type": message_file.content_type,
+            }
     return {
         "type": "message",
         "id": str(message.id),
@@ -50,6 +61,7 @@ def _message_payload(message: Message, username: str) -> dict:
         "username": username,
         "content": message.content,
         "image_id": str(message.image_id) if message.image_id else None,
+        "file": file_payload,
         "reactions": [],
         "created_at": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
@@ -67,7 +79,7 @@ async def broadcast_new_message(
     """The full side-effect sequence for a newly created message, shared by
     the WS "message" handler and the incoming-webhook receiver so both
     trigger identical fan-out/push/event behavior."""
-    payload = _message_payload(message, sender.username)
+    payload = await _message_payload(db, message, sender.username)
     await broadcaster.publish(room_id, payload)
     await _notify_offline_members(db, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)

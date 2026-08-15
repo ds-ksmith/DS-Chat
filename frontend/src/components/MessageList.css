@@ -62,6 +62,49 @@
   margin-bottom: 4px;
 }
 
+.message-file-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  margin-bottom: 4px;
+  color: var(--ds-text);
+  text-decoration: none;
+  max-width: min(320px, 100%);
+}
+
+.message-file-attachment:hover {
+  border-color: var(--ds-accent);
+}
+
+.message-file-attachment svg {
+  flex: none;
+  color: var(--ds-muted);
+}
+
+.message-file-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.message-file-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.message-file-size {
+  font-size: 0.72rem;
+  color: var(--ds-muted);
+  font-family: var(--mono);
+}
+
 .message-text {
   font-size: 0.88rem;
   line-height: 1.45;

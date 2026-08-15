@@ -1,5 +1,13 @@
 import { apiFetch, ApiError, NetworkError } from './client'
-import type { Message, MyRoomItem, Room, RoomListItem, RoomMember, RoomRole } from '../types'
+import type {
+  Message,
+  MessageFileInfo,
+  MyRoomItem,
+  Room,
+  RoomListItem,
+  RoomMember,
+  RoomRole,
+} from '../types'
 
 export function listRooms(): Promise<RoomListItem[]> {
   return apiFetch<RoomListItem[]>('/api/rooms')
@@ -113,4 +121,38 @@ export async function uploadRoomImage(roomId: string, file: File): Promise<{ id:
 
 export function getRoomImageUrl(roomId: string, imageId: string): string {
   return `/api/rooms/${roomId}/images/${imageId}`
+}
+
+// Not apiFetch, same multipart-boundary reason as uploadRoomImage.
+export async function uploadRoomFile(roomId: string, file: File): Promise<MessageFileInfo> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  let response: Response
+  try {
+    response = await fetch(`/api/rooms/${roomId}/files`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+  } catch {
+    throw new NetworkError()
+  }
+
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const body = await response.json()
+      detail = body.detail ?? detail
+    } catch {
+      // response had no JSON body
+    }
+    throw new ApiError(response.status, detail)
+  }
+
+  return (await response.json()) as MessageFileInfo
+}
+
+export function getRoomFileUrl(roomId: string, fileId: string): string {
+  return `/api/rooms/${roomId}/files/${fileId}`
 }

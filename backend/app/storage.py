@@ -11,6 +11,10 @@ from PIL import Image, UnidentifiedImageError
 UPLOADS_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "uploads"
 
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
+# Separate named constant (same value for now) so a later size-limit
+# redesign for generic file attachments doesn't have to touch image
+# behavior.
+MAX_FILE_BYTES = MAX_IMAGE_BYTES
 _READ_CHUNK_BYTES = 1024 * 1024
 _MAX_DIMENSION = 2000
 
@@ -23,7 +27,7 @@ ALLOWED_IMAGE_CONTENT_TYPES: dict[str, tuple[str, str]] = {
 }
 
 
-class ImageTooLargeError(Exception):
+class UploadTooLargeError(Exception):
     pass
 
 
@@ -43,7 +47,7 @@ async def read_capped(file, cap: int = MAX_IMAGE_BYTES) -> bytes:
             break
         total += len(chunk)
         if total > cap:
-            raise ImageTooLargeError()
+            raise UploadTooLargeError()
         chunks.append(chunk)
     return b"".join(chunks)
 
@@ -89,14 +93,14 @@ def process_image(
     return out.getvalue(), ext
 
 
-def save_image(data: bytes, ext: str) -> str:
+def save_file(data: bytes, ext: str) -> str:
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
     storage_filename = f"{uuid.uuid4()}{ext}"
     (UPLOADS_DIR / storage_filename).write_bytes(data)
     return storage_filename
 
 
-def delete_image(storage_filename: str) -> None:
+def delete_file(storage_filename: str) -> None:
     """Best-effort delete -- a missing file (already gone, or never
     written) is not an error."""
     (UPLOADS_DIR / storage_filename).unlink(missing_ok=True)

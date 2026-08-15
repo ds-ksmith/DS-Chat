@@ -11,8 +11,8 @@ class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
         CheckConstraint(
-            "content IS NOT NULL OR image_id IS NOT NULL",
-            name="messages_content_or_image_required",
+            "content IS NOT NULL OR image_id IS NOT NULL OR file_id IS NOT NULL",
+            name="messages_content_or_attachment_required",
         ),
     )
 
@@ -21,9 +21,10 @@ class Message(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     # Nullable since Phase "image uploads": a message can be an image with
     # no caption. The CheckConstraint above still requires at least one of
-    # content/image_id.
+    # content/image_id/file_id.
     content: Mapped[str | None] = mapped_column(Text)
     image_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("message_images.id"))
+    file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("message_files.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True, nullable=False
     )
@@ -32,3 +33,4 @@ class Message(Base):
 
     user = relationship("User")
     image = relationship("MessageImage")
+    file = relationship("MessageFile")

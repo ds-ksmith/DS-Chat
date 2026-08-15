@@ -24,8 +24,11 @@ async def create_message(
     user_id: uuid.UUID,
     content: str | None = None,
     image_id: uuid.UUID | None = None,
+    file_id: uuid.UUID | None = None,
 ) -> Message:
-    message = Message(room_id=room_id, user_id=user_id, content=content, image_id=image_id)
+    message = Message(
+        room_id=room_id, user_id=user_id, content=content, image_id=image_id, file_id=file_id
+    )
     db.add(message)
     await db.commit()
     await db.refresh(message)
@@ -54,7 +57,7 @@ async def list_recent_messages(
     result = await db.execute(
         select(Message)
         .where(Message.room_id == room_id)
-        .options(selectinload(Message.user))
+        .options(selectinload(Message.user), selectinload(Message.file))
         .order_by(Message.created_at.desc())
         .limit(limit)
     )

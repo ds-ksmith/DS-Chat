@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getRoomImageUrl } from '../api/rooms'
+import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { avatarUrlFor, displayNameFor, senderColorIndex } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, RoomMember } from '../types'
@@ -8,6 +8,12 @@ import { ImageLightbox } from './ImageLightbox'
 import { MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 interface MessageListProps {
   roomId: string
@@ -102,6 +108,27 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                       className="message-image"
                       onClick={() => setLightboxSrc(getRoomImageUrl(roomId, msg.image_id!))}
                     />
+                  )}
+                  {msg.file && (
+                    <a
+                      href={getRoomFileUrl(roomId, msg.file.id)}
+                      download={msg.file.filename}
+                      className="message-file-attachment"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                        <path
+                          d="M6 2.5h6l4 4V16a1.5 1.5 0 0 1-1.5 1.5h-8A1.5 1.5 0 0 1 5 16V4A1.5 1.5 0 0 1 6 2.5Z"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinejoin="round"
+                        />
+                        <path d="M12 2.5V6a1 1 0 0 0 1 1h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+                      </svg>
+                      <span className="message-file-info">
+                        <span className="message-file-name">{msg.file.filename}</span>
+                        <span className="message-file-size">{formatFileSize(msg.file.size_bytes)}</span>
+                      </span>
+                    </a>
                   )}
                   {msg.content && (
                     <div className="message-text">

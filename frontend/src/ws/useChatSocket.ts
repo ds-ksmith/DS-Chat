@@ -82,11 +82,17 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
     }
   }, [roomId])
 
-  const send = useCallback((content: string, imageId?: string) => {
+  const send = useCallback((content: string, imageId?: string, fileId?: string) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(
-      JSON.stringify({ type: 'message', room_id: roomId, content: content || null, image_id: imageId ?? null }),
+      JSON.stringify({
+        type: 'message',
+        room_id: roomId,
+        content: content || null,
+        image_id: imageId ?? null,
+        file_id: fileId ?? null,
+      }),
     )
   }, [roomId])
 

@@ -10,6 +10,15 @@ class ReactionSummary(BaseModel):
     user_ids: list[str]
 
 
+class MessageFileInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    filename: str
+    size_bytes: int
+    content_type: str
+
+
 class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -19,6 +28,7 @@ class MessageRead(BaseModel):
     username: str
     content: str | None
     image_id: uuid.UUID | None
+    file: MessageFileInfo | None
     reactions: list[ReactionSummary]
     created_at: datetime
     edited_at: datetime | None

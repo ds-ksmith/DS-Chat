@@ -52,6 +52,13 @@ export interface ReactionSummary {
   user_ids: string[]
 }
 
+export interface MessageFileInfo {
+  id: string
+  filename: string
+  size_bytes: number
+  content_type: string
+}
+
 export interface Message {
   id: string
   room_id: string
@@ -59,6 +66,7 @@ export interface Message {
   username: string
   content: string | null
   image_id: string | null
+  file: MessageFileInfo | null
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
@@ -72,6 +80,7 @@ export interface ChatMessageEnvelope {
   username: string
   content: string | null
   image_id: string | null
+  file: MessageFileInfo | null
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null

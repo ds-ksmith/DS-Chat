@@ -130,6 +130,38 @@
   object-fit: cover;
 }
 
+.composer-attachment-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 6px 28px 6px 10px;
+  color: var(--ds-text);
+  max-width: 260px;
+}
+
+.composer-attachment-file svg {
+  flex: none;
+  color: var(--ds-muted);
+}
+
+.composer-attachment-filename {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-attachment-size {
+  font-size: 0.72rem;
+  color: var(--ds-muted);
+  font-family: var(--mono);
+  flex: none;
+}
+
 .composer-attachment-remove {
   position: absolute;
   top: -6px;

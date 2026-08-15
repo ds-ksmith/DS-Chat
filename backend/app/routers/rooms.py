@@ -1,3 +1,4 @@
+import pathlib
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
@@ -11,8 +12,9 @@ from app.dependencies import (
     require_room_role,
     require_scope,
 )
-from app.models import MessageImage, RoomRole, User
-from app.schemas.message import MessageRead
+from app.models import MessageFile, MessageImage, RoomRole, User
+from app.schemas.message import MessageFileInfo, MessageRead
+from app.schemas.message_file import MessageFileCreated
 from app.schemas.message_image import MessageImageCreated
 from app.schemas.room import (
     MyRoomItem,
@@ -71,12 +73,13 @@ from app.services.webhook_service import (
 from app.services.ssrf import UnsafeWebhookUrlError
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
+    MAX_FILE_BYTES,
     UPLOADS_DIR,
-    ImageTooLargeError,
     InvalidImageError,
+    UploadTooLargeError,
     process_image,
     read_capped,
-    save_image,
+    save_file,
 )
 
 router = APIRouter(prefix="/api/rooms", tags=["rooms"])
@@ -284,6 +287,15 @@ async def transfer_ownership_endpoint(
         )
 
 
+def _to_message_file_info(file: MessageFile) -> MessageFileInfo:
+    return MessageFileInfo(
+        id=file.id,
+        filename=file.original_filename,
+        size_bytes=file.size_bytes,
+        content_type=file.content_type,
+    )
+
+
 @router.get("/{room_id}/messages", response_model=list[MessageRead])
 async def get_room_messages_endpoint(
     room_id: uuid.UUID,
@@ -304,6 +316,7 @@ async def get_room_messages_endpoint(
             username=m.user.username,
             content=m.content,
             image_id=m.image_id,
+            file=_to_message_file_info(m.file) if m.file else None,
             reactions=reactions_by_message.get(m.id, []),
             created_at=m.created_at,
             edited_at=m.edited_at,
@@ -326,7 +339,7 @@ async def upload_room_image_endpoint(
 
     try:
         data = await read_capped(file)
-    except ImageTooLargeError:
+    except UploadTooLargeError:
         raise HTTPException(status_code=413, detail="Image exceeds 8 MB limit")
 
     try:
@@ -334,7 +347,7 @@ async def upload_room_image_endpoint(
     except InvalidImageError:
         raise HTTPException(status_code=400, detail="File is not a valid image")
 
-    storage_filename = save_image(data, ext)
+    storage_filename = save_file(data, ext)
     image = MessageImage(
         room_id=room_id,
         uploaded_by=current_user.id,
@@ -362,6 +375,67 @@ async def get_room_image_endpoint(
     return FileResponse(
         UPLOADS_DIR / image.storage_filename,
         media_type=image.content_type,
+        headers={"Cache-Control": "private, max-age=31536000, immutable"},
+    )
+
+
+@router.post("/{room_id}/files", response_model=MessageFileCreated, status_code=201)
+async def upload_room_file_endpoint(
+    room_id: uuid.UUID,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+
+    try:
+        data = await read_capped(file, cap=MAX_FILE_BYTES)
+    except UploadTooLargeError:
+        raise HTTPException(status_code=413, detail="File exceeds 8 MB limit")
+
+    original_filename = file.filename or "file"
+    ext = pathlib.Path(original_filename).suffix
+    storage_filename = save_file(data, ext)
+    message_file = MessageFile(
+        room_id=room_id,
+        uploaded_by=current_user.id,
+        storage_filename=storage_filename,
+        original_filename=original_filename,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=len(data),
+    )
+    db.add(message_file)
+    await db.commit()
+    await db.refresh(message_file)
+    return MessageFileCreated(
+        id=message_file.id,
+        filename=message_file.original_filename,
+        size_bytes=message_file.size_bytes,
+        content_type=message_file.content_type,
+    )
+
+
+@router.get("/{room_id}/files/{file_id}")
+async def get_room_file_endpoint(
+    room_id: uuid.UUID,
+    file_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+    message_file = await db.get(MessageFile, file_id)
+    if message_file is None or message_file.room_id != room_id:
+        raise HTTPException(status_code=404, detail="File not found")
+    # `filename=` makes Starlette set Content-Disposition: attachment,
+    # forcing a download instead of an inline render regardless of
+    # content-type -- the mitigation for a same-origin-served, user-
+    # uploaded file (e.g. .html/.svg) executing script in this app's own
+    # origin if opened directly. No content-type allowlist needed on top
+    # of this; see backend/README.md.
+    return FileResponse(
+        UPLOADS_DIR / message_file.storage_filename,
+        media_type=message_file.content_type,
+        filename=message_file.original_filename,
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
 

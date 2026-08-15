@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import ApiToken, Message, MessageImage, RoomMembership, User
+from app.models import ApiToken, Message, MessageFile, MessageImage, RoomMembership, User
 from app.services.bot_service import resolve_token
 from app.services.message_events import (
     broadcast_message_update,
@@ -31,6 +31,7 @@ class ClientEnvelope(BaseModel):
     room_id: uuid.UUID | None = None
     content: str | None = None
     image_id: uuid.UUID | None = None
+    file_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
     emoji: str | None = None
 
@@ -110,9 +111,16 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                 joined_rooms.discard(envelope.room_id)
 
             elif envelope.type == "message":
-                if envelope.room_id is None or (not envelope.content and envelope.image_id is None):
+                if envelope.room_id is None or (
+                    not envelope.content
+                    and envelope.image_id is None
+                    and envelope.file_id is None
+                ):
                     await websocket.send_json(
-                        {"type": "error", "detail": "room_id and content or image_id required"}
+                        {
+                            "type": "error",
+                            "detail": "room_id and content or image_id or file_id required",
+                        }
                     )
                     continue
                 if _missing_scope(api_token, "write:messages"):
@@ -134,8 +142,15 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         await websocket.send_json({"type": "error", "detail": "Invalid image"})
                         continue
                     image_id = image.id
+                file_id = None
+                if envelope.file_id is not None:
+                    message_file = await db.get(MessageFile, envelope.file_id)
+                    if message_file is None or message_file.room_id != envelope.room_id:
+                        await websocket.send_json({"type": "error", "detail": "Invalid file"})
+                        continue
+                    file_id = message_file.id
                 message = await create_message(
-                    db, envelope.room_id, user.id, envelope.content, image_id
+                    db, envelope.room_id, user.id, envelope.content, image_id, file_id
                 )
                 await broadcast_new_message(db, broadcaster, presence, envelope.room_id, message, user)
 

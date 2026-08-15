@@ -22,12 +22,12 @@ from app.services.password_service import (
 )
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
-    ImageTooLargeError,
     InvalidImageError,
-    delete_image,
+    UploadTooLargeError,
+    delete_file,
     process_image,
     read_capped,
-    save_image,
+    save_file,
 )
 
 AVATAR_MAX_DIMENSION = 512
@@ -91,7 +91,7 @@ async def upload_avatar(
 
     try:
         data = await read_capped(file)
-    except ImageTooLargeError:
+    except UploadTooLargeError:
         raise HTTPException(status_code=413, detail="Image exceeds 8 MB limit")
 
     try:
@@ -102,14 +102,14 @@ async def upload_avatar(
         raise HTTPException(status_code=400, detail="File is not a valid image")
 
     previous_filename = current_user.avatar_filename
-    storage_filename = save_image(data, ext)
+    storage_filename = save_file(data, ext)
     current_user.avatar_filename = storage_filename
     current_user.avatar_content_type = file.content_type
     await db.commit()
     await db.refresh(current_user)
 
     if previous_filename:
-        delete_image(previous_filename)
+        delete_file(previous_filename)
 
     return current_user
 
@@ -126,7 +126,7 @@ async def remove_avatar(
     await db.refresh(current_user)
 
     if previous_filename:
-        delete_image(previous_filename)
+        delete_file(previous_filename)
 
     return current_user
 

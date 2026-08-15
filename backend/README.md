@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, emoji & reactions, user profiles, site invites & email, password reset)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, emoji & reactions, user profiles, site invites & email, password reset)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and direct
@@ -6,8 +6,9 @@ membership management, a WebSocket chat endpoint that fans out across
 multiple app-server instances via Redis pub/sub, Web Push notifications for
 offline room members, a site-admin portal (user/room/bot management + an
 audit log), a bot/extension layer (scoped API tokens, live bot WebSocket
-access, incoming and outgoing webhooks, message editing), image uploads in
-chat messages, emoji reactions on messages, self-service user profiles
+access, incoming and outgoing webhooks, message editing), image uploads and
+generic file attachments in chat messages, emoji reactions on messages,
+self-service user profiles
 (display name, avatar), self-service password change and a token-based
 forgot-password flow, and admin-issued email invites for new accounts
 plus email notifications when a user is added to a room. See
@@ -364,6 +365,39 @@ cleanup job for this yet. Not a security issue, since serving still goes
 through the same room-membership gate as everything else; just an eventual
 disk-space housekeeping item.
 
+## File attachments
+
+A message can also carry a generic file attachment (`Message.file_id`,
+nullable, alongside the pre-existing `content` and `image_id`) — a
+parallel `MessageFile` model/table, not a generalization of `MessageImage`,
+so the working image feature stayed untouched. `app/storage.py`'s
+`save_image`/`delete_image` were content-agnostic already (no Pillow
+usage) and were renamed to `save_file`/`delete_file` now that both features
+share them; `ImageTooLargeError` was likewise renamed to
+`UploadTooLargeError`.
+
+- `POST /api/rooms/{room_id}/files` (room-member gated, multipart) — same
+  8 MB cap as images (`MAX_FILE_BYTES`, currently an alias of
+  `MAX_IMAGE_BYTES`; a real, independently-configurable size-limit redesign
+  is a separate later task — see the open file/image size-limit issue), but
+  **no content-type allowlist** — arbitrary file types are the point of this
+  endpoint, unlike `/images`.
+- `GET /api/rooms/{room_id}/files/{file_id}` (room-member gated) — 404s if
+  the file doesn't belong to that room, otherwise streams it via
+  `FileResponse(..., filename=...)`. Passing `filename=` makes Starlette set
+  `Content-Disposition: attachment`, which forces a download in the browser
+  regardless of content-type — the deliberate mitigation against a
+  user-uploaded `.html`/`.svg` executing script same-origin (session-cookie
+  theft) if opened directly. This is why there's no content-type blocklist
+  on top of it: forcing a download already neutralizes that whole class of
+  risk.
+- The WS `"message"` handler and `message_events.py` push-body/broadcast
+  logic mirror the image path exactly (an optional `file_id`, validated
+  against the room; push body says "`{username} sent a file`" for a
+  file-only message).
+
+Same orphaned-upload disk-space caveat as images applies here too.
+
 ## Emoji & reactions
 
 An emoji picker in the frontend composer is purely client-side (a static
@@ -402,11 +436,11 @@ scoped out.
   everywhere it's displayed.
 - `POST /api/auth/me/avatar` / `DELETE /api/auth/me/avatar` — reuse
   `app/storage.py`'s upload primitives (`read_capped`, `process_image`,
-  `save_image`) from image uploads, but call `process_image(..., square=True,
+  `save_file`) from image uploads, but call `process_image(..., square=True,
   max_dimension=512)` — a new option that center-crops before downscaling,
   since avatars need a fixed square shape at a much smaller size than a
   message image. Unlike message images (which never delete), the previous
-  avatar file **is deleted** on replace/remove (`storage.delete_image`) —
+  avatar file **is deleted** on replace/remove (`storage.delete_file`) —
   safe to do here because it's strictly one file per user, no accumulation
   risk to accept the way an orphaned message-image upload has.
 - `GET /api/users/{user_id}/avatar` (`app/routers/users.py`, new router) —
