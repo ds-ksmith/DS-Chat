@@ -7,8 +7,8 @@
 .emoji-picker {
   position: absolute;
   z-index: 31;
-  width: 280px;
-  max-height: 320px;
+  width: 320px;
+  max-height: 380px;
   overflow-y: auto;
   background: var(--card-bg);
   border: 1px solid var(--ds-border);
@@ -46,7 +46,7 @@
 
 .emoji-picker-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(9, 1fr);
   gap: 2px;
 }
 
