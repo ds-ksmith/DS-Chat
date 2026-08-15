@@ -1,3 +1,4 @@
+import { useResizableWidth } from '../hooks/useResizableWidth'
 import type { MyRoomItem } from '../types'
 import { RoomRow } from './RoomRow'
 import './Sidebar.css'
@@ -24,8 +25,17 @@ export function Sidebar({
   const query = searchQuery.trim().toLowerCase()
   const filtered = query ? rooms.filter((r) => r.name.toLowerCase().includes(query)) : rooms
 
+  const { width, startResize } = useResizableWidth({
+    storageKey: 'sidebar-width',
+    defaultWidth: 300,
+    min: 220,
+    max: 480,
+    anchor: 'left',
+  })
+
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" style={{ width }}>
+      <div className="sidebar-resize-handle" onPointerDown={startResize} />
       <div className="sidebar-toolbar">
         <div className="sidebar-search">
           <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">

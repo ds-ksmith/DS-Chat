@@ -5,12 +5,22 @@ interface UseResizableWidthOptions {
   defaultWidth: number
   min: number
   max: number
+  // 'right' (default): panel sits against the viewport's right edge, width
+  // is measured from the cursor to that edge -- a handle on the panel's
+  // LEFT edge drags naturally. 'left': panel sits against the left edge,
+  // width is just the cursor's x position -- a handle on the panel's RIGHT
+  // edge drags naturally.
+  anchor?: 'left' | 'right'
 }
 
-// Right-anchored resizable panel: width is the distance from the cursor to
-// the viewport's right edge, so a handle on the panel's left edge drags
-// naturally. Persists to localStorage so it survives a reload.
-export function useResizableWidth({ storageKey, defaultWidth, min, max }: UseResizableWidthOptions) {
+// Persists to localStorage so it survives a reload.
+export function useResizableWidth({
+  storageKey,
+  defaultWidth,
+  min,
+  max,
+  anchor = 'right',
+}: UseResizableWidthOptions) {
   const [width, setWidth] = useState(() => {
     const stored = Number(localStorage.getItem(storageKey))
     return stored >= min && stored <= max ? stored : defaultWidth
@@ -22,7 +32,8 @@ export function useResizableWidth({ storageKey, defaultWidth, min, max }: UseRes
   useEffect(() => {
     function handleMove(e: PointerEvent<Window> | globalThis.PointerEvent) {
       if (!draggingRef.current) return
-      const next = Math.min(max, Math.max(min, window.innerWidth - e.clientX))
+      const raw = anchor === 'left' ? e.clientX : window.innerWidth - e.clientX
+      const next = Math.min(max, Math.max(min, raw))
       setWidth(next)
     }
     function handleUp() {
