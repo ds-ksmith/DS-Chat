@@ -134,3 +134,29 @@ def test_add_member_notifies_target_user_via_websocket(ws_client_factory, monkey
 
         received = bob_ws.receive_json()
         assert received == {"type": "room_added", "room_id": room["id"]}
+
+
+def test_profile_update_notifies_room_members_via_websocket(ws_client_factory, monkeypatch):
+    # Only reaches clients that have the room's own channel joined --
+    # exactly the case where a stale avatar/display name would actually be
+    # visible on screen (a room the user has open right now).
+    _fake_send_email(monkeypatch)
+
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    bob = _register_ws(instance2, _unique("bob"))
+    instance2.post(f"/api/rooms/{room['id']}/join")
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        bob_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert bob_ws.receive_json()["type"] == "joined"
+
+        resp = instance1.patch("/api/auth/me", json={"display_name": "Alice Updated"})
+        assert resp.status_code == 200, resp.text
+
+        received = bob_ws.receive_json()
+        assert received == {"type": "member_updated", "room_id": room["id"], "user_id": alice["id"]}

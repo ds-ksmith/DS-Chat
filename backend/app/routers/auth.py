@@ -12,6 +12,7 @@ from app.services.auth_service import (
     InvalidCredentialsError,
     authenticate_user,
 )
+from app.services.message_events import broadcast_member_updated
 from app.services.password_service import (
     InvalidCurrentPasswordError,
     PasswordResetInvalidError,
@@ -70,6 +71,7 @@ async def me(current_user: User = Depends(get_current_user)) -> User:
 
 @router.patch("/me", response_model=UserRead)
 async def update_profile(
+    request: Request,
     data: ProfileUpdate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -85,11 +87,16 @@ async def update_profile(
         current_user.theme = updates["theme"]
     await db.commit()
     await db.refresh(current_user)
+    # theme is private to this user, not shown to anyone else -- only
+    # broadcast when something other members would actually see changed.
+    if "display_name" in updates:
+        await broadcast_member_updated(db, request.app.state.broadcaster, current_user.id)
     return current_user
 
 
 @router.post("/me/avatar", response_model=UserRead)
 async def upload_avatar(
+    request: Request,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -123,11 +130,13 @@ async def upload_avatar(
     if previous_filename:
         delete_file(previous_filename)
 
+    await broadcast_member_updated(db, request.app.state.broadcaster, current_user.id)
     return current_user
 
 
 @router.delete("/me/avatar", response_model=UserRead)
 async def remove_avatar(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
@@ -140,6 +149,7 @@ async def remove_avatar(
     if previous_filename:
         delete_file(previous_filename)
 
+    await broadcast_member_updated(db, request.app.state.broadcaster, current_user.id)
     return current_user
 
 

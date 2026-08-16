@@ -119,6 +119,12 @@ export interface ChatRoomAddedEnvelope {
   room_id: string
 }
 
+export interface ChatMemberUpdatedEnvelope {
+  type: 'member_updated'
+  room_id: string
+  user_id: string
+}
+
 export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
@@ -126,6 +132,7 @@ export type ServerEnvelope =
   | ChatJoinedEnvelope
   | ChatErrorEnvelope
   | ChatRoomAddedEnvelope
+  | ChatMemberUpdatedEnvelope
 
 export interface AdminUser {
   id: string

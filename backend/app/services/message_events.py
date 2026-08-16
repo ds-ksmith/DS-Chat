@@ -117,6 +117,22 @@ async def broadcast_reaction_update(
     # image uploads (see backend/README.md).
 
 
+async def broadcast_member_updated(db: AsyncSession, broadcaster: Broadcaster, user_id: uuid.UUID) -> None:
+    """Tells every room a user belongs to that their displayable info
+    (avatar, display name) changed -- without it, other members' already-
+    fetched member lists (and anything resolving avatar/name from them,
+    like MessageList) go stale until the room is reopened. Only reaches
+    clients that currently have that room's channel joined, which is
+    exactly when a stale avatar would actually be visible on screen."""
+    result = await db.execute(
+        select(RoomMembership.room_id).where(RoomMembership.user_id == user_id)
+    )
+    for (room_id,) in result.all():
+        await broadcaster.publish(
+            room_id, {"type": "member_updated", "room_id": str(room_id), "user_id": str(user_id)}
+        )
+
+
 async def broadcast_room_added(broadcaster: Broadcaster, user_id: uuid.UUID, room: Room) -> None:
     """The only signal a user's open client gets that they were just added
     to a room -- without it, GET /rooms/mine is only ever fetched once at

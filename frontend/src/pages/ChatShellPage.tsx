@@ -64,8 +64,9 @@ export function ChatShellPage() {
     () =>
       socket.subscribe((envelope) => {
         if (envelope.type === 'room_added') refreshRooms()
+        else if (envelope.type === 'member_updated' && envelope.room_id === roomId) refreshMembers()
       }),
-    [socket, refreshRooms],
+    [socket, refreshRooms, refreshMembers, roomId],
   )
 
   useEffect(() => {
