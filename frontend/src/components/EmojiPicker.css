@@ -88,3 +88,20 @@
 .emoji-picker-item:hover {
   background: var(--ds-surface-2);
 }
+
+/* The picker is positioned absolutely relative to its trigger button, which
+   can sit close enough to a narrow viewport's edge that the full 320px
+   width runs off-screen (e.g. the composer's emoji trigger, near the left
+   edge, overflows the right edge on a 375px-wide phone). Shrinking the
+   fixed width -- rather than trying to dynamically reposition based on the
+   trigger's actual offset -- is enough margin for every real trigger
+   position in this app. */
+@media (max-width: 480px) {
+  .emoji-picker {
+    width: min(280px, calc(100vw - 32px));
+  }
+
+  .emoji-picker-grid {
+    grid-template-columns: repeat(7, 1fr);
+  }
+}

@@ -20,6 +20,7 @@ import {
 } from '../api/webhooks'
 import { useAuth } from '../context/AuthContext'
 import { useResizableWidth } from '../hooks/useResizableWidth'
+import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type {
   EventSubscription,
   EventType,
@@ -57,6 +58,8 @@ export function RoomInfoPanel({
 }: RoomInfoPanelProps) {
   const { user } = useAuth()
   const myRole = room.role
+  const windowWidth = useWindowWidth()
+  const isMobile = windowWidth < MOBILE_BREAKPOINT
   const { width, startResize } = useResizableWidth({
     storageKey: 'room-info-panel-width',
     defaultWidth: 260,
@@ -231,8 +234,8 @@ export function RoomInfoPanel({
   }
 
   return (
-    <aside className="room-info-panel" style={{ width }}>
-      <div className="room-info-resize-handle" onPointerDown={startResize} />
+    <aside className="room-info-panel" style={isMobile ? undefined : { width }}>
+      {!isMobile && <div className="room-info-resize-handle" onPointerDown={startResize} />}
       <div className="room-info-header">
         <span className="room-info-header-label">Details</span>
         <button type="button" className="room-info-close" onClick={onClose} aria-label="Close">

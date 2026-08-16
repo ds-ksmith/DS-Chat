@@ -106,7 +106,7 @@ export function ChatShellPage() {
             )
           ))}
 
-        {!isMobile && infoOpen && activeRoom && (
+        {infoOpen && activeRoom && (
           <RoomInfoPanel
             room={activeRoom}
             members={members}

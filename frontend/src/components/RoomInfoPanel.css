@@ -28,6 +28,23 @@
   background: color-mix(in srgb, var(--ds-accent) 40%, transparent);
 }
 
+/* Below MOBILE_BREAKPOINT (frontend/src/hooks/useWindowWidth.ts), the
+   resizable-aside layout doesn't fit -- shown as a full-viewport overlay
+   instead. RoomInfoPanel.tsx skips its inline `style={{ width }}` on
+   mobile so this width rule isn't fighting an inline style, which would
+   otherwise win regardless of this media query's specificity. */
+@media (max-width: 859px) {
+  .room-info-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    border-left: none;
+  }
+}
+
 .room-info-header {
   display: flex;
   justify-content: space-between;
