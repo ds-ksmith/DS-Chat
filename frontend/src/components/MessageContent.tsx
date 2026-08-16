@@ -46,20 +46,19 @@ function preserveLineBreaks(text: string): string {
     .join('\n')
 }
 
+// Shared with FilePreviewModal so both render paths carry the exact same
+// XSS mitigation (disableParsingRawHTML) -- duplicating this object would
+// risk the two drifting out of sync if one gets edited later.
+export const MARKDOWN_OPTIONS = {
+  // The core XSS mitigation: raw HTML in message content is escaped
+  // and printed literally instead of being parsed into elements.
+  disableParsingRawHTML: true,
+  overrides: {
+    a: { props: { target: '_blank', rel: 'noopener noreferrer' } },
+    img: { component: MarkdownImageLink },
+  },
+}
+
 export function MessageContent({ content }: MessageContentProps) {
-  return (
-    <Markdown
-      options={{
-        // The core XSS mitigation: raw HTML in message content is escaped
-        // and printed literally instead of being parsed into elements.
-        disableParsingRawHTML: true,
-        overrides: {
-          a: { props: { target: '_blank', rel: 'noopener noreferrer' } },
-          img: { component: MarkdownImageLink },
-        },
-      }}
-    >
-      {preserveLineBreaks(content)}
-    </Markdown>
-  )
+  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(content)}</Markdown>
 }
