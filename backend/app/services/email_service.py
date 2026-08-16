@@ -25,13 +25,33 @@ async def _deliver(cfg: SmtpSettings, to_address: str, subject: str, body: str) 
     message.set_content(body)
 
     password = decrypt(cfg.password_encrypted) if cfg.password_encrypted else None
+
+    # "Use TLS" means "encrypt this connection", but SMTP has two genuinely
+    # different ways to do that, and picking the wrong one breaks the
+    # handshake outright rather than just failing to encrypt -- aiosmtplib's
+    # own `use_tls` param means *implicit* TLS (encrypted from the first
+    # byte, port 465's convention); attempting that against a STARTTLS-only
+    # port produces exactly `[SSL: WRONG_VERSION_NUMBER]` (a client TLS
+    # ClientHello sent to a server still expecting a plaintext SMTP
+    # greeting). So the actual negotiation mode has to be inferred from the
+    # port, matching the convention every mail client uses: 465 is implicit
+    # TLS, everything else (587, 25, ...) is STARTTLS (plaintext connection,
+    # then upgrade). `start_tls=True` (rather than leaving it to
+    # aiosmtplib's opportunistic default) makes the requirement strict --
+    # if the server doesn't actually support STARTTLS, this fails loudly
+    # instead of silently sending in plaintext despite the admin asking for
+    # encryption.
+    use_implicit_tls = cfg.use_tls and cfg.port == 465
+    require_starttls = cfg.use_tls and cfg.port != 465
+
     await aiosmtplib.send(
         message,
         hostname=cfg.host,
         port=cfg.port,
         username=cfg.username or None,
         password=password,
-        use_tls=cfg.use_tls,
+        use_tls=use_implicit_tls,
+        start_tls=require_starttls,
     )
 
 

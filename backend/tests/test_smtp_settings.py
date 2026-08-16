@@ -153,6 +153,91 @@ async def test_send_test_email_success(client, db_session, monkeypatch):
     assert calls[0]["hostname"] == "smtp.example.com"
 
 
+async def test_send_test_email_port_587_uses_starttls_not_implicit_tls(client, db_session, monkeypatch):
+    # Regression test: port 587 (what most providers, e.g. DreamHost,
+    # document as their primary submission port) needs STARTTLS -- a
+    # plaintext connection that upgrades in-band -- not implicit TLS
+    # (encrypted from the first byte, port 465's convention). Passing
+    # cfg.use_tls straight through as aiosmtplib's `use_tls` kwarg forces
+    # implicit TLS regardless of port, which breaks the handshake outright
+    # against a STARTTLS-only server ([SSL: WRONG_VERSION_NUMBER]).
+    calls = []
+
+    async def fake_send(message, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.services.email_service.aiosmtplib.send", fake_send)
+
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await client.put(
+        "/api/admin/settings/smtp",
+        json={
+            "host": "smtp.example.com",
+            "port": 587,
+            "from_address": "noreply@example.com",
+            "use_tls": True,
+        },
+    )
+
+    resp = await client.post("/api/admin/settings/smtp/test")
+    assert resp.status_code == 204
+    assert calls[0]["use_tls"] is False
+    assert calls[0]["start_tls"] is True
+
+
+async def test_send_test_email_port_465_uses_implicit_tls(client, db_session, monkeypatch):
+    calls = []
+
+    async def fake_send(message, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.services.email_service.aiosmtplib.send", fake_send)
+
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await client.put(
+        "/api/admin/settings/smtp",
+        json={
+            "host": "smtp.example.com",
+            "port": 465,
+            "from_address": "noreply@example.com",
+            "use_tls": True,
+        },
+    )
+
+    resp = await client.post("/api/admin/settings/smtp/test")
+    assert resp.status_code == 204
+    assert calls[0]["use_tls"] is True
+    assert calls[0]["start_tls"] is False
+
+
+async def test_send_test_email_tls_disabled_uses_neither_mode(client, db_session, monkeypatch):
+    calls = []
+
+    async def fake_send(message, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("app.services.email_service.aiosmtplib.send", fake_send)
+
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await client.put(
+        "/api/admin/settings/smtp",
+        json={
+            "host": "smtp.example.com",
+            "port": 25,
+            "from_address": "noreply@example.com",
+            "use_tls": False,
+        },
+    )
+
+    resp = await client.post("/api/admin/settings/smtp/test")
+    assert resp.status_code == 204
+    assert calls[0]["use_tls"] is False
+    assert calls[0]["start_tls"] is False
+
+
 async def test_send_test_email_surfaces_failure(client, db_session, monkeypatch):
     async def fake_send(message, **kwargs):
         raise ConnectionRefusedError("boom")
