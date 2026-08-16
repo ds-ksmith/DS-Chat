@@ -20,7 +20,23 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   const onUnauthenticatedRef = useRef(onUnauthenticated)
   onUnauthenticatedRef.current = onUnauthenticated
   const subscribersRef = useRef(new Set<(envelope: ServerEnvelope) => void>())
-  const joinedRoomsRef = useRef(new Set<string>())
+  // Rooms the app *wants* joined (set via joinRoom/leaveRoom) -- distinct
+  // from whether the server currently has this connection joined, which is
+  // additionally gated on document visibility below. A backgrounded tab
+  // stays technically connected but tells the server "leave" for every
+  // desired room, so the server's existing offline-push logic (which keys
+  // off room presence, not raw connection state) correctly treats a
+  // backgrounded user the same as a disconnected one instead of assuming a
+  // live WebSocket delivery the user can't actually see will do the job.
+  const desiredRoomsRef = useRef(new Set<string>())
+  const isVisibleRef = useRef(document.visibilityState === 'visible')
+
+  const sendRoomFrame = useCallback((type: 'join' | 'leave', roomId: string) => {
+    const ws = socketRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type, room_id: roomId }))
+    }
+  }, [])
 
   useEffect(() => {
     let stopped = false
@@ -43,9 +59,14 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         reconnectDelay = RECONNECT_BASE_DELAY_MS
         setConnected(true)
         // Re-join whatever rooms were joined before a reconnect -- the
-        // server has no memory of a dropped connection's prior state.
-        for (const roomId of joinedRoomsRef.current) {
-          ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
+        // server has no memory of a dropped connection's prior state. Only
+        // while visible: reconnecting from a backgrounded tab should stay
+        // "left" for the same reason backgrounding leaves in the first
+        // place (see desiredRoomsRef's comment above).
+        if (isVisibleRef.current) {
+          for (const roomId of desiredRoomsRef.current) {
+            sendRoomFrame('join', roomId)
+          }
         }
       }
 
@@ -89,7 +110,20 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [])
+  }, [sendRoomFrame])
+
+  useEffect(() => {
+    function handleVisibilityChange() {
+      const visible = document.visibilityState === 'visible'
+      if (visible === isVisibleRef.current) return
+      isVisibleRef.current = visible
+      for (const roomId of desiredRoomsRef.current) {
+        sendRoomFrame(visible ? 'join' : 'leave', roomId)
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [sendRoomFrame])
 
   const subscribe = useCallback((handler: (envelope: ServerEnvelope) => void) => {
     subscribersRef.current.add(handler)
@@ -98,21 +132,21 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
     }
   }, [])
 
-  const joinRoom = useCallback((roomId: string) => {
-    joinedRoomsRef.current.add(roomId)
-    const ws = socketRef.current
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
-    }
-  }, [])
+  const joinRoom = useCallback(
+    (roomId: string) => {
+      desiredRoomsRef.current.add(roomId)
+      if (isVisibleRef.current) sendRoomFrame('join', roomId)
+    },
+    [sendRoomFrame],
+  )
 
-  const leaveRoom = useCallback((roomId: string) => {
-    joinedRoomsRef.current.delete(roomId)
-    const ws = socketRef.current
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'leave', room_id: roomId }))
-    }
-  }, [])
+  const leaveRoom = useCallback(
+    (roomId: string) => {
+      desiredRoomsRef.current.delete(roomId)
+      if (isVisibleRef.current) sendRoomFrame('leave', roomId)
+    },
+    [sendRoomFrame],
+  )
 
   const send = useCallback((roomId: string, content: string, imageId?: string, fileId?: string) => {
     const ws = socketRef.current

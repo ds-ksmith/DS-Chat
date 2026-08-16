@@ -23,8 +23,11 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
   const [wsError, setWsError] = useState<string | null>(null)
   const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false)
 
-  useEffect(() => {
-    setHistory([])
+  const refreshHistory = useCallback(() => {
+    // live is cleared alongside history, not just on room switch: it's
+    // superseded by this fetch fully replacing history with the current
+    // authoritative list, so anything already in live would otherwise
+    // render twice once history was fetched.
     setLive([])
     setWsError(null)
     setHistoryUnavailableOffline(false)
@@ -40,6 +43,15 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
   }, [room.id])
 
   useEffect(() => {
+    // Blanks the previous room's messages immediately, rather than leaving
+    // them on screen until the fetch resolves -- refreshHistory itself
+    // deliberately doesn't do this (a resync on the *same* room shouldn't
+    // flash empty while refetching).
+    setHistory([])
+    refreshHistory()
+  }, [room.id, refreshHistory])
+
+  useEffect(() => {
     socket.joinRoom(room.id)
     return () => socket.leaveRoom(room.id)
   }, [socket, room.id])
@@ -53,7 +65,16 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
       // that misattributing one to the wrong room's banner isn't worth
       // guarding against separately.
       socket.subscribe((envelope: ServerEnvelope) => {
-        if (envelope.type === 'message' && envelope.room_id === room.id) {
+        if (envelope.type === 'joined' && envelope.room_id === room.id) {
+          // Fires on initial join (a harmless redundant fetch right after
+          // the mount effect's own) and, more importantly, on every
+          // rejoin -- coming back from a backgrounded tab (see
+          // useChatSocket's visibility handling) or reconnecting after a
+          // dropped connection. Either way, messages could have arrived
+          // while this socket wasn't in the room's channel, so resync
+          // instead of trusting whatever's already in state.
+          refreshHistory()
+        } else if (envelope.type === 'message' && envelope.room_id === room.id) {
           setLive((prev) => [...prev, envelope])
         } else if (envelope.type === 'message_update' && envelope.room_id === room.id) {
           setHistory((prev) =>
@@ -77,7 +98,7 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
           setWsError(envelope.detail)
         }
       }),
-    [socket, room.id],
+    [socket, room.id, refreshHistory],
   )
 
   const connected = socket.connected
