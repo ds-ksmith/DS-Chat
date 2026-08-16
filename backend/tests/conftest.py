@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 os.environ.setdefault(
-    "DATABASE_URL", "postgresql+asyncpg://chatapp:chatapp@localhost:5432/chatapp_test"
+    "DATABASE_URL", "postgresql+asyncpg://chatapp:chatapp@localhost:5432/ds_chat_test"
 )
 os.environ.setdefault("SESSION_SECRET", "test-secret")
 os.environ.setdefault("SESSION_HTTPS_ONLY", "false")

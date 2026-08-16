@@ -6,7 +6,7 @@ from PIL import Image, UnidentifiedImageError
 
 # backend/app/storage.py -> backend/ -> repo root -- same
 # resolve-relative-to-file convention FRONTEND_DIST uses in app/main.py, so
-# this lands in the right place in both local dev and the /srv/chatapp
+# this lands in the right place in both local dev and the /srv/ds-chat
 # production layout with zero new config.
 UPLOADS_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "uploads"
 

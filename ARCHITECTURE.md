@@ -205,19 +205,19 @@ Runs the FastAPI app and Nginx; serves the built PWA static files.
   starting point, managed by a systemd unit:
 
 ```ini
-# /etc/systemd/system/chatapp.service
+# /etc/systemd/system/ds-chat.service
 [Unit]
 Description=Chat service app server
 After=network.target
 
 [Service]
-User=chatapp
-WorkingDirectory=/srv/chatapp
-EnvironmentFile=/etc/chatapp/env
-ExecStart=/srv/chatapp/venv/bin/gunicorn app.main:app \
+User=ds-chat
+WorkingDirectory=/srv/ds-chat
+EnvironmentFile=/etc/ds-chat/env
+ExecStart=/srv/ds-chat/venv/bin/gunicorn app.main:app \
   -k uvicorn.workers.UvicornWorker \
   --workers 4 \
-  --bind unix:/run/chatapp/chatapp.sock
+  --bind unix:/run/ds-chat/ds-chat.sock
 Restart=on-failure
 
 [Install]
@@ -233,16 +233,16 @@ server {
     listen 443 ssl;
     server_name chat.example.com;
 
-    root /srv/chatapp/frontend/dist;
+    root /srv/ds-chat/frontend/dist;
     try_files $uri /index.html;
 
     location /api/ {
-        proxy_pass http://unix:/run/chatapp/chatapp.sock;
+        proxy_pass http://unix:/run/ds-chat/ds-chat.sock;
         proxy_set_header Host $host;
     }
 
     location /ws/ {
-        proxy_pass http://unix:/run/chatapp/chatapp.sock;
+        proxy_pass http://unix:/run/ds-chat/ds-chat.sock;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -252,12 +252,12 @@ server {
 ```
 
 - Secrets (database URL pointing at the data server's private IP, Redis URL,
-  VAPID keys, session secret) live in `/etc/chatapp/env`, loaded via
+  VAPID keys, session secret) live in `/etc/ds-chat/env`, loaded via
   `EnvironmentFile=`, never committed to the repository.
 - Deploy process: `git pull`, install/update dependencies, `alembic upgrade
-  head`, build the frontend, `systemctl restart chatapp`, `nginx -s reload` if
+  head`, build the frontend, `systemctl restart ds-chat`, `nginx -s reload` if
   the Nginx config changed.
-- Logs: `journalctl -u chatapp`, rotated by systemd/journald defaults; add
+- Logs: `journalctl -u ds-chat`, rotated by systemd/journald defaults; add
   `logrotate` if the app also writes its own log files.
 
 ## 10. Security considerations

@@ -1,4 +1,4 @@
-# Deploying KeepItTalking
+# Deploying DS Chat
 
 Two Debian 13 servers, no containers, matching [ARCHITECTURE.md §9](ARCHITECTURE.md#9-deployment-architecture--two-linux-servers-no-docker):
 
@@ -49,8 +49,8 @@ sudo apt install -y postgresql redis-server
 **PostgreSQL** — create the role and database:
 
 ```bash
-sudo -u postgres psql -c "CREATE ROLE chatapp WITH LOGIN PASSWORD '<DB_PASSWORD>';"
-sudo -u postgres psql -c "CREATE DATABASE chatapp OWNER chatapp;"
+sudo -u postgres psql -c "CREATE ROLE ds_chat WITH LOGIN PASSWORD '<DB_PASSWORD>';"
+sudo -u postgres psql -c "CREATE DATABASE ds_chat OWNER ds_chat;"
 ```
 
 Bind it to the private interface only (find the exact config path with
@@ -67,7 +67,7 @@ enough (a single `/32`) that it won't collide with Debian's default
 `127.0.0.1`/`::1`-only entries, so appending is fine:
 
 ```bash
-echo "host    chatapp    chatapp    <APP_SERVER_PRIVATE_IP>/32    scram-sha-256" \
+echo "host    ds_chat    ds_chat    <APP_SERVER_PRIVATE_IP>/32    scram-sha-256" \
   | sudo tee -a /etc/postgresql/17/main/pg_hba.conf
 sudo systemctl restart postgresql
 ```
@@ -95,35 +95,35 @@ sudo ufw enable
 install steps (copy it to `/usr/local/bin/`, cron entry). Off-box shipping
 is left as a placeholder in that script — see §8 below.
 
-## 3. App server: Python, Node.js, the `chatapp` user, and the app itself
+## 3. App server: Python, Node.js, the `ds-chat` user, and the app itself
 
 ```bash
 sudo apt update
 sudo apt install -y python3 python3-venv nodejs npm git
 ```
 
-### 3a. The `chatapp` system user and directory
+### 3a. The `ds-chat` system user and directory
 
 ```bash
-sudo useradd --system --shell /usr/sbin/nologin --home-dir /srv/chatapp --create-home chatapp
-sudo chown chatapp:chatapp /srv/chatapp
-sudo -u chatapp mkdir -p /srv/chatapp/uploads
+sudo useradd --system --shell /usr/sbin/nologin --home-dir /srv/ds-chat --create-home ds-chat
+sudo chown ds-chat:ds-chat /srv/ds-chat
+sudo -u ds-chat mkdir -p /srv/ds-chat/uploads
 ```
 
 ### 3b. Clone the repo (deploy key, not a personal token)
 
 ```bash
-sudo -u chatapp mkdir -p /srv/chatapp/.ssh
-sudo -u chatapp ssh-keygen -t ed25519 -f /srv/chatapp/.ssh/id_ed25519 -N ""
-sudo cat /srv/chatapp/.ssh/id_ed25519.pub
+sudo -u ds-chat mkdir -p /srv/ds-chat/.ssh
+sudo -u ds-chat ssh-keygen -t ed25519 -f /srv/ds-chat/.ssh/id_ed25519 -N ""
+sudo cat /srv/ds-chat/.ssh/id_ed25519.pub
 ```
 
 Add that public key as a **read-only deploy key** on the Gitea repo
 (Settings → Deploy Keys), then:
 
 ```bash
-sudo -u chatapp ssh-keyscan git.darksingularity.org >> /srv/chatapp/.ssh/known_hosts
-sudo -u chatapp git clone git@git.darksingularity.org:DarkSingularity/KeepItTalking.git /srv/chatapp
+sudo -u ds-chat ssh-keyscan git.darksingularity.org >> /srv/ds-chat/.ssh/known_hosts
+sudo -u ds-chat git clone git@git.darksingularity.org:DarkSingularity/ds-chat.git /srv/ds-chat
 ```
 
 (If your Gitea's SSH is on a non-default port, adjust the clone URL and
@@ -132,16 +132,16 @@ sudo -u chatapp git clone git@git.darksingularity.org:DarkSingularity/KeepItTalk
 ### 3c. Backend: venv, env file, migrations, first admin
 
 ```bash
-sudo -u chatapp python3 -m venv /srv/chatapp/backend/.venv
-sudo -u chatapp /srv/chatapp/backend/.venv/bin/pip install -e /srv/chatapp/backend
+sudo -u ds-chat python3 -m venv /srv/ds-chat/backend/.venv
+sudo -u ds-chat /srv/ds-chat/backend/.venv/bin/pip install -e /srv/ds-chat/backend
 ```
 
 ```bash
-sudo mkdir -p /etc/chatapp
-sudo cp /srv/chatapp/deploy/chatapp.env.example /etc/chatapp/env
-sudo chown root:chatapp /etc/chatapp/env
-sudo chmod 0640 /etc/chatapp/env
-sudo -e /etc/chatapp/env   # fill in DATABASE_URL, REDIS_URL, SESSION_SECRET (see below)
+sudo mkdir -p /etc/ds-chat
+sudo cp /srv/ds-chat/deploy/ds-chat.env.example /etc/ds-chat/env
+sudo chown root:ds-chat /etc/ds-chat/env
+sudo chmod 0640 /etc/ds-chat/env
+sudo -e /etc/ds-chat/env   # fill in DATABASE_URL, REDIS_URL, SESSION_SECRET (see below)
 ```
 
 Generate `SESSION_SECRET`:
@@ -150,23 +150,23 @@ Generate `SESSION_SECRET`:
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Run migrations and create the first admin account (as `chatapp`, with the
+Run migrations and create the first admin account (as `ds-chat`, with the
 env file sourced so `DATABASE_URL` is set):
 
 ```bash
-sudo -u chatapp bash -c 'set -a; source /etc/chatapp/env; set +a; \
-  cd /srv/chatapp/backend && .venv/bin/alembic upgrade head'
+sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; \
+  cd /srv/ds-chat/backend && .venv/bin/alembic upgrade head'
 
-sudo -u chatapp bash -c 'set -a; source /etc/chatapp/env; set +a; \
-  cd /srv/chatapp/backend && .venv/bin/python -m app.cli create-user <ADMIN_USERNAME> <ADMIN_EMAIL> "<ADMIN_PASSWORD>" --admin'
+sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; \
+  cd /srv/ds-chat/backend && .venv/bin/python -m app.cli create-user <ADMIN_USERNAME> <ADMIN_EMAIL> "<ADMIN_PASSWORD>" --admin'
 ```
 
 Optional: push notifications. Skipped silently if `VAPID_PUBLIC_KEY`/
-`VAPID_PRIVATE_KEY` are left unset in `/etc/chatapp/env`. To enable:
+`VAPID_PRIVATE_KEY` are left unset in `/etc/ds-chat/env`. To enable:
 
 ```bash
-sudo -u chatapp /srv/chatapp/backend/.venv/bin/python -m app.cli generate-vapid-keys
-# paste the three printed lines into /etc/chatapp/env
+sudo -u ds-chat /srv/ds-chat/backend/.venv/bin/python -m app.cli generate-vapid-keys
+# paste the three printed lines into /etc/ds-chat/env
 ```
 
 Optional: outgoing email (admin-invited signups, room membership notifications).
@@ -182,16 +182,16 @@ admin sets it up.
 Manager forward the whole domain to one port with no custom path routing.
 
 ```bash
-sudo -u chatapp bash -c 'cd /srv/chatapp/frontend && npm ci && npm run build'
+sudo -u ds-chat bash -c 'cd /srv/ds-chat/frontend && npm ci && npm run build'
 ```
 
 ### 3e. systemd unit
 
 ```bash
-sudo cp /srv/chatapp/deploy/systemd/chatapp.service /etc/systemd/system/
+sudo cp /srv/ds-chat/deploy/systemd/ds-chat.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now chatapp
-sudo systemctl status chatapp --no-pager
+sudo systemctl enable --now ds-chat
+sudo systemctl status ds-chat --no-pager
 ```
 
 Confirm it's actually up before continuing:
@@ -200,13 +200,13 @@ Confirm it's actually up before continuing:
 curl -s http://127.0.0.1:8000/api/health   # expect {"status":"ok"}
 ```
 
-### 3f. Let `chatapp` restart its own service (needed for `deploy/upgrade.sh`)
+### 3f. Let `ds-chat` restart its own service (needed for `deploy/upgrade.sh`)
 
 ```bash
-echo 'chatapp ALL=(root) NOPASSWD: /usr/bin/systemctl restart chatapp, /usr/bin/systemctl status chatapp' \
-  | sudo tee /etc/sudoers.d/chatapp
-sudo chmod 0440 /etc/sudoers.d/chatapp
-sudo visudo -cf /etc/sudoers.d/chatapp   # validates syntax before it's live
+echo 'ds-chat ALL=(root) NOPASSWD: /usr/bin/systemctl restart ds-chat, /usr/bin/systemctl status ds-chat' \
+  | sudo tee /etc/sudoers.d/ds-chat
+sudo chmod 0440 /etc/sudoers.d/ds-chat
+sudo visudo -cf /etc/sudoers.d/ds-chat   # validates syntax before it's live
 ```
 
 ### 3g. Firewall
@@ -222,7 +222,7 @@ sudo ufw enable
 
 If NPM reaches this box over the same private network the data server
 uses, bind gunicorn to that private IP instead of `0.0.0.0` in
-`deploy/systemd/chatapp.service` for defense in depth on top of the
+`deploy/systemd/ds-chat.service` for defense in depth on top of the
 firewall rule (edit `--bind`, then `daemon-reload` + `restart`).
 
 ## 4. Configuring Nginx Proxy Manager
@@ -251,17 +251,17 @@ This is config in NPM's own UI/database, not a file this repo ships:
 - Open `https://chat.example.com` in a browser, log in with the admin
   account from §3c, create a room, send a message, confirm it appears
   live (WebSocket working).
-- `sudo journalctl -u chatapp -f` on the app server while doing the above —
+- `sudo journalctl -u ds-chat -f` on the app server while doing the above —
   should show request logs, no tracebacks.
 
 ## 6. Upgrades
 
 ```bash
-sudo -u chatapp /srv/chatapp/deploy/upgrade.sh
+sudo -u ds-chat /srv/ds-chat/deploy/upgrade.sh
 ```
 
 Pulls latest `main`, reinstalls backend deps, runs `alembic upgrade head`,
-rebuilds the frontend, restarts `chatapp`, and curls `/api/health` to
+rebuilds the frontend, restarts `ds-chat`, and curls `/api/health` to
 confirm it came back up. Fails loudly (`set -euo pipefail`) and stops
 before restarting anything if an earlier step — most importantly a failed
 migration — errors out, so a bad deploy doesn't take down the previously
@@ -281,30 +281,30 @@ in practice, downgrades written and tested by hand if one is ever needed).
 ## 7. Backups
 
 `deploy/backup-postgres.sh` (installed in §2) runs nightly via cron,
-producing a gzipped `pg_dump` in `/var/backups/chatapp/` with 14-day local
+producing a gzipped `pg_dump` in `/var/backups/ds-chat/` with 14-day local
 rotation. Off-box shipping is a placeholder in that script (commented-out
 rsync/S3 examples) — decide where those need to go and fill it in.
 
 That script covers Postgres only. Uploaded chat images live on the **app**
-server's disk (`/srv/chatapp/uploads`, created in §3a) — a separate machine
+server's disk (`/srv/ds-chat/uploads`, created in §3a) — a separate machine
 from the data server this script runs on — and currently have no backup
 mechanism at all. Whatever off-box destination you pick above, include
-`/srv/chatapp/uploads` in it too (e.g. a second `rsync` line run from the
+`/srv/ds-chat/uploads` in it too (e.g. a second `rsync` line run from the
 app server).
 
 **Test a restore** (against a scratch database, never directly onto
-`chatapp`):
+`ds_chat`):
 
 ```bash
-sudo -u postgres createdb chatapp_restore_test
-gunzip -c /var/backups/chatapp/chatapp-<TIMESTAMP>.sql.gz | sudo -u postgres psql chatapp_restore_test
-sudo -u postgres dropdb chatapp_restore_test
+sudo -u postgres createdb ds_chat_restore_test
+gunzip -c /var/backups/ds-chat/ds-chat-<TIMESTAMP>.sql.gz | sudo -u postgres psql ds_chat_restore_test
+sudo -u postgres dropdb ds_chat_restore_test
 ```
 
 ## 8. Troubleshooting
 
-- **`chatapp` service won't start**: `sudo journalctl -u chatapp -n 50`.
-  Common causes: `/etc/chatapp/env` missing/malformed (gunicorn workers
+- **`ds-chat` service won't start**: `sudo journalctl -u ds-chat -n 50`.
+  Common causes: `/etc/ds-chat/env` missing/malformed (gunicorn workers
   crash-loop on `pydantic-settings` validation errors), or Postgres/Redis
   unreachable (check the data-server firewall rules in §2 actually match
   the app server's real private IP).
@@ -313,7 +313,7 @@ sudo -u postgres dropdb chatapp_restore_test
   (isolates "app is down" from "NPM can't reach it") — then check §3g's
   `ufw` rule matches NPM's actual source IP.
 - **Migration fails mid-`upgrade.sh`**: the script stops before restarting
-  `chatapp`, so the previous (still-migrated-to-its-old-schema) code keeps
+  `ds-chat`, so the previous (still-migrated-to-its-old-schema) code keeps
   running. Fix the migration, re-run the script.
 - **Chat works but disconnects after ~a minute of inactivity, then
   reconnects**: expected under the current design (§4's NPM timeout note) —
@@ -334,7 +334,7 @@ scope decisions" for the full detail on each):
   re-validated per delivery (DNS-rebinding gap).
 - Backup off-box shipping is a placeholder — decide a destination and fill
   in `deploy/backup-postgres.sh`.
-- Uploaded chat images (`/srv/chatapp/uploads` on the app server) have no
+- Uploaded chat images (`/srv/ds-chat/uploads` on the app server) have no
   backup coverage at all yet, on-box or off — see §7.
 - Uploaded-but-never-sent images (a user attaches a file, then never hits
   Send) leak an orphaned file on disk — no cleanup job for this yet. Not a

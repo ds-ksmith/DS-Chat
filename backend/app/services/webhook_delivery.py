@@ -32,7 +32,7 @@ async def deliver_event(subscription: EventSubscription, event_type: str, payloa
                 content=body,
                 headers={
                     "Content-Type": "application/json",
-                    "X-KeepItTalking-Signature": f"sha256={signature}",
+                    "X-DS-Chat-Signature": f"sha256={signature}",
                 },
             )
     except httpx.HTTPError:

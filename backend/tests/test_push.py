@@ -31,7 +31,7 @@ async def test_subscribe_creates_row(client, db_session):
     resp = await client.post("/api/push/subscribe", json=payload)
     assert resp.status_code == 204
 
-    # The chatapp_test database is shared across the whole suite and the
+    # The ds_chat_test database is shared across the whole suite and the
     # ws_client-based tests below intentionally don't roll back (see
     # conftest.ws_client), so a unique endpoint keeps this test independent
     # of leftover rows from those instead of asserting on the total count.

@@ -23,8 +23,8 @@ export default defineConfig({
       },
       registerType: 'autoUpdate',
       manifest: {
-        name: 'KeepItTalking',
-        short_name: 'Talking',
+        name: 'DS Chat',
+        short_name: 'DS Chat',
         start_url: '/',
         display: 'standalone',
         background_color: '#07080f', // --ds-void

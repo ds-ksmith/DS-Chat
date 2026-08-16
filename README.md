@@ -1,4 +1,4 @@
-# KeepItTalking
+# DS Chat
 
 A web-based team chat service (Mattermost-style, no threaded conversations),
 invite-only. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design
@@ -25,8 +25,8 @@ prioritized.
 
 ```bash
 # 1. Postgres (see backend/README.md for details)
-docker run -d --name chatapp-postgres \
-  -e POSTGRES_USER=chatapp -e POSTGRES_PASSWORD=chatapp -e POSTGRES_DB=chatapp \
+docker run -d --name ds-chat-postgres \
+  -e POSTGRES_USER=ds_chat -e POSTGRES_PASSWORD=ds_chat -e POSTGRES_DB=ds_chat \
   -p 5432:5432 postgres:16-alpine
 
 # 2. Backend

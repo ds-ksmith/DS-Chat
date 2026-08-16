@@ -158,7 +158,7 @@ async def test_outgoing_webhook_delivers_signed_payload(client, db_session, monk
     assert len(posts) == 1
     body = posts[0]["content"]
     expected_signature = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
-    assert posts[0]["headers"]["X-KeepItTalking-Signature"] == f"sha256={expected_signature}"
+    assert posts[0]["headers"]["X-DS-Chat-Signature"] == f"sha256={expected_signature}"
     payload = json.loads(body)
     assert payload["event"] == "message.created"
     assert payload["data"]["content"] == "ping"

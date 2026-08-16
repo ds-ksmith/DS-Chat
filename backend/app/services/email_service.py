@@ -58,6 +58,6 @@ async def send_test_email(db: AsyncSession, to_address: str) -> None:
     await _deliver(
         cfg,
         to_address,
-        "KeepItTalking test email",
-        "This is a test email from KeepItTalking to confirm your SMTP settings are working.",
+        "DS Chat test email",
+        "This is a test email from DS Chat to confirm your SMTP settings are working.",
     )

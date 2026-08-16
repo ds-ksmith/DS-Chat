@@ -44,7 +44,7 @@ async def request_password_reset(db: AsyncSession, email: str, base_url: str) ->
     await send_email(
         db,
         email,
-        "Reset your KeepItTalking password",
+        "Reset your DS Chat password",
         f"Someone requested a password reset for this account.\n\n"
         f"Reset it here:\n{reset_link}\n\n"
         f"This link expires in 15 minutes. If you didn't request this, "

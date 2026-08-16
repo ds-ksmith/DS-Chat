@@ -1,4 +1,4 @@
-# KeepItTalking frontend (Phase 1)
+# DS Chat frontend (Phase 1)
 
 React + Vite PWA. Login, room list, and chat views wired to the backend's
 REST API and `/ws/chat` WebSocket endpoint. See [`../README.md`](../README.md)

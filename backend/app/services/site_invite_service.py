@@ -43,8 +43,8 @@ async def create_site_invite(
     await send_email(
         db,
         email,
-        "You're invited to join KeepItTalking",
-        f"You've been invited to join KeepItTalking by {actor.username}.\n\n"
+        "You're invited to join DS Chat",
+        f"You've been invited to join DS Chat by {actor.username}.\n\n"
         f"Set up your account here:\n{signup_link}\n\n"
         f"This link expires in 7 days.",
     )

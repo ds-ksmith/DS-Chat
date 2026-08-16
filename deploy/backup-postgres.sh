@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# Nightly Postgres backup for the KeepItTalking data server.
+# Nightly Postgres backup for the DS Chat data server.
 #
 # Install (as root, on the data server):
-#   sudo cp deploy/backup-postgres.sh /usr/local/bin/chatapp-backup-postgres.sh
-#   sudo chmod 0700 /usr/local/bin/chatapp-backup-postgres.sh
+#   sudo cp deploy/backup-postgres.sh /usr/local/bin/ds-chat-backup-postgres.sh
+#   sudo chmod 0700 /usr/local/bin/ds-chat-backup-postgres.sh
 #   sudo crontab -e
 #     # add:
-#     0 3 * * * /usr/local/bin/chatapp-backup-postgres.sh
+#     0 3 * * * /usr/local/bin/ds-chat-backup-postgres.sh
 #
 # See ../DEPLOYMENT.md for the full data-server setup this fits into.
 #
 # Covers Postgres only. Uploaded chat images live on the app server's disk
-# (/srv/chatapp/uploads, see app/storage.py), not here -- see DEPLOYMENT.md
+# (/srv/ds-chat/uploads, see app/storage.py), not here -- see DEPLOYMENT.md
 # §7 for that gap.
 
 set -euo pipefail
 
-DB_NAME="chatapp"
-DB_USER="chatapp"
-BACKUP_DIR="/var/backups/chatapp"
+DB_NAME="ds_chat"
+DB_USER="ds_chat"
+BACKUP_DIR="/var/backups/ds-chat"
 RETENTION_DAYS=14
 TIMESTAMP="$(date +%F-%H%M%S)"
-DEST="${BACKUP_DIR}/chatapp-${TIMESTAMP}.sql.gz"
+DEST="${BACKUP_DIR}/ds-chat-${TIMESTAMP}.sql.gz"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -35,7 +35,7 @@ echo "Backed up ${DB_NAME} to ${DEST}"
 
 # Local rotation -- keep RETENTION_DAYS days on this box regardless of
 # whether off-box shipping (below) is configured yet.
-find "$BACKUP_DIR" -name 'chatapp-*.sql.gz' -mtime "+${RETENTION_DAYS}" -delete
+find "$BACKUP_DIR" -name 'ds-chat-*.sql.gz' -mtime "+${RETENTION_DAYS}" -delete
 
 # --- Off-box shipping -------------------------------------------------
 # Not configured yet -- destination wasn't decided as of this script being
@@ -44,9 +44,9 @@ find "$BACKUP_DIR" -name 'chatapp-*.sql.gz' -mtime "+${RETENTION_DAYS}" -delete
 #
 # rsync (to a second host reachable by the data server, e.g. over the same
 # private network / a WireGuard tunnel used for anything else):
-#   rsync -a "$DEST" backup-user@backup-host:/path/to/chatapp-backups/
+#   rsync -a "$DEST" backup-user@backup-host:/path/to/ds-chat-backups/
 #
 # S3-compatible object storage (needs `aws configure` or rclone set up
 # separately first):
-#   aws s3 cp "$DEST" s3://your-bucket/chatapp-backups/
-#   # or: rclone copy "$DEST" remote:chatapp-backups/
+#   aws s3 cp "$DEST" s3://your-bucket/ds-chat-backups/
+#   # or: rclone copy "$DEST" remote:ds-chat-backups/

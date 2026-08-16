@@ -59,7 +59,7 @@ export function ResetPasswordPage() {
       <div className="login-card">
         <div className="login-brand">
           <img src={logo} alt="" />
-          <span>KeepItTalking</span>
+          <span>DS Chat</span>
         </div>
 
         {checking && <p className="login-copy">Checking your reset link…</p>}

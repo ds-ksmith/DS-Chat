@@ -1,7 +1,7 @@
 [project]
-name = "chatapp"
+name = "ds-chat"
 version = "0.1.0"
-description = "KeepItTalking chat service backend"
+description = "DS Chat backend service"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",
@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.scripts]
-chatapp-create-user = "app.cli:main"
+ds-chat-create-user = "app.cli:main"
 
 [project.optional-dependencies]
 dev = [

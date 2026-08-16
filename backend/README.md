@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, admin-configurable upload size limits, emoji & reactions, user profiles, site invites & email, password reset)
+# DS Chat backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, admin-configurable upload size limits, emoji & reactions, user profiles, site invites & email, password reset)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and direct
@@ -24,15 +24,15 @@ Accounts are created by an operator on the app server — see step 4 below.
 Any local Postgres 14+ works. The quickest option is a container:
 
 ```bash
-docker run -d --name chatapp-postgres \
-  -e POSTGRES_USER=chatapp -e POSTGRES_PASSWORD=chatapp -e POSTGRES_DB=chatapp \
+docker run -d --name ds-chat-postgres \
+  -e POSTGRES_USER=ds_chat -e POSTGRES_PASSWORD=ds_chat -e POSTGRES_DB=ds_chat \
   -p 5432:5432 postgres:16-alpine
 ```
 
 Then create the test database (used by the test suite, kept separate from dev data):
 
 ```bash
-docker exec chatapp-postgres psql -U chatapp -d chatapp -c "CREATE DATABASE chatapp_test;"
+docker exec ds-chat-postgres psql -U ds_chat -d ds_chat -c "CREATE DATABASE ds_chat_test;"
 ```
 
 (Docker here is purely a local-dev convenience for standing up Postgres quickly —
@@ -44,7 +44,7 @@ Used for cross-instance WebSocket fan-out and presence (see the section
 below). Required — there's no in-memory fallback.
 
 ```bash
-docker run -d --name chatapp-redis -p 6379:6379 redis:7-alpine
+docker run -d --name ds-chat-redis -p 6379:6379 redis:7-alpine
 ```
 
 ### 3. Python environment
@@ -99,13 +99,13 @@ connected to the other, purely via Redis.
 
 ### 8. Run tests
 
-Tests run against a real Postgres database (`chatapp_test` by default — native
+Tests run against a real Postgres database (`ds_chat_test` by default — native
 `ENUM`/`UUID` types aren't faithfully reproduced by SQLite) and a real Redis
 (db 15 by default, kept separate from dev use of db 0), with each test
 wrapped in a transaction that's rolled back afterward:
 
 ```bash
-DATABASE_URL=postgresql+asyncpg://chatapp:chatapp@localhost:5432/chatapp_test .venv/bin/pytest
+DATABASE_URL=postgresql+asyncpg://ds_chat:ds_chat@localhost:5432/ds_chat_test .venv/bin/pytest
 ```
 
 ## Layout
@@ -247,7 +247,7 @@ call sites rather than duplicated).
 **Outgoing webhooks / event subscriptions** (`POST
 /api/rooms/{id}/event-subscriptions`, room-admin managed; room-scoped or
 global via `room_id=null`): fires an HMAC-SHA256-signed POST
-(`X-KeepItTalking-Signature: sha256=...`) on `message.created`/
+(`X-DS-Chat-Signature: sha256=...`) on `message.created`/
 `message.updated`, delivered via a backgrounded `asyncio.create_task`
 (`app/services/webhook_delivery.py`) — safe to background here, unlike the
 Phase 4 push lesson, since there's no DB session involved, just the

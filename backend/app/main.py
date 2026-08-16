@@ -18,8 +18,8 @@ from app.ws.connection_manager import ConnectionManager
 from app.ws.presence import Presence
 
 # backend/app/main.py -> backend/ -> repo root -- matches both the local
-# monorepo layout and the production layout (/srv/chatapp/backend,
-# /srv/chatapp/frontend/dist), which is the same relative shape.
+# monorepo layout and the production layout (/srv/ds-chat/backend,
+# /srv/ds-chat/frontend/dist), which is the same relative shape.
 FRONTEND_DIST = pathlib.Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
 
 
@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="KeepItTalking", lifespan=lifespan)
+    app = FastAPI(title="DS Chat", lifespan=lifespan)
 
     app.add_middleware(
         SessionMiddleware,

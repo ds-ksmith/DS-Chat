@@ -34,7 +34,7 @@ export function LoginPage() {
       <div className="login-card">
         <div className="login-brand">
           <img src={logo} alt="" />
-          <span>KeepItTalking</span>
+          <span>DS Chat</span>
         </div>
         <p className="login-copy">This is an invite-only site. Ask an admin for an account.</p>
         <form className="login-form" onSubmit={handleSubmit}>

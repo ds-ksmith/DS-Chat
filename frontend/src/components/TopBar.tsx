@@ -46,7 +46,7 @@ export function TopBar() {
     <header className="top-bar">
       <div className="top-bar-brand">
         <img src={logo} alt="" className="top-bar-logo" />
-        <span className="top-bar-title">KeepItTalking</span>
+        <span className="top-bar-title">DS Chat</span>
       </div>
 
       <div className="top-bar-user">

@@ -32,7 +32,7 @@ export function ForgotPasswordPage() {
       <div className="login-card">
         <div className="login-brand">
           <img src={logo} alt="" />
-          <span>KeepItTalking</span>
+          <span>DS Chat</span>
         </div>
 
         {sent ? (
