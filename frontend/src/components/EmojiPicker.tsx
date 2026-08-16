@@ -11,6 +11,11 @@ interface EmojiPickerProps {
   align?: 'left' | 'right'
 }
 
+// Kept in sync with .emoji-picker's max-height in EmojiPicker.css -- callers
+// that compute placement dynamically (flipping above/below based on
+// available viewport space) need this to know how much room to check for.
+export const EMOJI_PICKER_MAX_HEIGHT = 380
+
 function searchEmoji(query: string): string[] {
   const q = query.trim().toLowerCase()
   if (!q) return []

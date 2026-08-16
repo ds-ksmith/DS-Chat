@@ -3,7 +3,7 @@ import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { avatarUrlFor, displayNameFor, senderColorIndex } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, MessageFileInfo, RoomMember } from '../types'
-import { EmojiPicker } from './EmojiPicker'
+import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
 import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
 import { ImageLightbox } from './ImageLightbox'
 import { MessageContent } from './MessageContent'
@@ -79,6 +79,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
   const [draft, setDraft] = useState('')
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [reactingId, setReactingId] = useState<string | null>(null)
+  const [reactionPlacement, setReactionPlacement] = useState<'above' | 'below'>('below')
   const [previewFile, setPreviewFile] = useState<MessageFileInfo | null>(null)
 
   function displayNameForUserId(userId: string): string {
@@ -200,7 +201,20 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                   <button
                     type="button"
                     className="message-reaction-trigger"
-                    onClick={() => setReactingId(reactingId === msg.id ? null : msg.id)}
+                    onClick={(e) => {
+                      if (reactingId === msg.id) {
+                        setReactingId(null)
+                        return
+                      }
+                      // Flip upward when the picker wouldn't fit below the
+                      // trigger -- a message near the bottom of the
+                      // scrolled list otherwise opens a picker that runs
+                      // off-screen and can't be used.
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const spaceBelow = window.innerHeight - rect.bottom
+                      setReactionPlacement(spaceBelow < EMOJI_PICKER_MAX_HEIGHT ? 'above' : 'below')
+                      setReactingId(msg.id)
+                    }}
                     aria-label="Add reaction"
                   >
                     🙂
@@ -212,7 +226,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                         setReactingId(null)
                       }}
                       onClose={() => setReactingId(null)}
-                      placement="below"
+                      placement={reactionPlacement}
                       align="right"
                     />
                   )}
