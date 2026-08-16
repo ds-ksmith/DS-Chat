@@ -21,7 +21,13 @@ export default defineConfig({
         // precache should contain.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
       },
-      registerType: 'autoUpdate',
+      // 'autoUpdate' silently activates a new service worker (and its
+      // stale-relative-to-the-new-JS already-loaded page) with nothing
+      // telling the user their currently-open tab has fallen behind --
+      // 'prompt' leaves activation to an explicit updateServiceWorker()
+      // call (UpdateBanner.tsx), so the user gets a "reload for the latest
+      // version" banner instead of silently running old code indefinitely.
+      registerType: 'prompt',
       manifest: {
         name: 'DS Chat',
         short_name: 'DS Chat',

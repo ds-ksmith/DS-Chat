@@ -7,7 +7,18 @@ import { NetworkFirst, NetworkOnly } from 'workbox-strategies'
 
 declare let self: ServiceWorkerGlobalScope
 
-self.skipWaiting()
+// registerType 'prompt' (vite.config.ts) means a newly-installed SW waits
+// in the "waiting" state, still fully cached and ready, rather than
+// unconditionally taking over -- it only activates once the page explicitly
+// asks (UpdateBanner.tsx's updateServiceWorker(), which posts this message)
+// after the user chooses to reload. Without this listener, skipWaiting()
+// would need to run unconditionally at install time, defeating the point
+// of asking first.
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 cleanupOutdatedCaches()
 
 // The app shell -- same effect generateSW gave us automatically in Phase 3.
