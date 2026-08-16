@@ -1,4 +1,5 @@
 import Markdown from 'markdown-to-jsx'
+import { EMOJI_SHORTCODES } from '../lib/emojiShortcodes'
 
 interface MessageContentProps {
   content: string
@@ -21,6 +22,38 @@ function MarkdownImageLink({ src, alt, title }: MarkdownImageLinkProps) {
       {alt || src}
     </a>
   )
+}
+
+const SHORTCODE_PATTERN = /:([a-z0-9_+-]+):/g
+
+// Converts a complete `:name:` shortcode to its emoji, skipping fenced code
+// blocks and inline code spans -- someone pasting code containing
+// `:something:` (a Ruby symbol, a dict key) shouldn't get it silently
+// turned into an emoji. This is render-time only: stored/sent content
+// always keeps the literal `:name:` text, matching how markdown itself is
+// never converted until display.
+function convertShortcodes(text: string): string {
+  const lines = text.split('\n')
+  let inFence = false
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      // Splitting on backtick-delimited spans keeps inline code (`:foo:`)
+      // untouched -- odd-indexed segments are the code spans themselves.
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part, i) =>
+          i % 2 === 0
+            ? part.replace(SHORTCODE_PATTERN, (match, name) => EMOJI_SHORTCODES[name] ?? match)
+            : part,
+        )
+        .join('')
+    })
+    .join('\n')
 }
 
 // CommonMark treats a single newline as a soft break (rendered as a space),
@@ -60,5 +93,5 @@ export const MARKDOWN_OPTIONS = {
 }
 
 export function MessageContent({ content }: MessageContentProps) {
-  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(content)}</Markdown>
+  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(convertShortcodes(content))}</Markdown>
 }
