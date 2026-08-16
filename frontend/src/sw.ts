@@ -3,7 +3,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 import { ExpirationPlugin } from 'workbox-expiration'
 import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
-import { NetworkOnly, StaleWhileRevalidate } from 'workbox-strategies'
+import { NetworkFirst, NetworkOnly } from 'workbox-strategies'
 
 declare let self: ServiceWorkerGlobalScope
 
@@ -20,6 +20,18 @@ registerRoute(
 
 const READ_CACHE_EXPIRATION = { maxEntries: 50, maxAgeSeconds: 7 * 24 * 60 * 60 }
 const cacheableResponse = new CacheableResponsePlugin({ statuses: [0, 200] })
+// Always prefer a live network response over the cache -- these routes back
+// an actively-updating chat, so "stale" isn't an acceptable default the way
+// it can be for e.g. static assets. StaleWhileRevalidate was tried here
+// first, but it serves the *previous* cached response immediately and only
+// refreshes the cache in the background for next time, which means every
+// repeat visit shows content that's one visit behind until a manual reload
+// (confirmed as the cause of #37 -- messages/rooms/members looking stale
+// after leaving and returning to a room, or after another device's update).
+// NetworkFirst keeps the same "readable while offline" behavior (falls back
+// to cache only when the network request itself fails or times out) without
+// that staleness while online.
+const NETWORK_TIMEOUT_SECONDS = 4
 
 // Ported from Phase 3's vite.config.ts `workbox.runtimeCaching` -- that
 // option only applies to the generateSW strategy, so with a hand-written
@@ -29,36 +41,41 @@ registerRoute(({ url }) => url.pathname.startsWith('/api/auth/'), new NetworkOnl
 
 registerRoute(
   ({ url }) => url.pathname === '/api/rooms/mine',
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'api-rooms-mine',
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [cacheableResponse, new ExpirationPlugin(READ_CACHE_EXPIRATION)],
   }),
 )
 registerRoute(
   ({ url }) => url.pathname === '/api/rooms',
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'api-rooms-open',
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [cacheableResponse, new ExpirationPlugin(READ_CACHE_EXPIRATION)],
   }),
 )
 registerRoute(
   ({ url }) => /^\/api\/rooms\/[^/]+\/messages$/.test(url.pathname),
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'api-room-messages',
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [cacheableResponse, new ExpirationPlugin(READ_CACHE_EXPIRATION)],
   }),
 )
 registerRoute(
   ({ url }) => /^\/api\/rooms\/[^/]+\/members$/.test(url.pathname),
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'api-room-members',
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [cacheableResponse, new ExpirationPlugin(READ_CACHE_EXPIRATION)],
   }),
 )
 registerRoute(
   ({ url }) => url.pathname === '/api/invites/mine',
-  new StaleWhileRevalidate({
+  new NetworkFirst({
     cacheName: 'api-invites-mine',
+    networkTimeoutSeconds: NETWORK_TIMEOUT_SECONDS,
     plugins: [cacheableResponse, new ExpirationPlugin(READ_CACHE_EXPIRATION)],
   }),
 )
