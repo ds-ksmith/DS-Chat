@@ -285,12 +285,12 @@ producing a gzipped `pg_dump` in `/var/backups/ds-chat/` with 14-day local
 rotation. Off-box shipping is a placeholder in that script (commented-out
 rsync/S3 examples) — decide where those need to go and fill it in.
 
-That script covers Postgres only. Uploaded chat images live on the **app**
-server's disk (`/srv/ds-chat/uploads`, created in §3a) — a separate machine
-from the data server this script runs on — and currently have no backup
-mechanism at all. Whatever off-box destination you pick above, include
-`/srv/ds-chat/uploads` in it too (e.g. a second `rsync` line run from the
-app server).
+That script covers Postgres only. Uploaded chat images and file attachments
+both live on the **app** server's disk (`/srv/ds-chat/uploads`, created in
+§3a) — a separate machine from the data server this script runs on — and
+currently have no backup mechanism at all. Whatever off-box destination you
+pick above, include `/srv/ds-chat/uploads` in it too (e.g. a second `rsync`
+line run from the app server).
 
 **Test a restore** (against a scratch database, never directly onto
 `ds_chat`):
@@ -334,12 +334,12 @@ scope decisions" for the full detail on each):
   re-validated per delivery (DNS-rebinding gap).
 - Backup off-box shipping is a placeholder — decide a destination and fill
   in `deploy/backup-postgres.sh`.
-- Uploaded chat images (`/srv/ds-chat/uploads` on the app server) have no
-  backup coverage at all yet, on-box or off — see §7.
-- Uploaded-but-never-sent images (a user attaches a file, then never hits
-  Send) leak an orphaned file on disk — no cleanup job for this yet. Not a
-  security issue (still gated by room membership to view), just an eventual
-  disk-space housekeeping item.
+- Uploaded chat images and file attachments (`/srv/ds-chat/uploads` on the
+  app server) have no backup coverage at all yet, on-box or off — see §7.
+- Uploaded-but-never-sent images or files (a user attaches one, then never
+  hits Send) leak an orphaned file on disk — no cleanup job for this yet.
+  Not a security issue (still gated by room membership to view), just an
+  eventual disk-space housekeeping item.
 
 None of these are new to this phase — deploying doesn't change any of them,
 just makes them reachable from the internet instead of localhost, which is

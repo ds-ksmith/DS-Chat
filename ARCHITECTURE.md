@@ -26,7 +26,7 @@ database and Redis; the other runs the application and serves the frontend.
 | Cross-instance broadcast | Redis (pub/sub) | Lets multiple app server processes fan out messages to all connected clients |
 | Push notifications | pywebpush + VAPID | Standard Web Push, works on Android and iOS 16.4+ (PWA must be installed to home screen on iOS) |
 | Frontend | React + Vite, vite-plugin-pwa | Generates the manifest and service worker for install + push |
-| Reverse proxy / TLS | Nginx + Let's Encrypt (certbot) | Terminates TLS, serves static assets, proxies REST + WebSocket traffic |
+| Reverse proxy / TLS | External Nginx Proxy Manager (pre-existing infra, not deployed by this project) | Terminates TLS, forwards REST + WebSocket traffic to the app server's one port. The app itself serves the built static frontend directly — no separate static-asset server needed |
 | Process management | systemd | No Docker — native to the target Linux distro, no extra install |
 | Auth | Session cookies (httpOnly, secure) | Simplest to carry through a WebSocket handshake automatically |
 
@@ -38,7 +38,7 @@ database and Redis; the other runs the application and serves the frontend.
 PWA client (browser + service worker)
         |  REST + WebSocket
         v
-FastAPI app server (N instances behind Nginx)
+FastAPI app server (behind an external reverse proxy / TLS terminator)
         |            |                |
         v            v                v
   PostgreSQL     Redis pub/sub    Push service (pywebpush)
@@ -198,67 +198,48 @@ Runs PostgreSQL and Redis.
 
 ### 9.2 App server
 
-Runs the FastAPI app and Nginx; serves the built PWA static files.
+Runs the FastAPI app, which also serves the built PWA static files directly
+(`backend/app/main.py` mounts `frontend/dist` alongside `/api` and `/ws`) —
+no separate web server runs on this box.
 
 - Python virtualenv, application installed via `pip install -e .` or similar.
 - App run via Gunicorn with Uvicorn workers, one process per CPU core as a
-  starting point, managed by a systemd unit:
+  starting point, managed by a systemd unit binding a plain TCP port:
 
 ```ini
 # /etc/systemd/system/ds-chat.service
 [Unit]
-Description=Chat service app server
+Description=DS Chat app server
 After=network.target
 
 [Service]
 User=ds-chat
-WorkingDirectory=/srv/ds-chat
+WorkingDirectory=/srv/ds-chat/backend
 EnvironmentFile=/etc/ds-chat/env
-ExecStart=/srv/ds-chat/venv/bin/gunicorn app.main:app \
+ExecStart=/srv/ds-chat/backend/.venv/bin/gunicorn app.main:app \
   -k uvicorn.workers.UvicornWorker \
   --workers 4 \
-  --bind unix:/run/ds-chat/ds-chat.sock
+  --bind 0.0.0.0:8000
 Restart=on-failure
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-- Nginx terminates TLS (certbot-managed certificate), serves the built frontend
-  assets directly, and reverse-proxies API and WebSocket traffic to the Unix
-  socket:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name chat.example.com;
-
-    root /srv/ds-chat/frontend/dist;
-    try_files $uri /index.html;
-
-    location /api/ {
-        proxy_pass http://unix:/run/ds-chat/ds-chat.sock;
-        proxy_set_header Host $host;
-    }
-
-    location /ws/ {
-        proxy_pass http://unix:/run/ds-chat/ds-chat.sock;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-    }
-}
-```
-
+- TLS termination and public-facing reverse proxying are **not** handled on
+  this box — they're handled by an existing, separate Nginx Proxy Manager
+  (NPM) instance elsewhere in the infrastructure, configured to forward
+  `chat.example.com` to this server's port 8000 with WebSocket support
+  enabled (required — without it `/ws/chat` can't upgrade). A firewall rule
+  (`ufw`) restricts port 8000 to NPM's address only — see `DEPLOYMENT.md`
+  §3g/§4 for the exact commands and NPM configuration steps.
 - Secrets (database URL pointing at the data server's private IP, Redis URL,
   VAPID keys, session secret) live in `/etc/ds-chat/env`, loaded via
   `EnvironmentFile=`, never committed to the repository.
 - Deploy process: `git pull`, install/update dependencies, `alembic upgrade
-  head`, build the frontend, `systemctl restart ds-chat`, `nginx -s reload` if
-  the Nginx config changed.
-- Logs: `journalctl -u ds-chat`, rotated by systemd/journald defaults; add
-  `logrotate` if the app also writes its own log files.
+  head`, build the frontend, `systemctl restart ds-chat` — automated end to
+  end by `deploy/upgrade.sh`.
+- Logs: `journalctl -u ds-chat`, rotated by systemd/journald defaults.
 
 ## 10. Security considerations
 
