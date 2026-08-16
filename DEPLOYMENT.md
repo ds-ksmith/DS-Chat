@@ -105,12 +105,26 @@ sudo apt install -y python3 python3-venv nodejs npm git
 ### 3a. The `ds-chat` system user and directory
 
 ```bash
-sudo useradd --system --shell /usr/sbin/nologin --home-dir /srv/ds-chat --create-home ds-chat
+sudo useradd --system --shell /usr/sbin/nologin --home-dir /srv/ds-chat ds-chat
+# Deliberately no --create-home: on Debian, --system + --create-home is
+# unreliable in *both* directions -- sometimes it silently skips creating
+# the directory at all, sometimes it creates it and populates it from
+# /etc/skel (.bashrc, .profile, .bash_logout), which then makes the git
+# clone in the next step fail since it refuses to clone into a non-empty
+# directory. Creating the directory ourselves, with no skel copying,
+# sidesteps both failure modes.
+sudo mkdir -p /srv/ds-chat
 sudo chown ds-chat:ds-chat /srv/ds-chat
-sudo -u ds-chat mkdir -p /srv/ds-chat/uploads
 ```
 
-### 3b. Clone the repo (deploy key, not a personal token)
+Deliberately not creating `/srv/ds-chat/uploads` here -- `git clone` in the
+next step refuses to clone into a non-empty directory, so anything created
+inside `/srv/ds-chat` has to wait until after the clone. (The app would
+also create this directory itself on first upload if it were missing --
+see `app/storage.py` -- so this step is for clarity/permissions, not a
+strict requirement.)
+
+### 3b. Clone the repo (deploy key or access token)
 
 ```bash
 sudo -u ds-chat mkdir -p /srv/ds-chat/.ssh
@@ -128,6 +142,27 @@ sudo -u ds-chat git clone git@git.darksingularity.org:DarkSingularity/ds-chat.gi
 
 (If your Gitea's SSH is on a non-default port, adjust the clone URL and
 `ssh-keyscan -p <port>` accordingly.)
+
+**Alternative: a personal/deployment-user access token instead of a deploy
+key** — skip the `.ssh`/`ssh-keygen`/`ssh-keyscan` commands above entirely
+and clone over HTTPS with the token embedded in the URL:
+
+```bash
+sudo -u ds-chat git clone https://<TOKEN>@git.darksingularity.org/DarkSingularity/ds-chat.git /srv/ds-chat
+```
+
+The token then lives in plaintext in `/srv/ds-chat/.git/config` (`git
+remote -v` shows it) — readable by root and the `ds-chat` user, not by
+anyone else under normal file permissions. `deploy/upgrade.sh`'s later
+`git pull`s reuse this same authenticated URL automatically, no extra
+setup needed. Fine as long as the token is scoped to read-only access on
+just this repo.
+
+Either way, now that the repo is cloned:
+
+```bash
+sudo -u ds-chat mkdir -p /srv/ds-chat/uploads
+```
 
 ### 3c. Backend: venv, env file, migrations, first admin
 
@@ -150,15 +185,31 @@ Generate `SESSION_SECRET`:
 python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
-Run migrations and create the first admin account (as `ds-chat`, with the
-env file sourced so `DATABASE_URL` is set):
+Run migrations (as `ds-chat`, with the env file sourced so `DATABASE_URL`
+is set) — safe as a single non-interactive command since nothing here is a
+user-chosen value that could contain quotes/spaces/special characters:
 
 ```bash
-sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; \
-  cd /srv/ds-chat/backend && .venv/bin/alembic upgrade head'
+sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; cd /srv/ds-chat/backend && .venv/bin/alembic upgrade head'
+```
 
-sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; \
-  cd /srv/ds-chat/backend && .venv/bin/python -m app.cli create-user <ADMIN_USERNAME> <ADMIN_EMAIL> "<ADMIN_PASSWORD>" --admin'
+Creating the first admin account is different — the password is arbitrary
+user input, and wrapping it in a second layer of quoting inside the `bash
+-c '...'` above is fragile (a space drops the rest of the password as
+"unrecognized arguments"; a literal `'` in the password breaks the outer
+quoting entirely). Drop into an authenticated shell first instead, so
+there's only one layer of quoting to get right, at an actual prompt:
+
+```bash
+sudo -u ds-chat bash -c 'set -a; source /etc/ds-chat/env; set +a; exec bash'
+```
+
+Then, from inside that shell:
+
+```bash
+cd /srv/ds-chat/backend
+.venv/bin/python -m app.cli create-user <ADMIN_USERNAME> <ADMIN_EMAIL> "<ADMIN_PASSWORD>" --admin
+exit
 ```
 
 Optional: push notifications. Skipped silently if `VAPID_PUBLIC_KEY`/
