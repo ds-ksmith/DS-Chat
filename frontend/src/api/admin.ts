@@ -6,6 +6,7 @@ import type {
   EventSubscriptionAdmin,
   SiteInvite,
   SmtpSettings,
+  UploadSettings,
   WebhookIncomingAdmin,
 } from '../types'
 
@@ -104,4 +105,15 @@ export function updateSmtpSettings(payload: SmtpSettingsPayload): Promise<SmtpSe
 
 export function sendTestSmtpEmail(): Promise<void> {
   return apiFetch<void>('/api/admin/settings/smtp/test', { method: 'POST' })
+}
+
+export function getUploadSettings(): Promise<UploadSettings> {
+  return apiFetch<UploadSettings>('/api/admin/settings/uploads')
+}
+
+export function updateUploadSettings(maxUploadBytes: number): Promise<UploadSettings> {
+  return apiFetch<UploadSettings>('/api/admin/settings/uploads', {
+    method: 'PUT',
+    body: JSON.stringify({ max_upload_bytes: maxUploadBytes }),
+  })
 }

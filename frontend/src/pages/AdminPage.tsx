@@ -5,6 +5,7 @@ import {
   deactivateUser,
   demoteUser,
   getSmtpSettings,
+  getUploadSettings,
   inviteUser,
   listAdminRooms,
   listAdminUsers,
@@ -20,6 +21,7 @@ import {
   transferOwnershipAdmin,
   unarchiveRoom,
   updateSmtpSettings,
+  updateUploadSettings,
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
@@ -37,6 +39,7 @@ import type {
   EventSubscriptionAdmin,
   SiteInvite,
   SmtpSettings,
+  UploadSettings,
   WebhookIncomingAdmin,
 } from '../types'
 import { TopBar } from '../components/TopBar'
@@ -83,6 +86,11 @@ export function AdminPage() {
   const [smtpSaving, setSmtpSaving] = useState(false)
   const [smtpTestBusy, setSmtpTestBusy] = useState(false)
   const [smtpTestResult, setSmtpTestResult] = useState<string | null>(null)
+
+  const [uploadSettings, setUploadSettings] = useState<UploadSettings | null>(null)
+  const [uploadLoaded, setUploadLoaded] = useState(false)
+  const [uploadMaxMb, setUploadMaxMb] = useState('8')
+  const [uploadSaving, setUploadSaving] = useState(false)
 
   function reportError(err: unknown) {
     setError(err instanceof ApiError ? err.message : String(err))
@@ -134,6 +142,16 @@ export function AdminPage() {
       .catch(reportError)
   }
 
+  function loadUploadSettings() {
+    getUploadSettings()
+      .then((cfg) => {
+        setUploadSettings(cfg)
+        setUploadLoaded(true)
+        setUploadMaxMb(String(cfg.max_upload_bytes / (1024 * 1024)))
+      })
+      .catch(reportError)
+  }
+
   useEffect(() => {
     if (tab === 'users') {
       loadUsers()
@@ -148,7 +166,10 @@ export function AdminPage() {
       loadWebhooksAdmin()
     }
     if (tab === 'audit') loadAuditLog()
-    if (tab === 'settings') loadSmtpSettings()
+    if (tab === 'settings') {
+      loadSmtpSettings()
+      loadUploadSettings()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab])
 
@@ -313,6 +334,21 @@ export function AdminPage() {
       setSmtpTestResult(err instanceof ApiError ? err.message : String(err))
     } finally {
       setSmtpTestBusy(false)
+    }
+  }
+
+  async function handleSaveUploadSettings(e: FormEvent) {
+    e.preventDefault()
+    setUploadSaving(true)
+    setError(null)
+    try {
+      const updated = await updateUploadSettings(Math.round(Number(uploadMaxMb) * 1024 * 1024))
+      setUploadSettings(updated)
+      setUploadMaxMb(String(updated.max_upload_bytes / (1024 * 1024)))
+    } catch (err) {
+      reportError(err)
+    } finally {
+      setUploadSaving(false)
     }
   }
 
@@ -773,6 +809,34 @@ export function AdminPage() {
                   </button>
                 </div>
                 {smtpTestResult && <p className="admin-settings-test-result">{smtpTestResult}</p>}
+              </form>
+            )}
+
+            <h2 className="admin-subheading">Uploads</h2>
+            {!uploadLoaded && <p className="admin-placeholder">Loading…</p>}
+            {uploadLoaded && (
+              <form className="admin-settings-form" onSubmit={handleSaveUploadSettings}>
+                <label className="admin-settings-field admin-settings-field-narrow">
+                  Max attachment size (MB)
+                  <input
+                    type="number"
+                    value={uploadMaxMb}
+                    onChange={(e) => setUploadMaxMb(e.target.value)}
+                    min={1}
+                    max={500}
+                    step={1}
+                    required
+                  />
+                </label>
+                <p className="admin-settings-hint">
+                  Applies to message images, message file attachments, and avatars. Current limit:{' '}
+                  {uploadSettings ? `${uploadSettings.max_upload_bytes / (1024 * 1024)} MB` : '—'}.
+                </p>
+                <div className="admin-settings-actions">
+                  <button type="submit" className="btn-primary" disabled={uploadSaving}>
+                    {uploadSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
               </form>
             )}
           </>

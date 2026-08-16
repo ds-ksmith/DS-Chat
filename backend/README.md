@@ -1,4 +1,4 @@
-# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, emoji & reactions, user profiles, site invites & email, password reset)
+# KeepItTalking backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, admin-configurable upload size limits, emoji & reactions, user profiles, site invites & email, password reset)
 
 FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
 CRUD (open and private), room roles (owner/admin/member) and direct
@@ -397,6 +397,34 @@ share them; `ImageTooLargeError` was likewise renamed to
   file-only message).
 
 Same orphaned-upload disk-space caveat as images applies here too.
+
+## Upload size limits
+
+The 8 MB image/file/avatar cap is no longer hardcoded — it's an
+admin-configurable site setting (`UploadSettings`, single-row table, same
+"fetch-or-create" convention as `SmtpSettings`), editable from the Admin
+portal's Settings tab. Unlike `SmtpSettings` (where "no row yet" means
+"unconfigured, skip"), a missing row here still needs a usable value, so
+`upload_settings_service.get_upload_settings` creates it with the 8 MB
+default (`storage.DEFAULT_MAX_UPLOAD_BYTES`) on first read instead of
+returning `None`.
+
+- `GET`/`PUT /api/admin/settings/uploads` (site-admin only) — read/update
+  the cap. Bounds-checked to 1–500 MB (`UploadSettingsUpdate`) to guard
+  against a fat-fingered 0 or an unbounded figure that could exhaust disk.
+- `GET /api/uploads/limit` — unlike the admin endpoints, this one is open
+  to any authenticated user (same `Depends(get_current_user)`-only pattern
+  as `/api/push/vapid-public-key`), since every room member needs to know
+  the cap, not just admins. The frontend composer fetches it once per
+  mount and rejects an oversized file client-side before ever hitting the
+  network; the server still enforces the same value independently via
+  `read_capped(file, cap=...)`, so the client-side check is a UX nicety,
+  not the actual security boundary.
+- All three upload endpoints (room image, room file, avatar) now call
+  `get_upload_settings(db)` and pass the live value into `read_capped`
+  instead of relying on a module-level constant; their 413 error messages
+  interpolate the actual configured limit (`upload_settings_service.
+  format_mb`) rather than a hardcoded "8 MB" string.
 
 ## Emoji & reactions
 

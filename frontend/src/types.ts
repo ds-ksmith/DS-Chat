@@ -225,3 +225,8 @@ export interface SmtpSettings {
   use_tls: boolean
   updated_at: string
 }
+
+export interface UploadSettings {
+  max_upload_bytes: number
+  updated_at: string
+}

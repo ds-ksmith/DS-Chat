@@ -13,6 +13,7 @@ from app.models.push_subscription import PushSubscription
 from app.models.room import Room
 from app.models.site_invite import SiteInvite
 from app.models.smtp_settings import SmtpSettings
+from app.models.upload_settings import UploadSettings
 from app.models.user import User
 from app.models.webhook_incoming import WebhookIncoming
 
@@ -30,6 +31,7 @@ __all__ = [
     "PasswordReset",
     "SiteInvite",
     "SmtpSettings",
+    "UploadSettings",
     "PushSubscription",
     "AdminAuditLog",
     "ApiToken",

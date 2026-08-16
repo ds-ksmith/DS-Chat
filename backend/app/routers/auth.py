@@ -20,6 +20,7 @@ from app.services.password_service import (
     request_password_reset,
     validate_reset_token,
 )
+from app.services.upload_settings_service import format_mb, get_upload_settings
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
     InvalidImageError,
@@ -89,10 +90,14 @@ async def upload_avatar(
     if file.content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
+    upload_settings = await get_upload_settings(db)
     try:
-        data = await read_capped(file)
+        data = await read_capped(file, cap=upload_settings.max_upload_bytes)
     except UploadTooLargeError:
-        raise HTTPException(status_code=413, detail="Image exceeds 8 MB limit")
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image exceeds {format_mb(upload_settings.max_upload_bytes)} limit",
+        )
 
     try:
         data, ext = process_image(

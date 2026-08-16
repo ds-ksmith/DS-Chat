@@ -1,6 +1,7 @@
-import { useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
+import { getUploadLimit } from '../api/uploads'
 import { EmojiPicker } from './EmojiPicker'
 import './Composer.css'
 
@@ -26,9 +27,19 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
+  const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const online = useOnlineStatus()
+
+  useEffect(() => {
+    getUploadLimit()
+      .then((limit) => setMaxUploadBytes(limit.max_upload_bytes))
+      .catch(() => {
+        // Non-critical -- if this fails, oversized uploads just get caught
+        // by the server's 413 instead of client-side, no functional loss.
+      })
+  }, [])
 
   function autoGrow() {
     const el = textareaRef.current
@@ -60,6 +71,12 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
     if (!file) return
 
     setUploadError(null)
+
+    if (maxUploadBytes !== null && file.size > maxUploadBytes) {
+      setUploadError(`File exceeds ${formatFileSize(maxUploadBytes)} limit`)
+      return
+    }
+
     setUploading(true)
     try {
       if (file.type.startsWith('image/')) {

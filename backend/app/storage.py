@@ -10,11 +10,10 @@ from PIL import Image, UnidentifiedImageError
 # production layout with zero new config.
 UPLOADS_DIR = pathlib.Path(__file__).resolve().parent.parent.parent / "uploads"
 
-MAX_IMAGE_BYTES = 8 * 1024 * 1024
-# Separate named constant (same value for now) so a later size-limit
-# redesign for generic file attachments doesn't have to touch image
-# behavior.
-MAX_FILE_BYTES = MAX_IMAGE_BYTES
+# Seed value for the admin-configurable UploadSettings row (see
+# app/services/upload_settings_service.py) -- also the fallback `read_capped`
+# default for call sites that don't look up the live setting.
+DEFAULT_MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 _READ_CHUNK_BYTES = 1024 * 1024
 _MAX_DIMENSION = 2000
 
@@ -35,7 +34,7 @@ class InvalidImageError(Exception):
     pass
 
 
-async def read_capped(file, cap: int = MAX_IMAGE_BYTES) -> bytes:
+async def read_capped(file, cap: int = DEFAULT_MAX_UPLOAD_BYTES) -> bytes:
     """Reads an UploadFile-like object in chunks, raising as soon as `cap`
     is exceeded rather than after buffering the whole (potentially huge)
     body first."""

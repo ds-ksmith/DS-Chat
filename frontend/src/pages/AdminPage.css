@@ -338,3 +338,9 @@
   color: var(--ds-muted);
   margin: 0;
 }
+
+.admin-settings-hint {
+  font-size: 0.82rem;
+  color: var(--ds-muted);
+  margin: -4px 0 0;
+}

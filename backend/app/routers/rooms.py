@@ -35,6 +35,7 @@ from app.schemas.webhook import (
     WebhookIncomingRead,
 )
 from app.services.message_service import get_reactions_for_messages, list_recent_messages
+from app.services.upload_settings_service import format_mb, get_upload_settings
 from app.services.room_service import (
     AlreadyMemberError,
     CannotRemoveOwnerError,
@@ -73,7 +74,6 @@ from app.services.webhook_service import (
 from app.services.ssrf import UnsafeWebhookUrlError
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
-    MAX_FILE_BYTES,
     UPLOADS_DIR,
     InvalidImageError,
     UploadTooLargeError,
@@ -337,10 +337,14 @@ async def upload_room_image_endpoint(
     if file.content_type not in ALLOWED_IMAGE_CONTENT_TYPES:
         raise HTTPException(status_code=400, detail="Unsupported image type")
 
+    upload_settings = await get_upload_settings(db)
     try:
-        data = await read_capped(file)
+        data = await read_capped(file, cap=upload_settings.max_upload_bytes)
     except UploadTooLargeError:
-        raise HTTPException(status_code=413, detail="Image exceeds 8 MB limit")
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image exceeds {format_mb(upload_settings.max_upload_bytes)} limit",
+        )
 
     try:
         data, ext = process_image(data, file.content_type)
@@ -388,10 +392,14 @@ async def upload_room_file_endpoint(
 ):
     await require_room_member(room_id, current_user, db)
 
+    upload_settings = await get_upload_settings(db)
     try:
-        data = await read_capped(file, cap=MAX_FILE_BYTES)
+        data = await read_capped(file, cap=upload_settings.max_upload_bytes)
     except UploadTooLargeError:
-        raise HTTPException(status_code=413, detail="File exceeds 8 MB limit")
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {format_mb(upload_settings.max_upload_bytes)} limit",
+        )
 
     original_filename = file.filename or "file"
     ext = pathlib.Path(original_filename).suffix

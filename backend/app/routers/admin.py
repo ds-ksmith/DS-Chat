@@ -16,6 +16,7 @@ from app.schemas.admin import (
 )
 from app.schemas.site_invite import SiteInviteCreate, SiteInviteRead
 from app.schemas.smtp_settings import SmtpSettingsRead, SmtpSettingsUpdate
+from app.schemas.upload_settings import UploadSettingsRead, UploadSettingsUpdate
 from app.schemas.webhook import EventSubscriptionAdminRead, WebhookIncomingAdminRead
 from app.services.admin_service import (
     CannotActOnSelfError,
@@ -40,6 +41,7 @@ from app.services.site_invite_service import (
     revoke_site_invite,
 )
 from app.services.smtp_settings_service import get_smtp_settings, upsert_smtp_settings
+from app.services.upload_settings_service import get_upload_settings, update_upload_settings
 from app.services.webhook_service import (
     list_all_event_subscriptions_admin,
     list_all_incoming_webhooks_admin,
@@ -379,3 +381,24 @@ async def test_smtp_settings_endpoint(
         raise HTTPException(status_code=400, detail="SMTP is not configured yet")
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Failed to send test email: {exc}")
+
+
+@router.get("/settings/uploads", response_model=UploadSettingsRead)
+async def get_upload_settings_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    cfg = await get_upload_settings(db)
+    return UploadSettingsRead(max_upload_bytes=cfg.max_upload_bytes, updated_at=cfg.updated_at)
+
+
+@router.put("/settings/uploads", response_model=UploadSettingsRead)
+async def update_upload_settings_endpoint(
+    data: UploadSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    cfg = await update_upload_settings(db, max_upload_bytes=data.max_upload_bytes)
+    return UploadSettingsRead(max_upload_bytes=cfg.max_upload_bytes, updated_at=cfg.updated_at)
