@@ -220,6 +220,7 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
           }}
           onKeyDown={handleKeyDown}
           placeholder={disabled ? (online ? 'Connecting…' : "You're offline") : `Message #${roomName}`}
+          spellCheck
         />
         <button
           type="button"

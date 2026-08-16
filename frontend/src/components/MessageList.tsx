@@ -149,6 +149,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                     if (e.key === 'Escape') setEditingId(null)
                   }}
                   onBlur={() => commitEdit(msg.id)}
+                  spellCheck
                 />
               ) : (
                 <>
