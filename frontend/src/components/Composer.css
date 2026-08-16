@@ -15,6 +15,7 @@
 
 .composer-box textarea {
   flex: 1;
+  min-width: 0;
   resize: none;
   background: var(--ds-surface-2);
   border: 1px solid var(--ds-border);
