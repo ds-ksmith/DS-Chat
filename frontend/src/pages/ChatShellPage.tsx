@@ -10,9 +10,9 @@ import { RoomInfoPanel } from '../components/RoomInfoPanel'
 import { Sidebar } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 import { useAuth } from '../context/AuthContext'
+import { useChatSocketContext } from '../context/ChatSocketContext'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type { MyRoomItem, RoomMember } from '../types'
-import { useChatSocket } from '../ws/useChatSocket'
 import './ChatShellPage.css'
 
 type ModalKind = 'new' | 'browse' | null
@@ -57,8 +57,7 @@ export function ChatShellPage() {
     refreshRooms().catch(() => {})
   }, [refreshRooms])
 
-  const onSocketUnauthenticated = useCallback(() => navigate('/login'), [navigate])
-  const socket = useChatSocket({ onUnauthenticated: onSocketUnauthenticated })
+  const socket = useChatSocketContext()
 
   useEffect(
     () =>

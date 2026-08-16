@@ -135,7 +135,20 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   const joinRoom = useCallback(
     (roomId: string) => {
       desiredRoomsRef.current.add(roomId)
-      if (isVisibleRef.current) sendRoomFrame('join', roomId)
+      // Unconditional, not gated on isVisibleRef: this fires from a
+      // component actually mounting (opening a room in the UI), which by
+      // definition only happens while the user is interacting with the
+      // page -- a genuinely backgrounded tab can't run the click handler
+      // that leads here in the first place. Gating this too (rather than
+      // only the automatic hide/show transitions below) meant a stale or
+      // momentarily-wrong visibilityState at mount time could silently
+      // skip the join entirely, with nothing to ever retry it. Also
+      // self-corrects isVisibleRef -- opening a room this way is itself
+      // stronger evidence of visibility than whatever the ref currently
+      // holds, so a wrong/stale `false` doesn't also skip replaying this
+      // join on a later reconnect (which does still check the ref).
+      isVisibleRef.current = true
+      sendRoomFrame('join', roomId)
     },
     [sendRoomFrame],
   )
@@ -143,7 +156,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   const leaveRoom = useCallback(
     (roomId: string) => {
       desiredRoomsRef.current.delete(roomId)
-      if (isVisibleRef.current) sendRoomFrame('leave', roomId)
+      sendRoomFrame('leave', roomId)
     },
     [sendRoomFrame],
   )
