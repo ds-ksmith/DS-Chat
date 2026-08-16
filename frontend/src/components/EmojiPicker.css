@@ -35,6 +35,31 @@
   right: 0;
 }
 
+.emoji-picker-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  color: var(--ds-text);
+  font-size: 0.82rem;
+  outline: none;
+  flex: none;
+}
+
+.emoji-picker-search:focus {
+  border-color: var(--ds-accent);
+}
+
+.emoji-picker-no-results {
+  font-size: 0.82rem;
+  color: var(--ds-muted);
+  padding: var(--sp-3) var(--sp-2);
+  text-align: center;
+}
+
 .emoji-picker-category-label {
   font-size: 0.7rem;
   font-weight: 700;
