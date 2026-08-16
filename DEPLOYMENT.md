@@ -254,11 +254,20 @@ curl -s http://127.0.0.1:8000/api/health   # expect {"status":"ok"}
 ### 3f. Let `ds-chat` restart its own service (needed for `deploy/upgrade.sh`)
 
 ```bash
-echo 'ds-chat ALL=(root) NOPASSWD: /usr/bin/systemctl restart ds-chat, /usr/bin/systemctl status ds-chat' \
+echo 'ds-chat ALL=(root) NOPASSWD: /usr/bin/systemctl restart ds-chat, /usr/bin/systemctl status ds-chat, /usr/bin/systemctl status ds-chat *' \
   | sudo tee /etc/sudoers.d/ds-chat
 sudo chmod 0440 /etc/sudoers.d/ds-chat
 sudo visudo -cf /etc/sudoers.d/ds-chat   # validates syntax before it's live
 ```
+
+The third pattern (`... status ds-chat *`) matters, not just the bare one:
+`deploy/upgrade.sh` actually calls `systemctl status ds-chat --no-pager -l`,
+and sudoers matches commands on the *exact* argument string unless a
+wildcard is present — the bare `status ds-chat` entry alone doesn't cover
+those extra flags, so without this it silently falls back to a password
+prompt on every upgrade. Since `ds-chat` has no password (correctly — it's
+a `nologin` system account), that prompt can never actually be satisfied,
+only worked around with Ctrl+C after the (already-succeeded) upgrade.
 
 ### 3g. Firewall
 
