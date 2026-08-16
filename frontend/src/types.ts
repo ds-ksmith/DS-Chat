@@ -1,3 +1,5 @@
+export type ThemeName = 'dark' | 'light' | 'midnight' | 'sunset'
+
 export interface User {
   id: string
   username: string
@@ -5,6 +7,7 @@ export interface User {
   is_bot: boolean
   is_site_admin: boolean
   display_name: string | null
+  theme: ThemeName | null
   avatar_filename: string | null
   created_at: string
 }

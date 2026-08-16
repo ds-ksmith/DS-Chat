@@ -1,0 +1,72 @@
+/* Alternate palettes, layered on top of tokens.css's base (unscoped :root)
+   DarkSingularity theme, which stays the default. Each block only
+   overrides the literal color tokens -- everything derived from them
+   (--accent-cycle-*, .btn-primary, role badges, etc. via color-mix()) picks
+   up the change automatically through the normal CSS custom-property
+   cascade, no need to re-declare those separately per theme.
+
+   Applied via a `data-theme` attribute on <html> (see AuthContext.tsx),
+   kept in sync with the Literal in backend/app/schemas/user.py's
+   ProfileUpdate.theme. */
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --ds-void: #f5f3fb;
+  --ds-void-2: #ece8f6;
+  --ds-surface: #ffffff;
+  --ds-surface-2: #f0edf9;
+  --ds-border: #d8d2ee;
+  --ds-text: #1a1030;
+  --ds-muted: #675f80;
+  --ds-accent: #0891b2;
+  --ds-accent-2: #4c3fd6;
+  --ds-accent-3: #6c2fd6;
+  --ds-highlight: #c026a3;
+  --ds-danger: #dc2626;
+
+  --card-bg: linear-gradient(180deg, rgba(240, 237, 249, 0.96), rgba(255, 255, 255, 0.96));
+}
+
+/* Higher-contrast, OLED-friendly dark variant -- same cool cyan/violet
+   family as the default Dark theme, pushed further: true-black void,
+   brighter accents. */
+:root[data-theme='midnight'] {
+  color-scheme: dark;
+
+  --ds-void: #000000;
+  --ds-void-2: #050508;
+  --ds-surface: #0a0a14;
+  --ds-surface-2: #12121e;
+  --ds-border: #262640;
+  --ds-text: #ffffff;
+  --ds-muted: #a8b0c0;
+  --ds-accent: #00f0ff;
+  --ds-accent-2: #7c6cff;
+  --ds-accent-3: #9060ff;
+  --ds-highlight: #ff5cf0;
+  --ds-danger: #ff4444;
+
+  --card-bg: linear-gradient(180deg, rgba(18, 18, 30, 0.96), rgba(10, 10, 20, 0.96));
+}
+
+/* Warm accent family (amber/coral/rose) instead of Dark's cool cyan/violet
+   -- still dark-based, matching the app's overall dark-first identity. */
+:root[data-theme='sunset'] {
+  color-scheme: dark;
+
+  --ds-void: #120a07;
+  --ds-void-2: #0e0805;
+  --ds-surface: #241408;
+  --ds-surface-2: #2e1c0c;
+  --ds-border: #4a2c14;
+  --ds-text: #fce8d8;
+  --ds-muted: #c8b0a0;
+  --ds-accent: #fca050;
+  --ds-accent-2: #fc6048;
+  --ds-accent-3: #fc4878;
+  --ds-highlight: #fcc048;
+  --ds-danger: #fc4848;
+
+  --card-bg: linear-gradient(180deg, rgba(46, 28, 12, 0.96), rgba(36, 20, 8, 0.96));
+}

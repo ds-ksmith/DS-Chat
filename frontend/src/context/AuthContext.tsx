@@ -21,6 +21,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [offline, setOffline] = useState(false)
 
   useEffect(() => {
+    document.documentElement.setAttribute('data-theme', user?.theme ?? 'dark')
+  }, [user?.theme])
+
+  useEffect(() => {
     authApi
       .me()
       .then((u) => {

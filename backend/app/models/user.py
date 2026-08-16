@@ -18,6 +18,7 @@ class User(Base):
     is_site_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(50))
+    theme: Mapped[str | None] = mapped_column(String(20))
     avatar_filename: Mapped[str | None] = mapped_column(String(64))
     avatar_content_type: Mapped[str | None] = mapped_column(String(50))
     created_at: Mapped[datetime] = mapped_column(

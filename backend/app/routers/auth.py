@@ -74,8 +74,15 @@ async def update_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    display_name = data.display_name.strip() if data.display_name else None
-    current_user.display_name = display_name or None
+    # Only apply fields actually present in the request body -- a call that
+    # only wants to change the theme must not clobber display_name back to
+    # None, and vice versa.
+    updates = data.model_dump(exclude_unset=True)
+    if "display_name" in updates:
+        display_name = updates["display_name"].strip() if updates["display_name"] else None
+        current_user.display_name = display_name or None
+    if "theme" in updates:
+        current_user.theme = updates["theme"]
     await db.commit()
     await db.refresh(current_user)
     return current_user

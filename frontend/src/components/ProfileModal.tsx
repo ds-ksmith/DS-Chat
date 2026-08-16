@@ -1,11 +1,19 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { changePassword, removeAvatar, updateProfile, uploadAvatar } from '../api/auth'
+import { changePassword, removeAvatar, updateProfile, updateTheme, uploadAvatar } from '../api/auth'
 import { ApiError } from '../api/client'
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
+import type { ThemeName } from '../types'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
+
+const THEME_OPTIONS: { name: ThemeName; label: string }[] = [
+  { name: 'dark', label: 'Dark' },
+  { name: 'light', label: 'Light' },
+  { name: 'midnight', label: 'Midnight' },
+  { name: 'sunset', label: 'Sunset' },
+]
 
 interface ProfileModalProps {
   onClose: () => void
@@ -18,6 +26,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [savingName, setSavingName] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [themeError, setThemeError] = useState<string | null>(null)
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -65,6 +74,21 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
       updateUser(updated)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleSelectTheme(theme: ThemeName) {
+    // Instant visual feedback, then persist -- mirrors avatar upload's
+    // apply-immediately pattern rather than requiring a separate Save.
+    document.documentElement.setAttribute('data-theme', theme)
+    setThemeError(null)
+    try {
+      const updated = await updateTheme(theme)
+      updateUser(updated)
+    } catch (err) {
+      // Revert the optimistic DOM change if it didn't actually persist.
+      document.documentElement.setAttribute('data-theme', user?.theme ?? 'dark')
+      setThemeError(err instanceof ApiError ? err.message : String(err))
     }
   }
 
@@ -132,6 +156,31 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             )}
           </div>
         </div>
+
+        <hr className="modal-divider" />
+
+        <div className="modal-field-label">Theme</div>
+        <div className="theme-swatch-grid">
+          {THEME_OPTIONS.map((option) => (
+            <button
+              key={option.name}
+              type="button"
+              className={`theme-swatch theme-swatch-${option.name}${
+                (user.theme ?? 'dark') === option.name ? ' theme-swatch-selected' : ''
+              }`}
+              onClick={() => handleSelectTheme(option.name)}
+              aria-pressed={(user.theme ?? 'dark') === option.name}
+            >
+              <span className="theme-swatch-preview" aria-hidden="true">
+                <span className="theme-swatch-accent" />
+              </span>
+              <span className="theme-swatch-label">{option.label}</span>
+            </button>
+          ))}
+        </div>
+        {themeError && <p className="modal-error">{themeError}</p>}
+
+        <hr className="modal-divider" />
 
         <form onSubmit={handleSaveName}>
           <div className="modal-field-label">Display name</div>

@@ -96,7 +96,10 @@ button {
   cursor: pointer;
 }
 .btn-primary:hover {
-  background: #8ae4fc;
+  /* color-mix so the hover tint follows whatever --ds-accent the active
+     theme defines, instead of a fixed cyan that would clash with other
+     themes' accent colors. */
+  background: color-mix(in srgb, var(--ds-accent) 85%, white);
 }
 .btn-primary:disabled {
   opacity: 0.5;

@@ -53,6 +53,44 @@ async def test_display_name_too_long_rejected(client, db_session):
     assert resp.status_code == 422
 
 
+async def test_update_theme_persists(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"theme": "midnight"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["theme"] == "midnight"
+
+    me = await client.get("/api/auth/me")
+    assert me.json()["theme"] == "midnight"
+
+
+async def test_invalid_theme_rejected(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"theme": "not-a-real-theme"})
+    assert resp.status_code == 422
+
+
+async def test_updating_theme_does_not_clobber_display_name(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+    await client.patch("/api/auth/me", json={"display_name": "Alice A."})
+
+    resp = await client.patch("/api/auth/me", json={"theme": "light"})
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "Alice A."
+    assert resp.json()["theme"] == "light"
+
+
+async def test_updating_display_name_does_not_clobber_theme(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+    await client.patch("/api/auth/me", json={"theme": "sunset"})
+
+    resp = await client.patch("/api/auth/me", json={"display_name": "Alice A."})
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == "sunset"
+    assert resp.json()["display_name"] == "Alice A."
+
+
 async def test_avatar_upload_succeeds_and_persists(client, db_session):
     await register_and_login(client, db_session, username=_unique("alice"))
 
