@@ -8,6 +8,16 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _recv(ws) -> dict:
+    """Reads the next frame, transparently discarding member_updated
+    presence-change broadcasts -- another connection in the same room going
+    online/offline is real, expected noise these tests aren't about."""
+    while True:
+        msg = ws.receive_json()
+        if msg.get("type") != "member_updated":
+            return msg
+
+
 def _register_ws(ws_client, username: str) -> dict:
     async def _seed():
         async with ws_client.session_factory() as session:
@@ -113,7 +123,7 @@ def test_edit_fans_out_across_instances(ws_client_factory):
             assert alice_ws.receive_json()["type"] == "joined"
             alice_ws.send_json({"type": "message", "room_id": room["id"], "content": "hi"})
             message = alice_ws.receive_json()
-            assert bob_ws.receive_json()["type"] == "message"
+            assert _recv(bob_ws)["type"] == "message"
 
             alice_ws.send_json(
                 {
@@ -125,6 +135,6 @@ def test_edit_fans_out_across_instances(ws_client_factory):
             )
             assert alice_ws.receive_json()["type"] == "message_update"
 
-            update = bob_ws.receive_json()
+            update = _recv(bob_ws)
             assert update["type"] == "message_update"
             assert update["content"] == "hi, edited"

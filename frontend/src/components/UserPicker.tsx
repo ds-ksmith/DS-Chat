@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { getUserAvatarUrl } from '../api/users'
+import { getUserAvatarUrl, listOnlineUserIds } from '../api/users'
 import type { UserDirectoryEntry } from '../types'
 import { UserAvatar } from './UserAvatar'
 import './UserPicker.css'
@@ -16,6 +16,17 @@ export function UserPicker({ users, excludeUserIds, placeholder = 'Search usersâ
   const [open, setOpen] = useState(false)
   const [highlighted, setHighlighted] = useState(0)
   const rootRef = useRef<HTMLDivElement>(null)
+  // A snapshot fetched once, not live -- see listOnlineUserIds's own
+  // comment. Fine for a search dropdown that's only open briefly.
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    listOnlineUserIds()
+      .then((ids) => setOnlineIds(new Set(ids)))
+      .catch(() => {
+        // Non-critical -- the picker still works, just without dots.
+      })
+  }, [])
 
   const excluded = new Set(excludeUserIds ?? [])
   const q = query.trim().toLowerCase()
@@ -89,6 +100,7 @@ export function UserPicker({ users, excludeUserIds, placeholder = 'Search usersâ
                 colorIndex={i}
                 size={22}
                 avatarUrl={u.avatar_filename ? getUserAvatarUrl(u.id, u.avatar_filename) : null}
+                status={onlineIds.has(u.id) ? 'online' : 'offline'}
               />
               <span className="user-picker-row-name">{u.display_name || u.username}</span>
               {u.display_name && <span className="user-picker-row-username">@{u.username}</span>}

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
-import { avatarUrlFor, displayNameFor, senderColorIndex } from '../lib/messageGrouping'
+import { avatarUrlFor, displayNameFor, senderColorIndex, statusFor } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, MessageFileInfo, RoomMember } from '../types'
 import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
 import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
@@ -122,6 +122,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                   username={msg.username}
                   colorIndex={senderColorIndex(msg.username, members)}
                   avatarUrl={avatarUrlFor(msg.username, members)}
+                  status={statusFor(msg.username, members)}
                 />
               )}
             </div>

@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import ApiToken, Message, MessageFile, MessageImage, RoomMembership, User
 from app.services.bot_service import resolve_token
 from app.services.message_events import (
+    broadcast_member_updated,
     broadcast_message_update,
     broadcast_new_message,
     broadcast_reaction_update,
@@ -76,9 +77,17 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     await websocket.accept()
     manager = websocket.app.state.connection_manager
     presence = websocket.app.state.presence
+    global_presence = websocket.app.state.global_presence
     broadcaster = websocket.app.state.broadcaster
     joined_rooms: set[uuid.UUID] = set()
     manager.register_user(user.id, websocket)
+    # Only broadcast on a genuine offline->online transition (this user's
+    # first open connection), not for every extra tab -- broadcast_member_
+    # updated tells every room this user's in to refresh, which would be
+    # wasted churn on a transition that didn't actually change anything
+    # visible.
+    if await global_presence.connect(user.id):
+        await broadcast_member_updated(db, broadcaster, user.id)
 
     try:
         while True:
@@ -229,3 +238,5 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
         manager.unregister_user(user.id, websocket)
         for room_id in joined_rooms:
             await presence.leave(room_id, user.id)
+        if await global_presence.disconnect(user.id):
+            await broadcast_member_updated(db, broadcaster, user.id)

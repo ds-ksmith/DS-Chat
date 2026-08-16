@@ -15,6 +15,7 @@ from app.routers import admin, auth, bots, health, push, rooms, signup, uploads,
 from app.ws.broadcaster import Broadcaster
 from app.ws.chat import router as ws_router
 from app.ws.connection_manager import ConnectionManager
+from app.ws.global_presence import GlobalPresence
 from app.ws.presence import Presence
 
 # backend/app/main.py -> backend/ -> repo root -- matches both the local
@@ -68,6 +69,7 @@ def create_app() -> FastAPI:
     app.state.connection_manager = ConnectionManager()
     app.state.redis = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.presence = Presence(app.state.redis)
+    app.state.global_presence = GlobalPresence(app.state.redis)
     app.state.broadcaster = Broadcaster(app.state.redis, app.state.connection_manager)
 
     app.include_router(health.router)

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import logo from '../assets/logo.png'
+import { updateAppearOffline } from '../api/auth'
+import { ApiError } from '../api/client'
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
@@ -10,13 +12,15 @@ import { UserAvatar } from './UserAvatar'
 import './TopBar.css'
 
 export function TopBar() {
-  const { user, logout } = useAuth()
+  const { user, updateUser, logout } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [presenceBusy, setPresenceBusy] = useState(false)
+  const [presenceError, setPresenceError] = useState<string | null>(null)
 
   useEffect(() => {
     getPushSubscriptionStatus().then(setPushSubscribed)
@@ -37,6 +41,20 @@ export function TopBar() {
       setPushError(err instanceof Error ? err.message : String(err))
     } finally {
       setPushBusy(false)
+    }
+  }
+
+  async function handleTogglePresence() {
+    if (!user) return
+    setPresenceBusy(true)
+    setPresenceError(null)
+    try {
+      const updated = await updateAppearOffline(!user.appear_offline)
+      updateUser(updated)
+    } catch (err) {
+      setPresenceError(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setPresenceBusy(false)
     }
   }
 
@@ -62,6 +80,7 @@ export function TopBar() {
             colorIndex={hashIndex(user.username)}
             size={30}
             avatarUrl={user.avatar_filename ? getUserAvatarUrl(user.id, user.avatar_filename) : null}
+            status={user.appear_offline ? 'offline' : 'online'}
           />
         </button>
         {menuOpen && (
@@ -79,6 +98,15 @@ export function TopBar() {
               >
                 Profile settings
               </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={handleTogglePresence}
+                disabled={presenceBusy}
+              >
+                {user.appear_offline ? 'Show as online' : 'Appear offline'}
+              </button>
+              {presenceError && <div className="top-bar-menu-error">{presenceError}</div>}
               {user.is_site_admin && (
                 <button
                   type="button"

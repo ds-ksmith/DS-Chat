@@ -132,6 +132,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             colorIndex={hashIndex(user.username)}
             size={64}
             avatarUrl={avatarUrl}
+            status={user.appear_offline ? 'offline' : 'online'}
           />
           <div className="profile-modal-avatar-actions">
             <input

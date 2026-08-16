@@ -8,6 +8,16 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _recv(ws) -> dict:
+    """Reads the next frame, transparently discarding member_updated
+    presence-change broadcasts -- another connection in the same room going
+    online/offline is real, expected noise these tests aren't about."""
+    while True:
+        msg = ws.receive_json()
+        if msg.get("type") != "member_updated":
+            return msg
+
+
 def _fake_send_email(monkeypatch):
     calls = []
 
@@ -61,7 +71,7 @@ def test_message_fans_out_across_instances(ws_client_factory):
             )
             assert alice_ws.receive_json()["type"] == "message"
 
-            received = bob_ws.receive_json()
+            received = _recv(bob_ws)
             assert received["type"] == "message"
             assert received["content"] == "hi from instance 1"
             assert received["username"] == alice["username"]
@@ -101,7 +111,7 @@ def test_presence_is_shared_across_instances(ws_client_factory, monkeypatch):
             # get the broadcast via Redis, not a push notification. If
             # presence were still process-local (pre-phase-5 behavior) he'd
             # look offline to instance1 and get a redundant push.
-            assert bob_ws.receive_json()["type"] == "message"
+            assert _recv(bob_ws)["type"] == "message"
 
             # Sync barrier: the handler processes frames strictly
             # sequentially, so a second (idempotent) join only acks once the

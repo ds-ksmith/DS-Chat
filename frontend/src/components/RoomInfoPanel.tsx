@@ -263,6 +263,7 @@ export function RoomInfoPanel({
                 colorIndex={i}
                 size={24}
                 avatarUrl={m.avatar_filename ? getUserAvatarUrl(m.user_id, m.avatar_filename) : null}
+                status={m.status}
               />
               <span className="room-info-member-name">{m.display_name || m.username}</span>
               {actions.length > 0 ? (

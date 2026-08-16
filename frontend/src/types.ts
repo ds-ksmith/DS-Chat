@@ -9,6 +9,7 @@ export interface User {
   display_name: string | null
   theme: ThemeName | null
   avatar_filename: string | null
+  appear_offline: boolean
   created_at: string
 }
 
@@ -45,6 +46,7 @@ export interface RoomMember {
   avatar_filename: string | null
   role: RoomRole
   joined_at: string
+  status: 'online' | 'offline'
 }
 
 export type InviteStatus = 'pending' | 'accepted' | 'revoked'

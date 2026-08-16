@@ -25,7 +25,7 @@ import {
 } from '../api/admin'
 import { ApiError } from '../api/client'
 import { createApiToken, createBot, listApiTokens, listBots, revokeApiToken } from '../api/bots'
-import { getUserAvatarUrl } from '../api/users'
+import { getUserAvatarUrl, listOnlineUserIds } from '../api/users'
 import { UserPicker } from '../components/UserPicker'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
@@ -55,6 +55,9 @@ export function AdminPage() {
   const { user: currentUser } = useAuth()
   const [tab, setTab] = useState<Tab>('users')
   const [users, setUsers] = useState<AdminUser[]>([])
+  // A snapshot, not live -- see listOnlineUserIds's own comment. Reloaded
+  // whenever the Users tab is opened, same cadence as the user list itself.
+  const [onlineIds, setOnlineIds] = useState<Set<string>>(new Set())
   const [rooms, setRooms] = useState<AdminRoom[]>([])
   const [transferringRoomId, setTransferringRoomId] = useState<string | null>(null)
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([])
@@ -98,6 +101,11 @@ export function AdminPage() {
 
   function loadUsers() {
     listAdminUsers().then(setUsers).catch(reportError)
+    listOnlineUserIds()
+      .then((ids) => setOnlineIds(new Set(ids)))
+      .catch(() => {
+        // Non-critical -- the table still works, just without dots.
+      })
   }
 
   function loadRooms() {
@@ -449,6 +457,7 @@ export function AdminPage() {
                       colorIndex={hashIndex(u.username)}
                       size={28}
                       avatarUrl={u.avatar_filename ? getUserAvatarUrl(u.id, u.avatar_filename) : null}
+                      status={onlineIds.has(u.id) ? 'online' : 'offline'}
                     />
                   </td>
                   <td>{u.display_name || u.username}</td>

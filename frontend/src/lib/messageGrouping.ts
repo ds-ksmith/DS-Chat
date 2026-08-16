@@ -20,3 +20,7 @@ export function displayNameFor(username: string, members: RoomMember[]): string 
   const member = members.find((m) => m.username === username)
   return member?.display_name || username
 }
+
+export function statusFor(username: string, members: RoomMember[]): 'online' | 'offline' | undefined {
+  return members.find((m) => m.username === username)?.status
+}

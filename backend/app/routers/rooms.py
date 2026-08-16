@@ -201,14 +201,24 @@ async def leave_room_endpoint(
         raise HTTPException(status_code=404, detail="Not a member of this room")
 
 
+def _member_status(user: User, online_ids: set[uuid.UUID]) -> str:
+    # appear_offline always wins, regardless of actual connection -- that's
+    # the whole point of the override (lurking in a room undetected).
+    return "offline" if user.appear_offline or user.id not in online_ids else "online"
+
+
 @router.get("/{room_id}/members", response_model=list[RoomMemberRead])
 async def list_room_members_endpoint(
+    request: Request,
     room_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     await require_room_member(room_id, current_user, db)
     memberships = await list_room_members(db, room_id)
+    online_ids = await request.app.state.global_presence.online_user_ids(
+        [m.user_id for m in memberships]
+    )
     return [
         RoomMemberRead(
             user_id=m.user_id,
@@ -217,6 +227,7 @@ async def list_room_members_endpoint(
             avatar_filename=m.user.avatar_filename,
             role=m.role,
             joined_at=m.joined_at,
+            status=_member_status(m.user, online_ids),
         )
         for m in memberships
     ]
@@ -244,6 +255,7 @@ async def remove_member_endpoint(
 
 @router.patch("/{room_id}/members/{user_id}", response_model=RoomMemberRead)
 async def change_member_role_endpoint(
+    request: Request,
     room_id: uuid.UUID,
     user_id: uuid.UUID,
     data: RoomMemberRoleUpdate,
@@ -259,6 +271,7 @@ async def change_member_role_endpoint(
         raise HTTPException(
             status_code=400, detail="Use transfer-ownership to change the room owner"
         )
+    online_ids = await request.app.state.global_presence.online_user_ids([membership.user_id])
     return RoomMemberRead(
         user_id=membership.user_id,
         username=membership.user.username,
@@ -266,6 +279,7 @@ async def change_member_role_endpoint(
         avatar_filename=membership.user.avatar_filename,
         role=membership.role,
         joined_at=membership.joined_at,
+        status=_member_status(membership.user, online_ids),
     )
 
 
@@ -468,6 +482,7 @@ async def add_member_endpoint(
     except AlreadyMemberError:
         raise HTTPException(status_code=409, detail="That user is already a member")
     await broadcast_room_added(request.app.state.broadcaster, data.user_id, room)
+    online_ids = await request.app.state.global_presence.online_user_ids([membership.user_id])
     return RoomMemberRead(
         user_id=membership.user_id,
         username=membership.user.username,
@@ -475,6 +490,7 @@ async def add_member_endpoint(
         avatar_filename=membership.user.avatar_filename,
         role=membership.role,
         joined_at=membership.joined_at,
+        status=_member_status(membership.user, online_ids),
     )
 
 

@@ -22,17 +22,20 @@ class UserRead(BaseModel):
     display_name: str | None
     theme: str | None
     avatar_filename: str | None
+    appear_offline: bool
     created_at: datetime
 
 
 class ProfileUpdate(BaseModel):
-    # Both fields are independently optional-and-settable -- the router
-    # only applies keys actually present in the request body
+    # Each field is independently optional-and-settable -- the router only
+    # applies keys actually present in the request body
     # (model_dump(exclude_unset=True)), so a call that only wants to change
-    # the theme doesn't clobber display_name back to None, and vice versa.
+    # the theme doesn't clobber display_name (or appear_offline) back to
+    # their defaults, and vice versa.
     display_name: str | None = Field(default=None, max_length=50)
     # Kept in sync with frontend/src/styles/themes.css's theme blocks.
     theme: Literal["dark", "light", "midnight", "sunset"] | None = Field(default=None)
+    appear_offline: bool | None = Field(default=None)
 
 
 class UserDirectoryRead(BaseModel):

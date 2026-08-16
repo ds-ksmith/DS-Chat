@@ -85,11 +85,13 @@ async def update_profile(
         current_user.display_name = display_name or None
     if "theme" in updates:
         current_user.theme = updates["theme"]
+    if "appear_offline" in updates:
+        current_user.appear_offline = updates["appear_offline"]
     await db.commit()
     await db.refresh(current_user)
     # theme is private to this user, not shown to anyone else -- only
     # broadcast when something other members would actually see changed.
-    if "display_name" in updates:
+    if "display_name" in updates or "appear_offline" in updates:
         await broadcast_member_updated(db, request.app.state.broadcaster, current_user.id)
     return current_user
 

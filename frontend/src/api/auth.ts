@@ -41,6 +41,16 @@ export function removeAvatar(): Promise<User> {
   return apiFetch<User>('/api/auth/me/avatar', { method: 'DELETE' })
 }
 
+// Deliberately its own call, same reasoning as updateTheme above -- a
+// manual override of the presence indicator, global (every room, not
+// per-room), independent of display_name/theme.
+export function updateAppearOffline(appearOffline: boolean): Promise<User> {
+  return apiFetch<User>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ appear_offline: appearOffline }),
+  })
+}
+
 export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   return apiFetch<void>('/api/auth/password', {
     method: 'PATCH',

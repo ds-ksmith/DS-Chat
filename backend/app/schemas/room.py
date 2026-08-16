@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -43,6 +44,10 @@ class RoomMemberRead(BaseModel):
     avatar_filename: str | None
     role: RoomRole
     joined_at: datetime
+    # "offline" whenever the user has set appear_offline, regardless of
+    # actual connection -- computed by the router (needs GlobalPresence),
+    # not derivable from the model alone.
+    status: Literal["online", "offline"]
 
 
 class RoomMemberAdd(BaseModel):

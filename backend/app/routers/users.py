@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,25 @@ async def list_users_directory_endpoint(
         .order_by(User.username)
     )
     return list(result.scalars().all())
+
+
+@router.get("/online", response_model=list[uuid.UUID])
+async def list_online_users_endpoint(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[uuid.UUID]:
+    """A snapshot, not a live feed -- deliberately simpler than the presence
+    dot in chat (which updates live via the existing room-broadcast
+    machinery). Used by surfaces where "accurate as of page load" is good
+    enough: the admin user list and the room-invite user search."""
+    raw_online_ids = await request.app.state.global_presence.all_online_user_ids()
+    if not raw_online_ids:
+        return []
+    result = await db.execute(
+        select(User.id).where(User.id.in_(raw_online_ids), User.appear_offline.is_(False))
+    )
+    return [row[0] for row in result.all()]
 
 
 @router.get("/{user_id}/avatar")

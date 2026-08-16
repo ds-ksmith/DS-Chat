@@ -97,6 +97,16 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _recv(ws) -> dict:
+    """Reads the next frame, transparently discarding member_updated
+    presence-change broadcasts -- another connection in the same room going
+    online/offline is real, expected noise these tests aren't about."""
+    while True:
+        msg = ws.receive_json()
+        if msg.get("type") != "member_updated":
+            return msg
+
+
 def _fetch_subscriptions(ws_client, user_id: str) -> list[PushSubscription]:
     async def _query():
         async with ws_client.session_factory() as session:
@@ -172,7 +182,7 @@ def test_ws_message_no_push_when_member_connected(ws_client, monkeypatch):
             alice_ws.send_json({"type": "message", "room_id": room["id"], "content": "hi"})
             assert alice_ws.receive_json()["type"] == "message"
             # bob is connected too -- he should get the broadcast, not a push
-            assert bob_ws.receive_json()["type"] == "message"
+            assert _recv(bob_ws)["type"] == "message"
 
     assert calls == []
 

@@ -9,6 +9,16 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _recv(ws) -> dict:
+    """Reads the next frame, transparently discarding member_updated
+    presence-change broadcasts -- another connection in the same room going
+    online/offline is real, expected noise these tests aren't about."""
+    while True:
+        msg = ws.receive_json()
+        if msg.get("type") != "member_updated":
+            return msg
+
+
 def _register_ws(ws_client, username: str) -> dict:
     async def _seed():
         async with ws_client.session_factory() as session:
@@ -121,8 +131,8 @@ def test_reaction_broadcasts_to_other_room_members(ws_client):
             alice_ws.send_json(
                 {"type": "reaction", "room_id": room["id"], "message_id": message["id"], "emoji": "🎉"}
             )
-            assert alice_ws.receive_json()["type"] == "reaction_update"
-            update = bob_ws.receive_json()
+            assert _recv(alice_ws)["type"] == "reaction_update"
+            update = _recv(bob_ws)
             assert update["type"] == "reaction_update"
             assert update["reactions"][0]["emoji"] == "🎉"
 
