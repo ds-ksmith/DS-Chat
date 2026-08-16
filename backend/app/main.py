@@ -12,7 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
 from app.routers import admin, auth, bots, health, push, rooms, signup, uploads, users, webhooks
-from app.ws.broadcaster import RoomBroadcaster
+from app.ws.broadcaster import Broadcaster
 from app.ws.chat import router as ws_router
 from app.ws.connection_manager import ConnectionManager
 from app.ws.presence import Presence
@@ -68,7 +68,7 @@ def create_app() -> FastAPI:
     app.state.connection_manager = ConnectionManager()
     app.state.redis = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.presence = Presence(app.state.redis)
-    app.state.broadcaster = RoomBroadcaster(app.state.redis, app.state.connection_manager)
+    app.state.broadcaster = Broadcaster(app.state.redis, app.state.connection_manager)
 
     app.include_router(health.router)
     app.include_router(auth.router)

@@ -8,6 +8,16 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+def _fake_send_email(monkeypatch):
+    calls = []
+
+    async def fake(db, to, subject, body):
+        calls.append({"to": to, "subject": subject, "body": body})
+
+    monkeypatch.setattr("app.services.room_service.send_email", fake)
+    return calls
+
+
 def _register_ws(ws_client, username: str) -> dict:
     async def _seed():
         async with ws_client.session_factory() as session:
@@ -101,3 +111,26 @@ def test_presence_is_shared_across_instances(ws_client_factory, monkeypatch):
             assert alice_ws.receive_json()["type"] == "joined"
 
     assert calls == []
+
+
+def test_add_member_notifies_target_user_via_websocket(ws_client_factory, monkeypatch):
+    # Bob is only ever "connected," never "joined" -- proving the room_added
+    # signal reaches him on his own per-user channel, independent of (and
+    # necessarily before) ever joining the room's own channel, which he
+    # can't do until this signal tells his client the room exists at all.
+    _fake_send_email(monkeypatch)
+
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    bob = _register_ws(instance2, _unique("bob"))
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        resp = instance1.post(f"/api/rooms/{room['id']}/members", json={"user_id": bob["id"]})
+        assert resp.status_code == 201, resp.text
+
+        received = bob_ws.receive_json()
+        assert received == {"type": "room_added", "room_id": room["id"]}

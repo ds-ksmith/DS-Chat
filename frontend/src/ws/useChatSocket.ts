@@ -2,21 +2,25 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ServerEnvelope } from '../types'
 
 interface UseChatSocketOptions {
-  roomId: string
-  onMessage: (envelope: ServerEnvelope) => void
   onUnauthenticated: () => void
 }
 
 const RECONNECT_BASE_DELAY_MS = 1000
 const RECONNECT_MAX_DELAY_MS = 30000
 
-export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatSocketOptions) {
+// One connection per authenticated session, established as soon as the app
+// shell mounts -- not per-room. A room is just something this socket can be
+// told to "join"/"leave" while it's open; the connection itself persists
+// across room switches and while no room is open at all, since a per-user
+// signal (e.g. "you were added to a room") has to reach the client whether
+// or not any room is currently open.
+export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   const socketRef = useRef<WebSocket | null>(null)
   const [connected, setConnected] = useState(false)
-  const onMessageRef = useRef(onMessage)
-  onMessageRef.current = onMessage
   const onUnauthenticatedRef = useRef(onUnauthenticated)
   onUnauthenticatedRef.current = onUnauthenticated
+  const subscribersRef = useRef(new Set<(envelope: ServerEnvelope) => void>())
+  const joinedRoomsRef = useRef(new Set<string>())
 
   useEffect(() => {
     let stopped = false
@@ -38,12 +42,17 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
         if (socketRef.current !== ws) return
         reconnectDelay = RECONNECT_BASE_DELAY_MS
         setConnected(true)
-        ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
+        // Re-join whatever rooms were joined before a reconnect -- the
+        // server has no memory of a dropped connection's prior state.
+        for (const roomId of joinedRoomsRef.current) {
+          ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
+        }
       }
 
       ws.onmessage = (event) => {
         if (socketRef.current !== ws) return
-        onMessageRef.current(JSON.parse(event.data) as ServerEnvelope)
+        const envelope = JSON.parse(event.data) as ServerEnvelope
+        for (const handler of subscribersRef.current) handler(envelope)
       }
 
       ws.onclose = (event) => {
@@ -80,9 +89,32 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [roomId])
+  }, [])
 
-  const send = useCallback((content: string, imageId?: string, fileId?: string) => {
+  const subscribe = useCallback((handler: (envelope: ServerEnvelope) => void) => {
+    subscribersRef.current.add(handler)
+    return () => {
+      subscribersRef.current.delete(handler)
+    }
+  }, [])
+
+  const joinRoom = useCallback((roomId: string) => {
+    joinedRoomsRef.current.add(roomId)
+    const ws = socketRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'join', room_id: roomId }))
+    }
+  }, [])
+
+  const leaveRoom = useCallback((roomId: string) => {
+    joinedRoomsRef.current.delete(roomId)
+    const ws = socketRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'leave', room_id: roomId }))
+    }
+  }, [])
+
+  const send = useCallback((roomId: string, content: string, imageId?: string, fileId?: string) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(
@@ -94,19 +126,21 @@ export function useChatSocket({ roomId, onMessage, onUnauthenticated }: UseChatS
         file_id: fileId ?? null,
       }),
     )
-  }, [roomId])
+  }, [])
 
-  const sendEdit = useCallback((messageId: string, content: string) => {
+  const sendEdit = useCallback((roomId: string, messageId: string, content: string) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify({ type: 'edit', room_id: roomId, message_id: messageId, content }))
-  }, [roomId])
+  }, [])
 
-  const sendReaction = useCallback((messageId: string, emoji: string) => {
+  const sendReaction = useCallback((roomId: string, messageId: string, emoji: string) => {
     const ws = socketRef.current
     if (!ws || ws.readyState !== WebSocket.OPEN) return
     ws.send(JSON.stringify({ type: 'reaction', room_id: roomId, message_id: messageId, emoji }))
-  }, [roomId])
+  }, [])
 
-  return { connected, send, sendEdit, sendReaction }
+  return { connected, subscribe, joinRoom, leaveRoom, send, sendEdit, sendReaction }
 }
+
+export type ChatSocketHandle = ReturnType<typeof useChatSocket>

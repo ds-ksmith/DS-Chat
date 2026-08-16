@@ -7,7 +7,7 @@ from app.models import Message, MessageFile, Room, RoomMembership, User
 from app.schemas.message import ReactionSummary
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
-from app.ws.broadcaster import RoomBroadcaster
+from app.ws.broadcaster import Broadcaster
 from app.ws.presence import Presence
 
 
@@ -70,7 +70,7 @@ async def _message_payload(db: AsyncSession, message: Message, username: str) ->
 
 async def broadcast_new_message(
     db: AsyncSession,
-    broadcaster: RoomBroadcaster,
+    broadcaster: Broadcaster,
     presence: Presence,
     room_id: uuid.UUID,
     message: Message,
@@ -86,7 +86,7 @@ async def broadcast_new_message(
 
 
 async def broadcast_message_update(
-    db: AsyncSession, broadcaster: RoomBroadcaster, room_id: uuid.UUID, message: Message
+    db: AsyncSession, broadcaster: Broadcaster, room_id: uuid.UUID, message: Message
 ) -> None:
     payload = {
         "type": "message_update",
@@ -100,7 +100,7 @@ async def broadcast_message_update(
 
 
 async def broadcast_reaction_update(
-    broadcaster: RoomBroadcaster,
+    broadcaster: Broadcaster,
     room_id: uuid.UUID,
     message_id: uuid.UUID,
     reactions: list[ReactionSummary],
@@ -115,3 +115,15 @@ async def broadcast_reaction_update(
     # Deliberately no dispatch_event() call -- reactions don't get an
     # outgoing-webhook event type, matching the same scope cut made for
     # image uploads (see backend/README.md).
+
+
+async def broadcast_room_added(broadcaster: Broadcaster, user_id: uuid.UUID, room: Room) -> None:
+    """The only signal a user's open client gets that they were just added
+    to a room -- without it, GET /rooms/mine is only ever fetched once at
+    app mount, so a room added mid-session stays invisible until a full
+    reload. Published on the user's own channel rather than the room's,
+    since the whole point is reaching someone who hasn't joined that room's
+    channel yet (and by definition can't have)."""
+    await broadcaster.publish_to_user(
+        user_id, {"type": "room_added", "room_id": str(room.id)}
+    )

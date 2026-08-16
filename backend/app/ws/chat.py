@@ -78,6 +78,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     presence = websocket.app.state.presence
     broadcaster = websocket.app.state.broadcaster
     joined_rooms: set[uuid.UUID] = set()
+    manager.register_user(user.id, websocket)
 
     try:
         while True:
@@ -225,5 +226,6 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
         pass
     finally:
         manager.leave_all(websocket)
+        manager.unregister_user(user.id, websocket)
         for room_id in joined_rooms:
             await presence.leave(room_id, user.id)

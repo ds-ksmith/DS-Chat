@@ -34,6 +34,7 @@ from app.schemas.webhook import (
     WebhookIncomingCreate,
     WebhookIncomingRead,
 )
+from app.services.message_events import broadcast_room_added
 from app.services.message_service import get_reactions_for_messages, list_recent_messages
 from app.services.upload_settings_service import format_mb, get_upload_settings
 from app.services.room_service import (
@@ -466,6 +467,7 @@ async def add_member_endpoint(
         raise HTTPException(status_code=404, detail="No user with that ID")
     except AlreadyMemberError:
         raise HTTPException(status_code=409, detail="That user is already a member")
+    await broadcast_room_added(request.app.state.broadcaster, data.user_id, room)
     return RoomMemberRead(
         user_id=membership.user_id,
         username=membership.user.username,

@@ -114,12 +114,18 @@ export interface ChatErrorEnvelope {
   detail: string
 }
 
+export interface ChatRoomAddedEnvelope {
+  type: 'room_added'
+  room_id: string
+}
+
 export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
   | ChatReactionUpdateEnvelope
   | ChatJoinedEnvelope
   | ChatErrorEnvelope
+  | ChatRoomAddedEnvelope
 
 export interface AdminUser {
   id: string

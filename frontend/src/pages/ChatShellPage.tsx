@@ -12,6 +12,7 @@ import { TopBar } from '../components/TopBar'
 import { useAuth } from '../context/AuthContext'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type { MyRoomItem, RoomMember } from '../types'
+import { useChatSocket } from '../ws/useChatSocket'
 import './ChatShellPage.css'
 
 type ModalKind = 'new' | 'browse' | null
@@ -56,6 +57,17 @@ export function ChatShellPage() {
     refreshRooms().catch(() => {})
   }, [refreshRooms])
 
+  const onSocketUnauthenticated = useCallback(() => navigate('/login'), [navigate])
+  const socket = useChatSocket({ onUnauthenticated: onSocketUnauthenticated })
+
+  useEffect(
+    () =>
+      socket.subscribe((envelope) => {
+        if (envelope.type === 'room_added') refreshRooms()
+      }),
+    [socket, refreshRooms],
+  )
+
   useEffect(() => {
     refreshMembers()
     // Also re-run when the logged-in user's own profile changes (display
@@ -97,6 +109,7 @@ export function ChatShellPage() {
               onBack={() => navigate('/rooms')}
               onToggleInfo={() => setInfoOpen((v) => !v)}
               infoOpen={infoOpen}
+              socket={socket}
             />
           ) : (
             !isMobile && (

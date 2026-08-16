@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { NetworkError } from '../api/client'
 import { getRoomMessages } from '../api/rooms'
-import { useChatSocket } from '../ws/useChatSocket'
+import type { ChatSocketHandle } from '../ws/useChatSocket'
 import type { ChatMessageEnvelope, Message, MyRoomItem, RoomMember, ServerEnvelope } from '../types'
 import { Composer } from './Composer'
 import { MessageList } from './MessageList'
@@ -15,10 +14,10 @@ interface ChatPaneProps {
   onBack: () => void
   onToggleInfo: () => void
   infoOpen: boolean
+  socket: ChatSocketHandle
 }
 
-export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOpen }: ChatPaneProps) {
-  const navigate = useNavigate()
+export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOpen, socket }: ChatPaneProps) {
   const [history, setHistory] = useState<Message[]>([])
   const [live, setLive] = useState<ChatMessageEnvelope[]>([])
   const [wsError, setWsError] = useState<string | null>(null)
@@ -40,35 +39,60 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
       })
   }, [room.id])
 
-  const onMessage = useCallback((envelope: ServerEnvelope) => {
-    if (envelope.type === 'message') {
-      setLive((prev) => [...prev, envelope])
-    } else if (envelope.type === 'message_update') {
-      setHistory((prev) =>
-        prev.map((m) =>
-          m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
-        ),
-      )
-      setLive((prev) =>
-        prev.map((m) =>
-          m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
-        ),
-      )
-    } else if (envelope.type === 'reaction_update') {
-      setHistory((prev) =>
-        prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
-      )
-      setLive((prev) =>
-        prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
-      )
-    } else if (envelope.type === 'error') {
-      setWsError(envelope.detail)
-    }
-  }, [])
+  useEffect(() => {
+    socket.joinRoom(room.id)
+    return () => socket.leaveRoom(room.id)
+  }, [socket, room.id])
 
-  const onUnauthenticated = useCallback(() => navigate('/login'), [navigate])
+  useEffect(
+    () =>
+      // The socket is shared across every room this tab visits, so a
+      // stray in-flight event for a room just left (or a different tab's
+      // room, in theory) has to be filtered out here rather than assumed
+      // away -- `error` has no room_id to filter on, but is rare enough
+      // that misattributing one to the wrong room's banner isn't worth
+      // guarding against separately.
+      socket.subscribe((envelope: ServerEnvelope) => {
+        if (envelope.type === 'message' && envelope.room_id === room.id) {
+          setLive((prev) => [...prev, envelope])
+        } else if (envelope.type === 'message_update' && envelope.room_id === room.id) {
+          setHistory((prev) =>
+            prev.map((m) =>
+              m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+            ),
+          )
+          setLive((prev) =>
+            prev.map((m) =>
+              m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+            ),
+          )
+        } else if (envelope.type === 'reaction_update' && envelope.room_id === room.id) {
+          setHistory((prev) =>
+            prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
+          )
+          setLive((prev) =>
+            prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
+          )
+        } else if (envelope.type === 'error') {
+          setWsError(envelope.detail)
+        }
+      }),
+    [socket, room.id],
+  )
 
-  const { connected, send, sendEdit, sendReaction } = useChatSocket({ roomId: room.id, onMessage, onUnauthenticated })
+  const connected = socket.connected
+  const send = useCallback(
+    (content: string, imageId?: string, fileId?: string) => socket.send(room.id, content, imageId, fileId),
+    [socket, room.id],
+  )
+  const sendEdit = useCallback(
+    (messageId: string, content: string) => socket.sendEdit(room.id, messageId, content),
+    [socket, room.id],
+  )
+  const sendReaction = useCallback(
+    (messageId: string, emoji: string) => socket.sendReaction(room.id, messageId, emoji),
+    [socket, room.id],
+  )
 
   return (
     <section className="chat-pane">
