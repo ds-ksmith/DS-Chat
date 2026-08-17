@@ -60,9 +60,11 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         setConnected(true)
         // Re-join whatever rooms were joined before a reconnect -- the
         // server has no memory of a dropped connection's prior state. Only
-        // while visible: reconnecting from a backgrounded tab should stay
+        // while visible (checked live, not from the ref -- see joinRoom's
+        // comment): reconnecting from a backgrounded tab should stay
         // "left" for the same reason backgrounding leaves in the first
         // place (see desiredRoomsRef's comment above).
+        isVisibleRef.current = document.visibilityState === 'visible'
         if (isVisibleRef.current) {
           for (const roomId of desiredRoomsRef.current) {
             sendRoomFrame('join', roomId)
@@ -135,20 +137,23 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   const joinRoom = useCallback(
     (roomId: string) => {
       desiredRoomsRef.current.add(roomId)
-      // Unconditional, not gated on isVisibleRef: this fires from a
-      // component actually mounting (opening a room in the UI), which by
-      // definition only happens while the user is interacting with the
-      // page -- a genuinely backgrounded tab can't run the click handler
-      // that leads here in the first place. Gating this too (rather than
-      // only the automatic hide/show transitions below) meant a stale or
-      // momentarily-wrong visibilityState at mount time could silently
-      // skip the join entirely, with nothing to ever retry it. Also
-      // self-corrects isVisibleRef -- opening a room this way is itself
-      // stronger evidence of visibility than whatever the ref currently
-      // holds, so a wrong/stale `false` doesn't also skip replaying this
-      // join on a later reconnect (which does still check the ref).
-      isVisibleRef.current = true
-      sendRoomFrame('join', roomId)
+      // Reads the live API, not a cached ref: a room can "mount" (calling
+      // this) without genuine user interaction -- mobile Chrome can
+      // silently discard and later reload a long-backgrounded tab from
+      // memory, which re-runs this exact effect with nobody looking at the
+      // screen. An earlier version of this trusted isVisibleRef and/or
+      // sent unconditionally on the theory that "you can't click into a
+      // room while hidden" -- true for a real click, not true for a silent
+      // background reload, which re-joined the room's presence on every
+      // such reload with no matching "leave" (the discard skips normal
+      // unmount cleanup), permanently suppressing push notifications for
+      // that room until the tab was genuinely reopened. Checking fresh
+      // here means a still-hidden reload correctly stays "left" -- the
+      // room stays in desiredRoomsRef regardless, so the next genuine
+      // foreground transition (handleVisibilityChange below) still joins
+      // it, just deferred instead of wrongly immediate.
+      isVisibleRef.current = document.visibilityState === 'visible'
+      if (isVisibleRef.current) sendRoomFrame('join', roomId)
     },
     [sendRoomFrame],
   )
