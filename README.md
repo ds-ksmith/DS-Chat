@@ -8,6 +8,14 @@ comes from an admin invite or a room invite. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the full system design and phased
 build plan.
 
+![DS Chat main view: a room with Markdown formatting, an @mention, and emoji reactions](docs/screenshots/chat-dark.png)
+
+| Custom theme builder | Same room, custom theme applied |
+|---|---|
+| ![The custom theme builder: a live, hoverable mockup mapped to 12 color fields](docs/screenshots/theme-builder.png) | ![The same room under a custom theme built with the theme editor](docs/screenshots/chat-aurora.png) |
+
+<sub>Also responsive on mobile — [screenshot](docs/screenshots/chat-mobile.png)</sub>
+
 ## Features
 
 - **Auth & accounts** — session-based auth, invite-only signup (admin-issued
