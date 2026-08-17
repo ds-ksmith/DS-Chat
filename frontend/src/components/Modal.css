@@ -91,7 +91,7 @@
 .modal-divider {
   border: none;
   border-top: 1px solid var(--ds-border);
-  margin: var(--sp-5) 0 var(--sp-4);
+  margin: var(--sp-6) 0 var(--sp-4);
 }
 
 .theme-swatch-grid {
