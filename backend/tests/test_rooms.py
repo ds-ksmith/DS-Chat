@@ -27,6 +27,29 @@ async def test_create_room_creates_owner_membership(client, db_session):
     assert membership.role == RoomRole.owner
 
 
+async def test_my_rooms_tiebreaks_identical_created_at_by_id(client, db_session):
+    # Two rooms sharing the exact same created_at (bulk-created/migrated
+    # rooms, or just an unlucky timing collision) must still come back in a
+    # single, stable order every call -- see list_member_rooms's order_by
+    # comment. Without a secondary sort key, a second fetch (e.g. from a
+    # different device) isn't guaranteed to return ties in the same order.
+    await register_and_login(client, db_session, username="alice")
+    room_a = (await client.post("/api/rooms", json={"name": "room-a"})).json()
+    room_b = (await client.post("/api/rooms", json={"name": "room-b"})).json()
+
+    result = await db_session.execute(
+        select(Room).where(Room.id.in_([uuid.UUID(room_a["id"]), uuid.UUID(room_b["id"])]))
+    )
+    rooms_by_id = {str(r.id): r for r in result.scalars().all()}
+    rooms_by_id[room_a["id"]].created_at = rooms_by_id[room_b["id"]].created_at
+    await db_session.commit()
+
+    resp = await client.get("/api/rooms/mine")
+    assert resp.status_code == 200
+    ids = [r["id"] for r in resp.json() if r["id"] in (room_a["id"], room_b["id"])]
+    assert ids == sorted([room_a["id"], room_b["id"]])
+
+
 async def test_list_rooms_excludes_private(client, db_session):
     user = await register_and_login(client, db_session, username="alice")
     await client.post("/api/rooms", json={"name": "open-room"})

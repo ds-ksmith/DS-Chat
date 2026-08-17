@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { NetworkError } from '../api/client'
 import { getRoomMessages, markRoomRead } from '../api/rooms'
 import type { ChatSocketHandle } from '../ws/useChatSocket'
@@ -127,6 +127,22 @@ export function ChatPane({
     [socket, room.id, refreshHistory, markRead],
   )
 
+  // history and live are just concatenated, not merge-sorted -- live is
+  // strictly receipt order, which isn't always send order. A rejoin (a
+  // reconnect, or opening the same room on another device) refetches
+  // history but doesn't guarantee anything about the timing of whatever
+  // WS messages land in live afterward relative to it, so without this
+  // sort a message can render above one that was actually sent earlier.
+  // Stable sort (guaranteed since ES2019) keeps same-timestamp messages in
+  // their original relative order rather than shuffling them.
+  const messages = useMemo(
+    () =>
+      [...history, ...live].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      ),
+    [history, live],
+  )
+
   const connected = socket.connected
   const send = useCallback(
     (content: string, imageId?: string, fileId?: string) => socket.send(room.id, content, imageId, fileId),
@@ -179,7 +195,7 @@ export function ChatPane({
 
       <MessageList
         roomId={room.id}
-        messages={[...history, ...live]}
+        messages={messages}
         members={members}
         onEdit={sendEdit}
         onReact={sendReaction}

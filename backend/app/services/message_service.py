@@ -65,7 +65,12 @@ async def list_recent_messages(
         select(Message)
         .where(Message.room_id == room_id)
         .options(selectinload(Message.user), selectinload(Message.file))
-        .order_by(Message.created_at.desc())
+        # Secondary key on the primary key -- two messages can share the
+        # same created_at (rapid sends, e.g. from different clients or a
+        # webhook), and without a tiebreaker Postgres isn't obligated to
+        # return them in the same relative order on every call, which can
+        # look like messages swapping places between fetches/devices.
+        .order_by(Message.created_at.desc(), Message.id.desc())
         .limit(limit)
     )
     messages = list(result.scalars().all())

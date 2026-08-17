@@ -71,7 +71,7 @@ async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Ro
         select(Room)
         .where(Room.is_private.is_(False), Room.is_archived.is_(False))
         .options(selectinload(Room.memberships))
-        .order_by(Room.created_at)
+        .order_by(Room.created_at, Room.id)
     )
     rooms = result.scalars().all()
     return [
@@ -108,7 +108,13 @@ async def list_member_rooms(
         )
         .join(RoomMembership, RoomMembership.room_id == Room.id)
         .where(RoomMembership.user_id == user_id)
-        .order_by(Room.created_at)
+        # A secondary key on the primary key -- without it, Postgres has no
+        # obligation to return two same-instant rooms (a plausible tie:
+        # bulk-created/migrated rooms, or just two created in quick
+        # succession) in the same order on every call, which without a
+        # stable order can visibly reshuffle the sidebar between one
+        # device's fetch and another's.
+        .order_by(Room.created_at, Room.id)
     )
     return [
         (room, role, last_message_at is not None and last_message_at > last_read_at, has_mention)
