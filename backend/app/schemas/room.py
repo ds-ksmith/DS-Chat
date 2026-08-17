@@ -60,3 +60,16 @@ class RoomMemberRoleUpdate(BaseModel):
 
 class TransferOwnershipRequest(BaseModel):
     new_owner_user_id: uuid.UUID
+
+
+class RoomAttachmentRead(BaseModel):
+    id: uuid.UUID
+    kind: Literal["file", "image"]
+    # None for images -- MessageImage has no stored original filename,
+    # unlike MessageFile (see backend/app/models/message_image.py).
+    filename: str | None
+    content_type: str
+    size_bytes: int
+    uploaded_by: str
+    message_id: uuid.UUID
+    created_at: datetime

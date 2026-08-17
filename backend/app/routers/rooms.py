@@ -18,6 +18,7 @@ from app.schemas.message_file import MessageFileCreated
 from app.schemas.message_image import MessageImageCreated
 from app.schemas.room import (
     MyRoomItem,
+    RoomAttachmentRead,
     RoomCreate,
     RoomListItem,
     RoomMemberAdd,
@@ -35,7 +36,11 @@ from app.schemas.webhook import (
     WebhookIncomingRead,
 )
 from app.services.message_events import broadcast_room_added
-from app.services.message_service import get_reactions_for_messages, list_recent_messages
+from app.services.message_service import (
+    get_reactions_for_messages,
+    list_recent_messages,
+    list_room_attachments,
+)
 from app.services.upload_settings_service import format_mb, get_upload_settings
 from app.services.room_service import (
     AlreadyMemberError,
@@ -461,6 +466,50 @@ async def get_room_file_endpoint(
         filename=message_file.original_filename,
         headers={"Cache-Control": "private, max-age=31536000, immutable"},
     )
+
+
+@router.get("/{room_id}/attachments", response_model=list[RoomAttachmentRead])
+async def list_room_attachments_endpoint(
+    room_id: uuid.UUID,
+    limit: int = Query(default=100, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+    messages = await list_room_attachments(db, room_id, limit)
+    attachments: list[RoomAttachmentRead] = []
+    for m in messages:
+        # A message could in principle carry both an image and a file (the
+        # DB doesn't forbid it, even though the composer's UI only ever
+        # attaches one) -- emit an entry per attachment actually present
+        # rather than assuming exactly one.
+        if m.file:
+            attachments.append(
+                RoomAttachmentRead(
+                    id=m.file.id,
+                    kind="file",
+                    filename=m.file.original_filename,
+                    content_type=m.file.content_type,
+                    size_bytes=m.file.size_bytes,
+                    uploaded_by=m.user.username,
+                    message_id=m.id,
+                    created_at=m.created_at,
+                )
+            )
+        if m.image:
+            attachments.append(
+                RoomAttachmentRead(
+                    id=m.image.id,
+                    kind="image",
+                    filename=None,
+                    content_type=m.image.content_type,
+                    size_bytes=m.image.size_bytes,
+                    uploaded_by=m.user.username,
+                    message_id=m.id,
+                    created_at=m.created_at,
+                )
+            )
+    return attachments
 
 
 @router.post("/{room_id}/members", response_model=RoomMemberRead, status_code=201)

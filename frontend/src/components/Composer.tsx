@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } fro
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
+import { formatFileSize } from '../lib/fileSize'
 import { EmojiPicker } from './EmojiPicker'
 import './Composer.css'
 
@@ -12,11 +13,6 @@ interface ComposerProps {
   onSend: (content: string, imageId?: string, fileId?: string) => void
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')

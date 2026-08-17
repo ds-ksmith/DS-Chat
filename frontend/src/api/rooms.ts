@@ -4,6 +4,7 @@ import type {
   MessageFileInfo,
   MyRoomItem,
   Room,
+  RoomAttachment,
   RoomListItem,
   RoomMember,
   RoomRole,
@@ -52,6 +53,10 @@ export function leaveRoom(roomId: string): Promise<void> {
 
 export function listRoomMembers(roomId: string): Promise<RoomMember[]> {
   return apiFetch<RoomMember[]>(`/api/rooms/${roomId}/members`)
+}
+
+export function listRoomAttachments(roomId: string): Promise<RoomAttachment[]> {
+  return apiFetch<RoomAttachment[]>(`/api/rooms/${roomId}/attachments`)
 }
 
 export function addRoomMember(roomId: string, userId: string): Promise<RoomMember> {

@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -64,6 +64,27 @@ async def list_recent_messages(
     messages = list(result.scalars().all())
     messages.reverse()
     return messages
+
+
+async def list_room_attachments(
+    db: AsyncSession, room_id: uuid.UUID, limit: int = 100
+) -> list[Message]:
+    # Joins through messages.image_id/file_id rather than querying
+    # message_files/message_images directly -- a file/image is uploaded (and
+    # gets a row) *before* the message referencing it is ever sent, so an
+    # upload the user abandoned without sending would otherwise show up as
+    # a phantom attachment the room never actually saw.
+    result = await db.execute(
+        select(Message)
+        .where(
+            Message.room_id == room_id,
+            or_(Message.image_id.isnot(None), Message.file_id.isnot(None)),
+        )
+        .options(selectinload(Message.user), selectinload(Message.file), selectinload(Message.image))
+        .order_by(Message.created_at.desc())
+        .limit(limit)
+    )
+    return list(result.scalars().all())
 
 
 async def get_reactions_for_messages(

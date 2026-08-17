@@ -5,7 +5,10 @@ import {
   addRoomMember,
   changeMemberRole,
   deleteRoom,
+  getRoomFileUrl,
+  getRoomImageUrl,
   leaveRoom,
+  listRoomAttachments,
   removeMember,
   transferOwnership,
   updateRoom,
@@ -21,15 +24,21 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
+import { formatFileSize } from '../lib/fileSize'
 import type {
   EventSubscription,
   EventType,
+  MessageFileInfo,
   MyRoomItem,
+  RoomAttachment,
   RoomMember,
   RoomRole,
   UserDirectoryEntry,
   WebhookIncoming,
 } from '../types'
+import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
+import { ImageLightbox } from './ImageLightbox'
+import { FileAttachmentIcon } from './MessageList'
 import { RoomAvatar } from './RoomAvatar'
 import { UserAvatar } from './UserAvatar'
 import { UserPicker } from './UserPicker'
@@ -70,6 +79,11 @@ export function RoomInfoPanel({
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [directoryUsers, setDirectoryUsers] = useState<UserDirectoryEntry[]>([])
   const [busyUserId, setBusyUserId] = useState<string | null>(null)
+  const [filesOpen, setFilesOpen] = useState(false)
+  const [attachments, setAttachments] = useState<RoomAttachment[]>([])
+  const [attachmentsError, setAttachmentsError] = useState<string | null>(null)
+  const [previewFile, setPreviewFile] = useState<MessageFileInfo | null>(null)
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState(room.name)
   const [descDraft, setDescDraft] = useState(room.description ?? '')
@@ -99,6 +113,18 @@ export function RoomInfoPanel({
       setDirectoryUsers([])
     }
   }, [room.id, room.name, room.description, canManage])
+
+  useEffect(() => {
+    // Fetched lazily (only once expanded), not alongside the section above
+    // -- unlike webhooks/directory this is visible to every member, not
+    // just admins, so eagerly fetching on every room open would add a
+    // request most opens never need.
+    if (!filesOpen) return
+    setAttachmentsError(null)
+    listRoomAttachments(room.id)
+      .then(setAttachments)
+      .catch((err) => setAttachmentsError(err instanceof ApiError ? err.message : String(err)))
+  }, [filesOpen, room.id])
 
   async function handleAddMember(target: UserDirectoryEntry) {
     setInviteError(null)
@@ -292,6 +318,76 @@ export function RoomInfoPanel({
         })}
       </div>
 
+      <div className="room-info-section">
+        <button type="button" className="room-info-settings-toggle" onClick={() => setFilesOpen((v) => !v)}>
+          Files {filesOpen ? '−' : '+'}
+        </button>
+        {filesOpen && (
+          <div className="room-info-files">
+            {attachmentsError && <p className="room-info-error">{attachmentsError}</p>}
+            {!attachmentsError && attachments.length === 0 && (
+              <p className="room-info-files-empty">No files or images yet.</p>
+            )}
+            {attachments.map((a) => {
+              const label = a.filename ?? 'Image'
+              const meta = `${formatFileSize(a.size_bytes)} · ${a.uploaded_by}`
+              const inner = (
+                <>
+                  <FileAttachmentIcon />
+                  <span className="room-info-file-info">
+                    <span className="room-info-file-name">{label}</span>
+                    <span className="room-info-file-meta">{meta}</span>
+                  </span>
+                </>
+              )
+              const key = `${a.kind}-${a.id}`
+
+              if (a.kind === 'image') {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="room-info-file-row"
+                    onClick={() => setLightboxSrc(getRoomImageUrl(room.id, a.id))}
+                  >
+                    {inner}
+                  </button>
+                )
+              }
+              if (getPreviewKind(a.filename ?? '')) {
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="room-info-file-row"
+                    onClick={() =>
+                      setPreviewFile({
+                        id: a.id,
+                        filename: a.filename ?? label,
+                        size_bytes: a.size_bytes,
+                        content_type: a.content_type,
+                      })
+                    }
+                  >
+                    {inner}
+                  </button>
+                )
+              }
+              return (
+                <a
+                  key={key}
+                  href={getRoomFileUrl(room.id, a.id)}
+                  download={a.filename ?? undefined}
+                  className="room-info-file-row"
+                >
+                  {inner}
+                </a>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
       {canManage && (
         <div className="room-info-section">
           <div className="room-info-label">Add someone</div>
@@ -444,6 +540,16 @@ export function RoomInfoPanel({
       >
         Leave room
       </button>
+
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+      {previewFile && (
+        <FilePreviewModal
+          roomId={room.id}
+          file={previewFile}
+          kind={getPreviewKind(previewFile.filename) ?? 'text'}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </aside>
   )
 }

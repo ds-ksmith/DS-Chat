@@ -49,6 +49,17 @@ export interface RoomMember {
   status: 'online' | 'offline'
 }
 
+export interface RoomAttachment {
+  id: string
+  kind: 'file' | 'image'
+  filename: string | null
+  content_type: string
+  size_bytes: number
+  uploaded_by: string
+  message_id: string
+  created_at: string
+}
+
 export type InviteStatus = 'pending' | 'accepted' | 'revoked'
 
 export interface ReactionSummary {

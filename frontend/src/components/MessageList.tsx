@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
+import { formatFileSize } from '../lib/fileSize'
 import { avatarUrlFor, displayNameFor, senderColorIndex, statusFor } from '../lib/messageGrouping'
 import type { ChatMessageEnvelope, Message, MessageFileInfo, RoomMember } from '../types'
 import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
@@ -10,13 +11,7 @@ import { MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
 
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function FileAttachmentIcon() {
+export function FileAttachmentIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
       <path

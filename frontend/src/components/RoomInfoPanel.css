@@ -347,3 +347,58 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.room-info-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--sp-2);
+}
+
+.room-info-files-empty {
+  font-size: 0.78rem;
+  color: var(--ds-muted);
+}
+
+.room-info-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 7px 10px;
+  color: var(--ds-text);
+  text-decoration: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.room-info-file-row:hover {
+  border-color: var(--ds-accent);
+}
+
+.room-info-file-row svg {
+  flex: none;
+  color: var(--ds-muted);
+}
+
+.room-info-file-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.room-info-file-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-info-file-meta {
+  font-size: 0.7rem;
+  color: var(--ds-muted);
+  font-family: var(--mono);
+}
