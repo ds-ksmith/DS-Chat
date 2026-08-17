@@ -1,5 +1,10 @@
 .admin-page {
-  height: 100%;
+  /* Fills whatever's left in #root's flex column after UpdateBanner --
+     see tokens.css. height:100% resolved to the full viewport regardless
+     of the banner, causing the same off-screen-content bug ChatShellPage
+     had. */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--ds-void);

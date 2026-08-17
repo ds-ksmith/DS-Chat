@@ -58,6 +58,20 @@ body,
   height: 100%;
 }
 
+/* #root's direct children are UpdateBanner (App.tsx renders it globally,
+   above every route, so it can prompt for a reload from any page) and
+   whichever page is currently routed. A flex column here, with the banner
+   as flex:none (already set on .update-banner) and each page's root
+   filling the rest via flex:1, lets the banner's height come out of the
+   page's available space instead of adding on top of a page that
+   separately hardcodes height:100vh/100% -- that additive stacking was
+   pushing chat's composer off the bottom of the screen whenever the
+   banner was showing. */
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
 body {
   margin: 0;
   background: var(--ds-void);

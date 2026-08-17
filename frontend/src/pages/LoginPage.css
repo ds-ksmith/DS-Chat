@@ -1,5 +1,11 @@
 .login-screen {
-  min-height: 100vh;
+  /* Fills whatever's left in #root's flex column after UpdateBanner -- see
+     tokens.css. min-height:100vh ignored the banner and could grow the
+     whole page taller than the viewport instead of just filling what's
+     actually left, which also meant this stopped being vertically
+     centered on the space the user could see without scrolling. */
+  flex: 1;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;

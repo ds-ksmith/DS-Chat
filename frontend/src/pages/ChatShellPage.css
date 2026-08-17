@@ -1,5 +1,9 @@
 .chat-shell {
-  height: 100vh;
+  /* Fills whatever's left in #root's flex column after UpdateBanner --
+     see tokens.css. Not height:100vh: that ignored the banner entirely and
+     pushed the composer off the bottom of the screen whenever it showed. */
+  flex: 1;
+  min-height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
