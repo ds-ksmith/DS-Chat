@@ -4,9 +4,12 @@
   overflow: hidden;
   border: 1px solid var(--ds-border);
   margin-bottom: var(--sp-3);
-  font-size: 0.74rem;
-  /* Isolated from the outer picker grid's own hover/highlight rules --
-     each swatch's highlight ring is drawn on itself, not inherited. */
+  /* Sized for ThemeBuilderModal's wide dialog (its only caller) -- this used
+     to run at ~0.74rem/96px when it had to fit alongside the color fields in
+     a narrow modal; now that it gets the modal's full width, everything below
+     is scaled up ~1.4x so the extra room actually reads as bigger, not just
+     emptier. */
+  font-size: 1.02rem;
   position: relative;
 }
 
@@ -22,17 +25,17 @@
 }
 
 .ctp-sidebar {
-  width: 96px;
+  width: 132px;
   flex: none;
-  padding: 8px 6px;
+  padding: 11px 8px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .ctp-room-row {
-  padding: 5px 7px;
-  border-radius: 5px;
+  padding: 7px 10px;
+  border-radius: 7px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -47,21 +50,21 @@
 .ctp-main {
   flex: 1;
   min-width: 0;
-  padding: 10px;
+  padding: 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 11px;
 }
 
 .ctp-message {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
+  gap: 9px;
 }
 
 .ctp-avatar {
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   flex: none;
 }
@@ -71,12 +74,12 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .ctp-mention {
-  border-radius: 4px;
-  padding: 0 3px;
+  border-radius: 5px;
+  padding: 0 5px;
   font-weight: 700;
 }
 
@@ -84,25 +87,25 @@
   flex: none;
   align-self: flex-start;
   border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  font-size: 0.68rem;
+  padding: 2px 10px;
+  font-size: 0.88rem;
   font-weight: 800;
   color: #07080f;
 }
 
 .ctp-composer {
   border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 5px 8px;
+  border-radius: 8px;
+  padding: 7px 11px;
 }
 
 .ctp-danger-btn {
   align-self: flex-start;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 4px 8px;
-  font-size: 0.72rem;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 0.92rem;
   font-weight: 700;
   cursor: pointer;
 }

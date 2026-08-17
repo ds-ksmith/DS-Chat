@@ -51,38 +51,21 @@ export function ThemeBuilderModal({
           </button>
         </div>
 
-        <div className="theme-builder-layout">
-          <div className="theme-builder-preview-col">
-            <input
-              type="text"
-              className="custom-theme-name-input"
-              value={name}
-              onChange={(e) => onNameChange(e.target.value)}
-              placeholder="Theme name"
-              maxLength={50}
-            />
-            <CustomThemePreview colors={colors} highlightedField={highlightedField} onHighlight={onHighlight} />
-            <div className="custom-theme-scheme">
-              <span>Native controls (scrollbars, form inputs)</span>
-              <div className="custom-theme-scheme-toggle">
-                <button
-                  type="button"
-                  className={`btn-secondary${colors.color_scheme === 'light' ? ' custom-theme-scheme-active' : ''}`}
-                  onClick={() => onColorChange('color_scheme', 'light')}
-                >
-                  Light
-                </button>
-                <button
-                  type="button"
-                  className={`btn-secondary${colors.color_scheme === 'dark' ? ' custom-theme-scheme-active' : ''}`}
-                  onClick={() => onColorChange('color_scheme', 'dark')}
-                >
-                  Dark
-                </button>
-              </div>
-            </div>
-          </div>
+        <input
+          type="text"
+          className="custom-theme-name-input"
+          value={name}
+          onChange={(e) => onNameChange(e.target.value)}
+          placeholder="Theme name"
+          maxLength={50}
+        />
 
+        {/* Full modal width, not sharing a column with the fields below --
+            the whole point of this dialog over the old inline editor is
+            room for this mockup to read at a legible size. */}
+        <CustomThemePreview colors={colors} highlightedField={highlightedField} onHighlight={onHighlight} />
+
+        <div className="theme-builder-lower">
           <div className="custom-theme-grid theme-builder-grid">
             {colorFields.map((field) => (
               <label
@@ -101,6 +84,26 @@ export function ThemeBuilderModal({
                 <span>{field.label}</span>
               </label>
             ))}
+          </div>
+
+          <div className="custom-theme-scheme">
+            <span>Native controls (scrollbars, form inputs)</span>
+            <div className="custom-theme-scheme-toggle">
+              <button
+                type="button"
+                className={`btn-secondary${colors.color_scheme === 'light' ? ' custom-theme-scheme-active' : ''}`}
+                onClick={() => onColorChange('color_scheme', 'light')}
+              >
+                Light
+              </button>
+              <button
+                type="button"
+                className={`btn-secondary${colors.color_scheme === 'dark' ? ' custom-theme-scheme-active' : ''}`}
+                onClick={() => onColorChange('color_scheme', 'dark')}
+              >
+                Dark
+              </button>
+            </div>
           </div>
         </div>
 
