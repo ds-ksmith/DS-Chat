@@ -62,6 +62,7 @@ from app.services.room_service import (
     list_member_rooms,
     list_open_rooms,
     list_room_members,
+    mark_room_read,
     remove_member,
     transfer_ownership,
     update_room,
@@ -138,8 +139,9 @@ async def list_my_rooms_endpoint(
             owner_id=room.owner_id,
             created_at=room.created_at,
             role=role,
+            has_unread=has_unread,
         )
-        for room, role in rooms
+        for room, role, has_unread in rooms
     ]
 
 
@@ -204,6 +206,16 @@ async def leave_room_endpoint(
         )
     except MembershipNotFoundError:
         raise HTTPException(status_code=404, detail="Not a member of this room")
+
+
+@router.post("/{room_id}/read", status_code=204)
+async def mark_room_read_endpoint(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+    await mark_room_read(db, room_id, current_user.id)
 
 
 def _member_status(user: User, online_ids: set[uuid.UUID]) -> str:

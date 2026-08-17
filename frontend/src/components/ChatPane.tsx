@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { NetworkError } from '../api/client'
-import { getRoomMessages } from '../api/rooms'
+import { getRoomMessages, markRoomRead } from '../api/rooms'
 import type { ChatSocketHandle } from '../ws/useChatSocket'
 import type { ChatMessageEnvelope, Message, MyRoomItem, RoomMember, ServerEnvelope } from '../types'
 import { Composer } from './Composer'
@@ -15,9 +15,19 @@ interface ChatPaneProps {
   onToggleInfo: () => void
   infoOpen: boolean
   socket: ChatSocketHandle
+  onRoomRead: (roomId: string) => void
 }
 
-export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOpen, socket }: ChatPaneProps) {
+export function ChatPane({
+  room,
+  members,
+  isMobile,
+  onBack,
+  onToggleInfo,
+  infoOpen,
+  socket,
+  onRoomRead,
+}: ChatPaneProps) {
   const [history, setHistory] = useState<Message[]>([])
   const [live, setLive] = useState<ChatMessageEnvelope[]>([])
   const [wsError, setWsError] = useState<string | null>(null)
@@ -56,6 +66,20 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
     return () => socket.leaveRoom(room.id)
   }, [socket, room.id])
 
+  const markRead = useCallback(() => {
+    // Live check, not a cached ref -- same reasoning as joinRoom's in
+    // useChatSocket.ts: a backgrounded-but-open tab must keep accumulating
+    // unread rather than auto-marking-read the instant a message arrives
+    // somewhere it can't actually be seen.
+    if (document.visibilityState !== 'visible') return
+    onRoomRead(room.id)
+    markRoomRead(room.id).catch(() => {
+      // Best-effort -- an unread dot lagging by one message isn't worth
+      // surfacing an error for; the next successful mark-read call (or a
+      // future refreshRooms()) resyncs it.
+    })
+  }, [room.id, onRoomRead])
+
   useEffect(
     () =>
       // The socket is shared across every room this tab visits, so a
@@ -74,8 +98,10 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
           // while this socket wasn't in the room's channel, so resync
           // instead of trusting whatever's already in state.
           refreshHistory()
+          markRead()
         } else if (envelope.type === 'message' && envelope.room_id === room.id) {
           setLive((prev) => [...prev, envelope])
+          markRead()
         } else if (envelope.type === 'message_update' && envelope.room_id === room.id) {
           setHistory((prev) =>
             prev.map((m) =>
@@ -98,7 +124,7 @@ export function ChatPane({ room, members, isMobile, onBack, onToggleInfo, infoOp
           setWsError(envelope.detail)
         }
       }),
-    [socket, room.id, refreshHistory],
+    [socket, room.id, refreshHistory, markRead],
   )
 
   const connected = socket.connected

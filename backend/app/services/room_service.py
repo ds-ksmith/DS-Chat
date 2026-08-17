@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -79,14 +79,25 @@ async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Ro
     ]
 
 
-async def list_member_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Room, RoomRole]]:
+async def list_member_rooms(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[tuple[Room, RoomRole, bool]]:
+    last_message_at = (
+        select(func.max(Message.created_at))
+        .where(Message.room_id == Room.id)
+        .correlate(Room)
+        .scalar_subquery()
+    )
     result = await db.execute(
-        select(Room, RoomMembership.role)
+        select(Room, RoomMembership.role, RoomMembership.last_read_at, last_message_at)
         .join(RoomMembership, RoomMembership.room_id == Room.id)
         .where(RoomMembership.user_id == user_id)
         .order_by(Room.created_at)
     )
-    return [(room, role) for room, role in result.all()]
+    return [
+        (room, role, last_message_at is not None and last_message_at > last_read_at)
+        for room, role, last_read_at, last_message_at in result.all()
+    ]
 
 
 async def get_room(db: AsyncSession, room_id: uuid.UUID) -> Room:
@@ -242,6 +253,12 @@ async def transfer_ownership(
     await db.commit()
     await db.refresh(room)
     return room
+
+
+async def mark_room_read(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    membership = await _get_membership(db, room_id, user_id)
+    membership.last_read_at = func.now()
+    await db.commit()
 
 
 async def leave_room(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:

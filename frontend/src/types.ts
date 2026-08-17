@@ -37,6 +37,7 @@ export interface RoomListItem extends Room {
 
 export interface MyRoomItem extends Room {
   role: RoomRole
+  has_unread: boolean
 }
 
 export interface RoomMember {
@@ -138,6 +139,11 @@ export interface ChatMemberUpdatedEnvelope {
   user_id: string
 }
 
+export interface ChatUnreadUpdateEnvelope {
+  type: 'unread_update'
+  room_id: string
+}
+
 export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
@@ -146,6 +152,7 @@ export type ServerEnvelope =
   | ChatErrorEnvelope
   | ChatRoomAddedEnvelope
   | ChatMemberUpdatedEnvelope
+  | ChatUnreadUpdateEnvelope
 
 export interface AdminUser {
   id: string

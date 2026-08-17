@@ -59,6 +59,10 @@ export function listRoomAttachments(roomId: string): Promise<RoomAttachment[]> {
   return apiFetch<RoomAttachment[]>(`/api/rooms/${roomId}/attachments`)
 }
 
+export function markRoomRead(roomId: string): Promise<void> {
+  return apiFetch<void>(`/api/rooms/${roomId}/read`, { method: 'POST' })
+}
+
 export function addRoomMember(roomId: string, userId: string): Promise<RoomMember> {
   return apiFetch<RoomMember>(`/api/rooms/${roomId}/members`, {
     method: 'POST',

@@ -59,13 +59,18 @@ export function ChatShellPage() {
 
   const socket = useChatSocketContext()
 
+  const setRoomUnread = useCallback((id: string, hasUnread: boolean) => {
+    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, has_unread: hasUnread } : r)))
+  }, [])
+
   useEffect(
     () =>
       socket.subscribe((envelope) => {
         if (envelope.type === 'room_added') refreshRooms()
         else if (envelope.type === 'member_updated' && envelope.room_id === roomId) refreshMembers()
+        else if (envelope.type === 'unread_update') setRoomUnread(envelope.room_id, true)
       }),
-    [socket, refreshRooms, refreshMembers, roomId],
+    [socket, refreshRooms, refreshMembers, roomId, setRoomUnread],
   )
 
   useEffect(() => {
@@ -110,6 +115,7 @@ export function ChatShellPage() {
               onToggleInfo={() => setInfoOpen((v) => !v)}
               infoOpen={infoOpen}
               socket={socket}
+              onRoomRead={(id) => setRoomUnread(id, false)}
             />
           ) : (
             !isMobile && (

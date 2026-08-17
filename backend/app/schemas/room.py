@@ -35,6 +35,10 @@ class RoomListItem(RoomRead):
 
 class MyRoomItem(RoomRead):
     role: RoomRole
+    # Whether this room has a message newer than the caller's last_read_at --
+    # computed by the router/service, not a stored column on Room itself
+    # (it's inherently per-viewer, unlike everything else on RoomRead).
+    has_unread: bool
 
 
 class RoomMemberRead(BaseModel):

@@ -21,6 +21,7 @@ from app.services.message_service import (
     edit_message,
     toggle_reaction,
 )
+from app.services.room_service import mark_room_read
 
 router = APIRouter(tags=["ws"])
 
@@ -162,6 +163,15 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                 message = await create_message(
                     db, envelope.room_id, user.id, envelope.content, image_id, file_id
                 )
+                # Sending implies having seen the room as of now -- without
+                # this, GET /rooms/mine would show the sender's own room as
+                # unread the instant they send into it (last_read_at isn't
+                # otherwise bumped until the frontend's own message echo
+                # triggers a mark-read call, which is a real but avoidable
+                # race). Deliberately not done in create_message() itself:
+                # the incoming-webhook path also calls it, and a webhook's
+                # attributed sender may not actually be watching.
+                await mark_room_read(db, envelope.room_id, user.id)
                 await broadcast_new_message(db, broadcaster, presence, envelope.room_id, message, user)
 
             elif envelope.type == "edit":

@@ -12,7 +12,12 @@ from app.ws.presence import Presence
 
 
 async def _notify_offline_members(
-    db: AsyncSession, presence: Presence, room_id: uuid.UUID, sender: User, message: Message
+    db: AsyncSession,
+    broadcaster: Broadcaster,
+    presence: Presence,
+    room_id: uuid.UUID,
+    sender: User,
+    message: Message,
 ) -> None:
     result = await db.execute(
         select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
@@ -25,6 +30,17 @@ async def _notify_offline_members(
     offline_ids = member_ids - await presence.connected_user_ids(room_id) - {sender.id}
     if not offline_ids:
         return
+
+    # This is also exactly the right audience for "give this room an unread
+    # dot": presence.connected_user_ids(room_id) means "has this room's
+    # channel joined right now" -- which the client only does while the tab
+    # is genuinely foregrounded (see useChatSocket.ts's visibility-gated
+    # join/leave), so a backgrounded-but-open room correctly lands here too,
+    # not just rooms that aren't open at all.
+    for user_id in offline_ids:
+        await broadcaster.publish_to_user(
+            user_id, {"type": "unread_update", "room_id": str(room_id)}
+        )
 
     room = await db.get(Room, room_id)
     if message.content:
@@ -81,7 +97,7 @@ async def broadcast_new_message(
     trigger identical fan-out/push/event behavior."""
     payload = await _message_payload(db, message, sender.username)
     await broadcaster.publish(room_id, payload)
-    await _notify_offline_members(db, presence, room_id, sender, message)
+    await _notify_offline_members(db, broadcaster, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
 
 
