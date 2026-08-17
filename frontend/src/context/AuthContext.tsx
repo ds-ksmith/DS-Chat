@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import * as authApi from '../api/auth'
 import { ApiError, NetworkError } from '../api/client'
 import { clearLastUser, loadLastUser, saveLastUser } from '../lib/lastUser'
+import { unsubscribeFromPush } from '../lib/push'
 import type { User } from '../types'
 
 interface AuthContextValue {
@@ -67,6 +68,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
+    // Best-effort, and must run before the session cookie is cleared below
+    // -- the unsubscribe call is authenticated. Otherwise this browser's
+    // push subscription (both the server-side row and the registration
+    // itself) outlives the session, so the account being logged out of
+    // keeps silently receiving pushes for as long as this browser stays
+    // installed/open, with no way for the user to tell why.
+    try {
+      await unsubscribeFromPush()
+    } catch {
+      // Not fatal -- logging out must still proceed even if this failed.
+    }
     await authApi.logout()
     setUser(null)
     clearLastUser()
