@@ -263,6 +263,20 @@
   font-size: 0.8rem;
   color: var(--ds-text);
   cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 4px;
+  margin: -3px -4px;
+  transition: background 0.1s ease;
+}
+
+/* Mirrors CustomThemePreview.css's .ctp-highlighted -- same fixed, theme-
+   independent color so it stays visible regardless of what's actually
+   being edited. Set when either this field's input OR the matching swatch
+   in the live mockup above is hovered/focused, so the mapping works in
+   both directions. */
+.custom-theme-field-highlighted {
+  background: rgba(251, 191, 36, 0.15);
+  box-shadow: 0 0 0 1px #fbbf24;
 }
 
 .custom-theme-field input[type='color'] {

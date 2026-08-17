@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
 import { applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
 import type { CustomTheme, CustomThemeColors } from '../types'
+import { CustomThemePreview } from './CustomThemePreview'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
 
@@ -56,6 +57,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [editNameDraft, setEditNameDraft] = useState('')
   const [editColorsDraft, setEditColorsDraft] = useState<CustomThemeColors>(DEFAULT_CUSTOM_COLORS)
   const [savingThemeEdit, setSavingThemeEdit] = useState(false)
+  const [highlightedField, setHighlightedField] = useState<keyof CustomThemeColors | null>(null)
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -158,6 +160,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     setEditNameDraft(theme.name)
     setEditColorsDraft(theme.colors)
     setThemeError(null)
+    setHighlightedField(null)
   }
 
   function closeEditor() {
@@ -168,6 +171,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
       applyTheme(user.theme, user.active_custom_theme.colors)
     }
     setEditingThemeId(null)
+    setHighlightedField(null)
   }
 
   function handleEditColorChange(key: keyof CustomThemeColors, value: string) {
@@ -393,13 +397,25 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
               placeholder="Theme name"
               maxLength={50}
             />
+            <CustomThemePreview
+              colors={editColorsDraft}
+              highlightedField={highlightedField}
+              onHighlight={setHighlightedField}
+            />
             <div className="custom-theme-grid">
               {CUSTOM_COLOR_FIELDS.map((field) => (
-                <label key={field.key} className="custom-theme-field">
+                <label
+                  key={field.key}
+                  className={`custom-theme-field${highlightedField === field.key ? ' custom-theme-field-highlighted' : ''}`}
+                  onMouseEnter={() => setHighlightedField(field.key)}
+                  onMouseLeave={() => setHighlightedField(null)}
+                >
                   <input
                     type="color"
                     value={editColorsDraft[field.key]}
                     onChange={(e) => handleEditColorChange(field.key, e.target.value)}
+                    onFocus={() => setHighlightedField(field.key)}
+                    onBlur={() => setHighlightedField(null)}
                   />
                   <span>{field.label}</span>
                 </label>

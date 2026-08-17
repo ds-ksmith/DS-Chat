@@ -1,0 +1,108 @@
+.custom-theme-preview {
+  display: flex;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  margin-bottom: var(--sp-3);
+  font-size: 0.74rem;
+  /* Isolated from the outer picker grid's own hover/highlight rules --
+     each swatch's highlight ring is drawn on itself, not inherited. */
+  position: relative;
+}
+
+.ctp-hoverable {
+  cursor: default;
+  transition: box-shadow 0.1s ease;
+}
+
+.ctp-highlighted {
+  box-shadow: 0 0 0 2px #fbbf24, 0 0 8px 1px rgba(251, 191, 36, 0.6);
+  position: relative;
+  z-index: 1;
+}
+
+.ctp-sidebar {
+  width: 96px;
+  flex: none;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ctp-room-row {
+  padding: 5px 7px;
+  border-radius: 5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ctp-room-row-quiet {
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.ctp-main {
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ctp-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.ctp-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.ctp-message-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ctp-mention {
+  border-radius: 4px;
+  padding: 0 3px;
+  font-weight: 700;
+}
+
+.ctp-badge {
+  flex: none;
+  align-self: flex-start;
+  border-radius: var(--radius-pill);
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #07080f;
+}
+
+.ctp-composer {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.ctp-danger-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
