@@ -9,9 +9,10 @@ export function completeSignup(
   token: string,
   username: string,
   password: string,
+  passwordConfirm: string,
 ): Promise<User> {
   return apiFetch<User>('/api/signup', {
     method: 'POST',
-    body: JSON.stringify({ token, username, password }),
+    body: JSON.stringify({ token, username, password, password_confirm: passwordConfirm }),
   })
 }

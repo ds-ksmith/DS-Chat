@@ -70,7 +70,7 @@ async def test_signup_flow_end_to_end(client, db_session, monkeypatch):
 
     complete = await client.post(
         "/api/signup",
-        json={"token": token, "username": "newperson", "password": "password123"},
+        json={"token": token, "username": "newperson", "password": "password123", "password_confirm": "password123"},
     )
     assert complete.status_code == 200, complete.text
     assert complete.json()["email"] == "newperson@example.com"
@@ -78,6 +78,32 @@ async def test_signup_flow_end_to_end(client, db_session, monkeypatch):
     me = await client.get("/api/auth/me")
     assert me.status_code == 200
     assert me.json()["username"] == "newperson"
+
+
+async def test_signup_rejects_mismatched_password_confirmation(client, db_session, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await _configure_smtp(client)
+
+    await client.post("/api/admin/invites", json={"email": "typo@example.com"})
+    token = _extract_token(calls[0]["message"].get_content())
+
+    complete = await client.post(
+        "/api/signup",
+        json={
+            "token": token,
+            "username": "typouser",
+            "password": "password123",
+            "password_confirm": "password124",
+        },
+    )
+    assert complete.status_code == 422
+
+    # The mismatch must not have consumed the invite -- a typo shouldn't
+    # burn a single-use token.
+    validate = await client.get(f"/api/signup/validate?token={token}")
+    assert validate.status_code == 200
 
 
 async def test_invalid_token_rejected(client, db_session):
@@ -88,7 +114,7 @@ async def test_invalid_token_rejected(client, db_session):
 
     complete = await client.post(
         "/api/signup",
-        json={"token": "not-a-real-token", "username": "someone", "password": "password123"},
+        json={"token": "not-a-real-token", "username": "someone", "password": "password123", "password_confirm": "password123"},
     )
     assert complete.status_code == 400
 
@@ -109,7 +135,7 @@ async def test_expired_token_rejected(client, db_session, monkeypatch):
 
     complete = await client.post(
         "/api/signup",
-        json={"token": token, "username": "late", "password": "password123"},
+        json={"token": token, "username": "late", "password": "password123", "password_confirm": "password123"},
     )
     assert complete.status_code == 400
 
@@ -125,13 +151,13 @@ async def test_used_token_cannot_be_reused(client, db_session, monkeypatch):
 
     first = await client.post(
         "/api/signup",
-        json={"token": token, "username": "onceuser", "password": "password123"},
+        json={"token": token, "username": "onceuser", "password": "password123", "password_confirm": "password123"},
     )
     assert first.status_code == 200
 
     second = await client.post(
         "/api/signup",
-        json={"token": token, "username": "onceuser2", "password": "password123"},
+        json={"token": token, "username": "onceuser2", "password": "password123", "password_confirm": "password123"},
     )
     assert second.status_code == 400
 
@@ -152,7 +178,7 @@ async def test_revoke_site_invite_prevents_signup(client, db_session, monkeypatc
 
     complete = await client.post(
         "/api/signup",
-        json={"token": token, "username": "revokeduser", "password": "password123"},
+        json={"token": token, "username": "revokeduser", "password": "password123", "password_confirm": "password123"},
     )
     assert complete.status_code == 400
 

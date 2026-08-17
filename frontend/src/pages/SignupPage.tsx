@@ -18,6 +18,7 @@ export function SignupPage() {
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -40,9 +41,13 @@ export function SignupPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
+    if (password !== passwordConfirm) {
+      setError("Passwords don't match")
+      return
+    }
     setSubmitting(true)
     try {
-      const newUser = await completeSignup(token, username, password)
+      const newUser = await completeSignup(token, username, password, passwordConfirm)
       updateUser(newUser)
       navigate('/rooms')
     } catch (err) {
@@ -92,6 +97,18 @@ export function SignupPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={8}
+                  autoComplete="new-password"
+                />
+              </label>
+              <label>
+                Confirm password
+                <input
+                  type="password"
+                  value={passwordConfirm}
+                  onChange={(e) => setPasswordConfirm(e.target.value)}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
                 />
               </label>
               {error && <p className="login-error">{error}</p>}

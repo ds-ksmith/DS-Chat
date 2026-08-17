@@ -7,12 +7,22 @@ created by an operator running this script directly on the app server.
 import argparse
 import asyncio
 import base64
+import getpass
 
 from pydantic import ValidationError
 
 from app.database import async_session_factory
 from app.schemas.user import UserCreate
 from app.services.auth_service import DuplicateUserError, register_user
+
+
+def _prompt_password() -> str:
+    while True:
+        password = getpass.getpass("Password: ")
+        confirm = getpass.getpass("Confirm password: ")
+        if password == confirm:
+            return password
+        print("Passwords didn't match -- try again.")
 
 
 async def _create_user(username: str, email: str, password: str, is_admin: bool) -> None:
@@ -69,7 +79,12 @@ def main() -> None:
     create_user = subparsers.add_parser("create-user", help="Create a new user account")
     create_user.add_argument("username")
     create_user.add_argument("email")
-    create_user.add_argument("password")
+    create_user.add_argument(
+        "password",
+        nargs="?",
+        default=None,
+        help="If omitted, you'll be prompted interactively (hidden input, entered twice to confirm).",
+    )
     create_user.add_argument("--admin", action="store_true", help="Grant is_site_admin")
 
     subparsers.add_parser("generate-vapid-keys", help="Generate a VAPID key pair for push notifications")
@@ -77,7 +92,8 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "create-user":
-        asyncio.run(_create_user(args.username, args.email, args.password, args.admin))
+        password = args.password if args.password is not None else _prompt_password()
+        asyncio.run(_create_user(args.username, args.email, password, args.admin))
     elif args.command == "generate-vapid-keys":
         _generate_vapid_keys()
 
