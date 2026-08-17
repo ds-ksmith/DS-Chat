@@ -23,8 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [offline, setOffline] = useState(false)
 
   useEffect(() => {
-    applyTheme(user?.theme ?? null, user?.custom_theme_colors ?? null)
-  }, [user?.theme, user?.custom_theme_colors])
+    applyTheme(user?.theme ?? null, user?.active_custom_theme?.colors ?? null)
+  }, [user?.theme, user?.active_custom_theme])
 
   useEffect(() => {
     authApi

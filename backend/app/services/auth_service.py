@@ -1,6 +1,7 @@
 from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import User
 from app.schemas.user import UserCreate
@@ -40,9 +41,9 @@ async def authenticate_user(
     db: AsyncSession, username_or_email: str, password: str
 ) -> User:
     result = await db.execute(
-        select(User).where(
-            or_(User.username == username_or_email, User.email == username_or_email)
-        )
+        select(User)
+        .where(or_(User.username == username_or_email, User.email == username_or_email))
+        .options(selectinload(User.active_custom_theme))
     )
     user = result.scalar_one_or_none()
     if user is None or not verify_password(password, user.password_hash):

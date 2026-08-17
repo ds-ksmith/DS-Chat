@@ -3,6 +3,7 @@ import uuid
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import RoomMembership, RoomRole, User
@@ -32,7 +33,13 @@ async def get_current_user(
     if not user_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    user = await db.get(User, uuid.UUID(user_id))
+    # Eager-loaded so UserRead.active_custom_theme (app/schemas/user.py) can
+    # be read without a MissingGreenlet -- selectinload skips the second
+    # query entirely when active_custom_theme_id is null (the common case),
+    # so this costs nothing for users who've never set a custom theme.
+    user = await db.get(
+        User, uuid.UUID(user_id), options=[selectinload(User.active_custom_theme)]
+    )
     if user is None or not user.is_active:
         request.session.clear()
         raise HTTPException(status_code=401, detail="Not authenticated")

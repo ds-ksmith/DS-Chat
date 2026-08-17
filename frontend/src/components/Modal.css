@@ -176,6 +176,72 @@
   background: #fca050;
 }
 
+.custom-theme-swatch {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-radius: var(--radius);
+}
+
+.custom-theme-swatch.theme-swatch-selected {
+  box-shadow: 0 0 0 1px var(--ds-accent);
+  border-radius: var(--radius);
+}
+
+.custom-theme-swatch-select {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-theme-swatch-select .theme-swatch-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.custom-theme-swatch-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+}
+
+.custom-theme-swatch-icon-btn {
+  flex: 1;
+  width: 24px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: 5px;
+  color: var(--ds-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.custom-theme-swatch-icon-btn:hover {
+  color: var(--ds-text);
+  border-color: var(--ds-accent);
+}
+
+.custom-theme-new {
+  justify-content: center;
+  color: var(--ds-muted);
+}
+
+.theme-swatch-preview-new {
+  background: transparent;
+  border-style: dashed;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--ds-muted);
+}
+
+.custom-theme-name-input {
+  margin-bottom: var(--sp-3) !important;
+}
+
 .custom-theme-editor {
   background: var(--ds-surface-2);
   border: 1px solid var(--ds-border);

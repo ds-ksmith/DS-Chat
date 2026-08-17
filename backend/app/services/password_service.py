@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import PasswordReset, User
 from app.security import hash_password, hash_token, verify_password
@@ -70,7 +71,9 @@ async def validate_reset_token(db: AsyncSession, token: str) -> None:
 
 async def complete_password_reset(db: AsyncSession, token: str, new_password: str) -> User:
     reset = await _get_valid_reset(db, token)
-    user = await db.get(User, reset.user_id)
+    user = await db.get(
+        User, reset.user_id, options=[selectinload(User.active_custom_theme)]
+    )
     user.password_hash = hash_password(new_password)
     reset.used = True
     await db.commit()

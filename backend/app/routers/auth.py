@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.dependencies import get_current_user
@@ -85,12 +86,16 @@ async def update_profile(
         current_user.display_name = display_name or None
     if "theme" in updates:
         current_user.theme = updates["theme"]
-    if "custom_theme_colors" in updates:
-        current_user.custom_theme_colors = updates["custom_theme_colors"]
     if "appear_offline" in updates:
         current_user.appear_offline = updates["appear_offline"]
     await db.commit()
-    await db.refresh(current_user)
+    # A plain db.refresh() would expire (and, on next access, lazily
+    # reload) the active_custom_theme relationship get_current_user
+    # eager-loaded -- not safe in an async session. Re-fetching with the
+    # same eager-load instead of refreshing avoids that entirely.
+    current_user = await db.get(
+        User, current_user.id, options=[selectinload(User.active_custom_theme)]
+    )
     # theme is private to this user, not shown to anyone else -- only
     # broadcast when something other members would actually see changed.
     if "display_name" in updates or "appear_offline" in updates:
@@ -129,7 +134,11 @@ async def upload_avatar(
     current_user.avatar_filename = storage_filename
     current_user.avatar_content_type = file.content_type
     await db.commit()
-    await db.refresh(current_user)
+    # See update_profile's comment -- refresh() would expire the eager-
+    # loaded active_custom_theme relationship instead of preserving it.
+    current_user = await db.get(
+        User, current_user.id, options=[selectinload(User.active_custom_theme)]
+    )
 
     if previous_filename:
         delete_file(previous_filename)
@@ -148,7 +157,11 @@ async def remove_avatar(
     current_user.avatar_filename = None
     current_user.avatar_content_type = None
     await db.commit()
-    await db.refresh(current_user)
+    # See update_profile's comment -- refresh() would expire the eager-
+    # loaded active_custom_theme relationship instead of preserving it.
+    current_user = await db.get(
+        User, current_user.id, options=[selectinload(User.active_custom_theme)]
+    )
 
     if previous_filename:
         delete_file(previous_filename)

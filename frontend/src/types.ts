@@ -2,7 +2,7 @@ export type ThemeName = 'dark' | 'light' | 'midnight' | 'sunset' | 'custom'
 
 // Matches exactly the CSS custom properties frontend/src/styles/themes.css
 // overrides per built-in preset -- kept in sync with
-// backend/app/schemas/user.py's CustomThemeColors.
+// backend/app/schemas/custom_theme.py's CustomThemeColors.
 export interface CustomThemeColors {
   void: string
   void_2: string
@@ -19,6 +19,13 @@ export interface CustomThemeColors {
   color_scheme: 'light' | 'dark'
 }
 
+export interface CustomTheme {
+  id: string
+  name: string
+  colors: CustomThemeColors
+  created_at: string
+}
+
 export interface User {
   id: string
   username: string
@@ -27,7 +34,9 @@ export interface User {
   is_site_admin: boolean
   display_name: string | null
   theme: ThemeName | null
-  custom_theme_colors: CustomThemeColors | null
+  // Only non-null when theme === 'custom' -- see UserRead's model_validator
+  // in backend/app/schemas/user.py.
+  active_custom_theme: CustomTheme | null
   avatar_filename: string | null
   appear_offline: boolean
   created_at: string

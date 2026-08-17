@@ -91,90 +91,15 @@ async def test_updating_display_name_does_not_clobber_theme(client, db_session):
     assert resp.json()["display_name"] == "Alice A."
 
 
-def _sample_custom_colors(**overrides) -> dict:
-    colors = {
-        "void": "#07080f",
-        "void_2": "#0b0c1a",
-        "surface": "#101030",
-        "surface_2": "#181848",
-        "border": "#242478",
-        "text": "#fce4fc",
-        "muted": "#c0ccd8",
-        "accent": "#60d8fc",
-        "accent_2": "#6c60fc",
-        "accent_3": "#7848fc",
-        "highlight": "#f060fc",
-        "danger": "#fc6060",
-        "color_scheme": "dark",
-    }
-    colors.update(overrides)
-    return colors
-
-
-async def test_custom_theme_colors_persist(client, db_session):
+async def test_theme_custom_rejected_on_generic_profile_update(client, db_session):
+    # "custom" always means activating one specific saved theme (an id, with
+    # an ownership check) -- see POST /api/custom-themes/{id}/activate in
+    # test_custom_themes.py. The generic profile endpoint only ever accepts
+    # the 4 preset names.
     await register_and_login(client, db_session, username=_unique("alice"))
 
-    resp = await client.patch(
-        "/api/auth/me", json={"theme": "custom", "custom_theme_colors": _sample_custom_colors()}
-    )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["theme"] == "custom"
-    assert resp.json()["custom_theme_colors"] == _sample_custom_colors()
-
-    me = await client.get("/api/auth/me")
-    assert me.json()["custom_theme_colors"] == _sample_custom_colors()
-
-
-async def test_custom_theme_colors_rejects_bad_hex(client, db_session):
-    await register_and_login(client, db_session, username=_unique("alice"))
-
-    resp = await client.patch(
-        "/api/auth/me",
-        json={
-            "theme": "custom",
-            "custom_theme_colors": _sample_custom_colors(accent="not-a-color"),
-        },
-    )
+    resp = await client.patch("/api/auth/me", json={"theme": "custom"})
     assert resp.status_code == 422
-
-
-async def test_custom_theme_colors_rejects_missing_field(client, db_session):
-    await register_and_login(client, db_session, username=_unique("alice"))
-
-    colors = _sample_custom_colors()
-    del colors["danger"]
-    resp = await client.patch(
-        "/api/auth/me", json={"theme": "custom", "custom_theme_colors": colors}
-    )
-    assert resp.status_code == 422
-
-
-async def test_custom_theme_colors_rejects_invalid_color_scheme(client, db_session):
-    await register_and_login(client, db_session, username=_unique("alice"))
-
-    resp = await client.patch(
-        "/api/auth/me",
-        json={
-            "theme": "custom",
-            "custom_theme_colors": _sample_custom_colors(color_scheme="sepia"),
-        },
-    )
-    assert resp.status_code == 422
-
-
-async def test_switching_away_from_custom_preserves_saved_colors(client, db_session):
-    # Switching to a preset and back must not lose previously-saved custom
-    # colors -- there's no reason picking "Dark" for a moment should force
-    # you to redo all 12 color picks if you switch back to Custom later.
-    await register_and_login(client, db_session, username=_unique("alice"))
-    await client.patch(
-        "/api/auth/me", json={"theme": "custom", "custom_theme_colors": _sample_custom_colors()}
-    )
-
-    resp = await client.patch("/api/auth/me", json={"theme": "dark"})
-    assert resp.status_code == 200
-    assert resp.json()["theme"] == "dark"
-    assert resp.json()["custom_theme_colors"] == _sample_custom_colors()
 
 
 async def test_avatar_upload_succeeds_and_persists(client, db_session):
