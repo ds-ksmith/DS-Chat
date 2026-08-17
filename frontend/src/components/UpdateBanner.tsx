@@ -1,4 +1,5 @@
 import { useRegisterSW } from 'virtual:pwa-register/react'
+import { checkForUpdate, setSwRegistration } from '../lib/swUpdate'
 import './UpdateBanner.css'
 
 // The service worker (registerType: 'prompt', sw.ts) already installs and
@@ -6,7 +7,11 @@ import './UpdateBanner.css'
 // never navigates, and a page only checks for a new SW on navigation by
 // default, so a tab left open for hours could sit on a stale check
 // indefinitely. This polls explicitly so "reload available" shows up
-// without the user having to close and reopen the app first.
+// without the user having to close and reopen the app first. It's now a
+// fallback, not the primary trigger -- useChatSocket.ts also calls
+// checkForUpdate() on every WS reconnect, which reliably fires within
+// seconds of a deploy (the backend restart that ships a new version also
+// kills every open WS connection) rather than waiting up to an hour.
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000
 
 export function UpdateBanner() {
@@ -16,7 +21,8 @@ export function UpdateBanner() {
   } = useRegisterSW({
     onRegisteredSW(_url, registration) {
       if (!registration) return
-      setInterval(() => registration.update(), UPDATE_CHECK_INTERVAL_MS)
+      setSwRegistration(registration)
+      setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS)
     },
   })
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { checkForUpdate } from '../lib/swUpdate'
 import type { ServerEnvelope } from '../types'
 
 interface UseChatSocketOptions {
@@ -42,6 +43,13 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
     let stopped = false
     let reconnectDelay = RECONNECT_BASE_DELAY_MS
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    // False only for the very first connect() of this effect's lifetime --
+    // every connect() after that was triggered by onclose's retry logic,
+    // i.e. this is a genuine reconnect. A reconnect reliably means the
+    // backend process just restarted (a deploy kills every open WS), so
+    // it's used as the trigger for an out-of-band SW update check instead
+    // of waiting on UpdateBanner's hourly poll -- see lib/swUpdate.ts.
+    let hasConnectedBefore = false
 
     function connect() {
       const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
@@ -56,6 +64,8 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         // socket's callbacks can stomp on state that the second (real)
         // socket already owns.
         if (socketRef.current !== ws) return
+        if (hasConnectedBefore) checkForUpdate()
+        hasConnectedBefore = true
         reconnectDelay = RECONNECT_BASE_DELAY_MS
         setConnected(true)
         // Re-join whatever rooms were joined before a reconnect -- the
