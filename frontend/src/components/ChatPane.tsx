@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NetworkError } from '../api/client'
 import { getRoomMessages, markRoomRead } from '../api/rooms'
 import type { ChatSocketHandle } from '../ws/useChatSocket'
@@ -33,6 +33,20 @@ export function ChatPane({
   const [wsError, setWsError] = useState<string | null>(null)
   const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false)
 
+  // refreshHistory fires more than once in quick succession on a fresh load
+  // -- once from the mount effect below, then again as soon as the WS's
+  // 'joined' envelope arrives (needed for the #37 rejoin-resync case). Nothing
+  // guarantees those two requests *resolve* in the order they were sent --
+  // the service worker's NetworkFirst cache (sw.ts) can fall back to a stale
+  // cached response if one of them is slow, and a plain .then(setHistory)
+  // would then let whichever response lands last win even if it's the older/
+  // incomplete one. This tracks the latest-initiated request and ignores any
+  // response that isn't from it, so a straggler can never overwrite a newer
+  // result -- this was the actual cause of #45's "messages out of order on
+  // reload" reports (confirmed no duplicate created_at timestamps in
+  // production, ruling out a timestamp-precision cause).
+  const historyRequestIdRef = useRef(0)
+
   const refreshHistory = useCallback(() => {
     // live is cleared alongside history, not just on room switch: it's
     // superseded by this fetch fully replacing history with the current
@@ -41,9 +55,14 @@ export function ChatPane({
     setLive([])
     setWsError(null)
     setHistoryUnavailableOffline(false)
+    const requestId = ++historyRequestIdRef.current
     getRoomMessages(room.id)
-      .then(setHistory)
+      .then((msgs) => {
+        if (historyRequestIdRef.current !== requestId) return
+        setHistory(msgs)
+      })
       .catch((err) => {
+        if (historyRequestIdRef.current !== requestId) return
         if (err instanceof NetworkError) {
           setHistoryUnavailableOffline(true)
         } else {
