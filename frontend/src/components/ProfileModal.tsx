@@ -13,7 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
 import { applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
 import type { CustomTheme, CustomThemeColors } from '../types'
-import { CustomThemePreview } from './CustomThemePreview'
+import { ThemeBuilderModal } from './ThemeBuilderModal'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
 
@@ -388,72 +388,19 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
         </div>
 
         {editingTheme && (
-          <div className="custom-theme-editor">
-            <input
-              type="text"
-              className="custom-theme-name-input"
-              value={editNameDraft}
-              onChange={(e) => setEditNameDraft(e.target.value)}
-              placeholder="Theme name"
-              maxLength={50}
-            />
-            <CustomThemePreview
-              colors={editColorsDraft}
-              highlightedField={highlightedField}
-              onHighlight={setHighlightedField}
-            />
-            <div className="custom-theme-grid">
-              {CUSTOM_COLOR_FIELDS.map((field) => (
-                <label
-                  key={field.key}
-                  className={`custom-theme-field${highlightedField === field.key ? ' custom-theme-field-highlighted' : ''}`}
-                  onMouseEnter={() => setHighlightedField(field.key)}
-                  onMouseLeave={() => setHighlightedField(null)}
-                >
-                  <input
-                    type="color"
-                    value={editColorsDraft[field.key]}
-                    onChange={(e) => handleEditColorChange(field.key, e.target.value)}
-                    onFocus={() => setHighlightedField(field.key)}
-                    onBlur={() => setHighlightedField(null)}
-                  />
-                  <span>{field.label}</span>
-                </label>
-              ))}
-            </div>
-            <div className="custom-theme-scheme">
-              <span>Native controls (scrollbars, form inputs)</span>
-              <div className="custom-theme-scheme-toggle">
-                <button
-                  type="button"
-                  className={`btn-secondary${editColorsDraft.color_scheme === 'light' ? ' custom-theme-scheme-active' : ''}`}
-                  onClick={() => handleEditColorChange('color_scheme', 'light')}
-                >
-                  Light
-                </button>
-                <button
-                  type="button"
-                  className={`btn-secondary${editColorsDraft.color_scheme === 'dark' ? ' custom-theme-scheme-active' : ''}`}
-                  onClick={() => handleEditColorChange('color_scheme', 'dark')}
-                >
-                  Dark
-                </button>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={closeEditor}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={handleSaveThemeEdit}
-                disabled={savingThemeEdit}
-              >
-                {savingThemeEdit ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
+          <ThemeBuilderModal
+            colorFields={CUSTOM_COLOR_FIELDS}
+            name={editNameDraft}
+            onNameChange={setEditNameDraft}
+            colors={editColorsDraft}
+            onColorChange={handleEditColorChange}
+            highlightedField={highlightedField}
+            onHighlight={setHighlightedField}
+            error={themeError}
+            saving={savingThemeEdit}
+            onSave={handleSaveThemeEdit}
+            onCancel={closeEditor}
+          />
         )}
 
         <hr className="modal-divider" />

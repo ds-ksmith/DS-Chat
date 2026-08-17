@@ -242,14 +242,6 @@
   margin-bottom: var(--sp-3) !important;
 }
 
-.custom-theme-editor {
-  background: var(--ds-surface-2);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--radius);
-  padding: var(--sp-3);
-  margin-bottom: var(--sp-4);
-}
-
 .custom-theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));

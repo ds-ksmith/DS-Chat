@@ -1,0 +1,22 @@
+.theme-builder-modal {
+  width: min(820px, 95vw);
+  max-height: 88vh;
+}
+
+.theme-builder-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-5);
+  align-items: start;
+  margin-bottom: var(--sp-2);
+}
+
+.theme-builder-preview-col .custom-theme-preview {
+  margin-bottom: var(--sp-4);
+}
+
+@media (max-width: 680px) {
+  .theme-builder-layout {
+    grid-template-columns: 1fr;
+  }
+}
