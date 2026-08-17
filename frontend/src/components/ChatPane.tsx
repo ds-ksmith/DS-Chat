@@ -122,16 +122,45 @@ export function ChatPane({
           setLive((prev) => [...prev, envelope])
           markRead()
         } else if (envelope.type === 'message_update' && envelope.room_id === room.id) {
+          // link_preview only survives the edit if the URL it came from is
+          // still there -- an edit that changed or removed it clears the
+          // stale preview instead of leaving the old one showing. A new one
+          // (if the new URL has any) arrives via its own 'link_preview'
+          // envelope shortly after, same as a fresh send.
           setHistory((prev) =>
             prev.map((m) =>
-              m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+              m.id === envelope.id
+                ? {
+                    ...m,
+                    content: envelope.content,
+                    edited_at: envelope.edited_at,
+                    link_preview: m.link_preview?.url === envelope.preview_url ? m.link_preview : null,
+                  }
+                : m,
             ),
           )
           setLive((prev) =>
             prev.map((m) =>
-              m.id === envelope.id ? { ...m, content: envelope.content, edited_at: envelope.edited_at } : m,
+              m.id === envelope.id
+                ? {
+                    ...m,
+                    content: envelope.content,
+                    edited_at: envelope.edited_at,
+                    link_preview: m.link_preview?.url === envelope.preview_url ? m.link_preview : null,
+                  }
+                : m,
             ),
           )
+        } else if (envelope.type === 'link_preview' && envelope.room_id === room.id) {
+          const linkPreview = {
+            url: envelope.url,
+            title: envelope.title,
+            description: envelope.description,
+            image_url: envelope.image_url,
+            site_name: envelope.site_name,
+          }
+          setHistory((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, link_preview: linkPreview } : m)))
+          setLive((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, link_preview: linkPreview } : m)))
         } else if (envelope.type === 'reaction_update' && envelope.room_id === room.id) {
           setHistory((prev) =>
             prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),

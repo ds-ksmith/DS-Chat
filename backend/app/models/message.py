@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -25,6 +25,12 @@ class Message(Base):
     content: Mapped[str | None] = mapped_column(Text)
     image_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("message_images.id"))
     file_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("message_files.id"))
+    # First http(s) URL found in content at creation time (see
+    # link_preview_service.extract_first_url), if any -- a plain string, not
+    # a FK, since the actual preview data lives in link_previews cached by
+    # URL and is looked up separately (see message_service.list_recent_
+    # messages), not eager-loaded as an ORM relationship.
+    preview_url: Mapped[str | None] = mapped_column(String(2048))
     # clock_timestamp(), not now()/func.now() -- the WS handler (ws/chat.py)
     # shares one AsyncSession for a whole connection's lifetime, and a
     # read-only op (e.g. a "join" frame's membership check) can leave a

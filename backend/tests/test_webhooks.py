@@ -10,22 +10,22 @@ from app.models import PushSubscription
 from app.schemas.user import UserCreate
 from app.services.auth_service import register_user
 from app.services.room_service import join_room
-from app.services.ssrf import UnsafeWebhookUrlError, validate_target_url
+from app.services.ssrf import UnsafeUrlError, validate_target_url
 from tests.conftest import register_and_login
 
 
 def test_validate_target_url_rejects_loopback():
-    with pytest.raises(UnsafeWebhookUrlError):
+    with pytest.raises(UnsafeUrlError):
         validate_target_url("http://127.0.0.1/hook")
 
 
 def test_validate_target_url_rejects_private_range():
-    with pytest.raises(UnsafeWebhookUrlError):
+    with pytest.raises(UnsafeUrlError):
         validate_target_url("http://10.0.0.5/hook")
 
 
 def test_validate_target_url_rejects_non_http_scheme():
-    with pytest.raises(UnsafeWebhookUrlError):
+    with pytest.raises(UnsafeUrlError):
         validate_target_url("ftp://8.8.8.8/hook")
 
 

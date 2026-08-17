@@ -572,6 +572,52 @@ unguessable expiring token is the actual protection once a request is made),
 no cleanup job for expired/used `password_resets` rows (same as
 `site_invites`, which has never had one either).
 
+## Link previews
+
+Slack/Discord-style unfurling: the first `http(s)://` URL found in a
+message's `content` (`link_preview_service.extract_first_url`) gets a small
+preview card fetched from that page's Open Graph tags (`og:title`,
+`og:description`, `og:image`, `og:site_name`, falling back to `<title>`).
+
+- **Never blocks the send.** `create_message` extracts and stores the URL
+  on `Message.preview_url` synchronously (cheap, no I/O), but the actual
+  fetch runs in a background `asyncio.create_task` from
+  `message_events.broadcast_new_message`/`broadcast_message_update`, on its
+  own DB session (`async_session_factory()`, never the caller's session —
+  see `push_service.send_push_to_user`'s docstring for why sharing a
+  session across a fire-and-forget task is unsafe). Once it resolves, a
+  separate `"link_preview"` WS envelope carries the result to the room;
+  the initial `"message"`/`"message_update"` broadcast always has
+  `link_preview: null`.
+- **SSRF protection is the real security boundary here**, more so than for
+  outgoing webhooks — a webhook's `target_url` is admin-configured, but a
+  link-preview URL comes from *any* room member's message content. Reuses
+  `app/services/ssrf.py`'s `validate_target_url` (originally webhook-only,
+  the exception renamed from `UnsafeWebhookUrlError` to `UnsafeUrlError`
+  now that it's shared), but re-validates before **every hop** of a
+  redirect chain instead of once up front — redirects are followed
+  manually (`httpx.AsyncClient(follow_redirects=False)`) specifically so
+  each intermediate URL is checked before it's ever connected to, not
+  after. Same accepted DNS-rebinding gap as the webhook case (see that
+  module's docstring); response body capped at 512 KB and only fetched if
+  `Content-Type` is `text/html`.
+- **Cached by URL, not by message** (`link_previews` table, unique on
+  `url`) — a URL posted by five different people in five different rooms
+  fetches once. A row also gets written on a *failed* fetch
+  (`fetch_failed=True`) so a URL that genuinely doesn't unfurl (SSRF
+  rejection, timeout, no usable title) isn't re-attempted on every message
+  that references it; both kinds expire after 7 days (`_CACHE_TTL`).
+- Parsed with stdlib `html.parser.HTMLParser`, not a new dependency — only
+  meta-tag scraping is needed, not general HTML parsing.
+- Editing a message re-extracts the URL; if it changed or was removed, the
+  frontend clears the now-stale preview immediately (`preview_url` on the
+  `message_update` envelope) rather than leaving the old one showing while
+  a new fetch (if any) is in flight.
+- Scope cuts: one preview per message (the first URL only, matching the
+  issue's "a small preview" framing), no way to dismiss/suppress a preview
+  before sending, no re-fetch-on-demand if a cached preview goes stale
+  mid-TTL.
+
 ## Notes / scope decisions
 
 - Invite-only site registration: no `POST /api/auth/register`. Accounts are

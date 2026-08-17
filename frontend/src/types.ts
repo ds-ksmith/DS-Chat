@@ -108,6 +108,14 @@ export interface MessageFileInfo {
   content_type: string
 }
 
+export interface LinkPreviewInfo {
+  url: string
+  title: string | null
+  description: string | null
+  image_url: string | null
+  site_name: string | null
+}
+
 export interface Message {
   id: string
   room_id: string
@@ -116,6 +124,7 @@ export interface Message {
   content: string | null
   image_id: string | null
   file: MessageFileInfo | null
+  link_preview: LinkPreviewInfo | null
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
@@ -130,6 +139,7 @@ export interface ChatMessageEnvelope {
   content: string | null
   image_id: string | null
   file: MessageFileInfo | null
+  link_preview: LinkPreviewInfo | null
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
@@ -141,6 +151,21 @@ export interface ChatMessageUpdateEnvelope {
   room_id: string
   content: string
   edited_at: string | null
+  // Lets the frontend clear a stale preview when an edit changes/removes
+  // the URL it came from -- compare against whatever link_preview.url the
+  // message currently has rather than assuming it's still valid.
+  preview_url: string | null
+}
+
+export interface ChatLinkPreviewEnvelope {
+  type: 'link_preview'
+  id: string
+  room_id: string
+  url: string
+  title: string | null
+  description: string | null
+  image_url: string | null
+  site_name: string | null
 }
 
 export interface ChatReactionUpdateEnvelope {
@@ -181,6 +206,7 @@ export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
   | ChatReactionUpdateEnvelope
+  | ChatLinkPreviewEnvelope
   | ChatJoinedEnvelope
   | ChatErrorEnvelope
   | ChatRoomAddedEnvelope

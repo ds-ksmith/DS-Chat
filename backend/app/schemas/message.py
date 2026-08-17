@@ -19,6 +19,16 @@ class MessageFileInfo(BaseModel):
     content_type: str
 
 
+class LinkPreviewInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    url: str
+    title: str | None
+    description: str | None
+    image_url: str | None
+    site_name: str | None
+
+
 class MessageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -29,6 +39,7 @@ class MessageRead(BaseModel):
     content: str | None
     image_id: uuid.UUID | None
     file: MessageFileInfo | None
+    link_preview: LinkPreviewInfo | None
     reactions: list[ReactionSummary]
     created_at: datetime
     edited_at: datetime | None

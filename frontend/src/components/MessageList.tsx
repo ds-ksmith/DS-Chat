@@ -7,6 +7,7 @@ import type { ChatMessageEnvelope, Message, MessageFileInfo, RoomMember } from '
 import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
 import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
 import { ImageLightbox } from './ImageLightbox'
+import { LinkPreviewCard } from './LinkPreviewCard'
 import { MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import './MessageList.css'
@@ -171,6 +172,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}
+                  {msg.link_preview && <LinkPreviewCard preview={msg.link_preview} />}
                   {msg.reactions.length > 0 && (
                     <div className="message-reaction-pills">
                       {msg.reactions.map((r) => {

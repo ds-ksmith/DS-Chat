@@ -13,7 +13,7 @@ from app.dependencies import (
     require_scope,
 )
 from app.models import MessageFile, MessageImage, RoomRole, User
-from app.schemas.message import MessageFileInfo, MessageRead
+from app.schemas.message import LinkPreviewInfo, MessageFileInfo, MessageRead
 from app.schemas.message_file import MessageFileCreated
 from app.schemas.message_image import MessageImageCreated
 from app.schemas.room import (
@@ -35,6 +35,7 @@ from app.schemas.webhook import (
     WebhookIncomingCreate,
     WebhookIncomingRead,
 )
+from app.services.link_preview_service import get_link_previews_for_urls
 from app.services.message_events import broadcast_room_added
 from app.services.message_service import (
     get_reactions_for_messages,
@@ -78,7 +79,7 @@ from app.services.webhook_service import (
     revoke_event_subscription,
     revoke_incoming_webhook,
 )
-from app.services.ssrf import UnsafeWebhookUrlError
+from app.services.ssrf import UnsafeUrlError
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
     UPLOADS_DIR,
@@ -341,6 +342,8 @@ async def get_room_messages_endpoint(
     await require_room_member(room_id, current_user, db)
     messages = await list_recent_messages(db, room_id, limit)
     reactions_by_message = await get_reactions_for_messages(db, [m.id for m in messages])
+    preview_urls = {m.preview_url for m in messages if m.preview_url}
+    previews_by_url = await get_link_previews_for_urls(db, list(preview_urls))
     return [
         MessageRead(
             id=m.id,
@@ -350,6 +353,11 @@ async def get_room_messages_endpoint(
             content=m.content,
             image_id=m.image_id,
             file=_to_message_file_info(m.file) if m.file else None,
+            link_preview=(
+                LinkPreviewInfo.model_validate(previews_by_url[m.preview_url])
+                if m.preview_url and m.preview_url in previews_by_url
+                else None
+            ),
             reactions=reactions_by_message.get(m.id, []),
             created_at=m.created_at,
             edited_at=m.edited_at,
@@ -607,7 +615,7 @@ async def create_event_subscription_endpoint(
         )
     except InvalidEventTypeError:
         raise HTTPException(status_code=400, detail="Unrecognized event type")
-    except UnsafeWebhookUrlError:
+    except UnsafeUrlError:
         raise HTTPException(
             status_code=400, detail="target_url is not allowed (internal/private address)"
         )

@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models import Message, MessageMention, MessageReaction
 from app.schemas.message import ReactionSummary
+from app.services.link_preview_service import extract_first_url
 from app.services.mention_service import extract_mentioned_user_ids
 
 
@@ -28,7 +29,12 @@ async def create_message(
     file_id: uuid.UUID | None = None,
 ) -> Message:
     message = Message(
-        room_id=room_id, user_id=user_id, content=content, image_id=image_id, file_id=file_id
+        room_id=room_id,
+        user_id=user_id,
+        content=content,
+        image_id=image_id,
+        file_id=file_id,
+        preview_url=extract_first_url(content),
     )
     db.add(message)
     # message.id is available immediately (a Python-side uuid4 default, not
@@ -52,6 +58,7 @@ async def edit_message(
         raise NotMessageAuthorError()
 
     message.content = content
+    message.preview_url = extract_first_url(content)
     message.edited_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(message)

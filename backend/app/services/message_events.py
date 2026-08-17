@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from sqlalchemy import select
@@ -5,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Message, MessageFile, MessageMention, Room, RoomMembership, User
 from app.schemas.message import ReactionSummary
+from app.services.link_preview_service import fetch_and_broadcast_link_preview
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
 from app.ws.broadcaster import Broadcaster
@@ -90,10 +92,22 @@ async def _message_payload(db: AsyncSession, message: Message, username: str) ->
         "content": message.content,
         "image_id": str(message.image_id) if message.image_id else None,
         "file": file_payload,
+        # Never populated here -- fetching it is a network call to a
+        # third-party URL, which has no business delaying message delivery.
+        # A separate "link_preview" envelope arrives shortly after (see
+        # _maybe_fetch_link_preview) once/if the fetch succeeds.
+        "link_preview": None,
         "reactions": [],
         "created_at": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
     }
+
+
+def _maybe_fetch_link_preview(broadcaster: Broadcaster, room_id: uuid.UUID, message: Message) -> None:
+    if message.preview_url:
+        asyncio.create_task(
+            fetch_and_broadcast_link_preview(broadcaster, room_id, message.id, message.preview_url)
+        )
 
 
 async def broadcast_new_message(
@@ -111,6 +125,7 @@ async def broadcast_new_message(
     await broadcaster.publish(room_id, payload)
     await _notify_offline_members(db, broadcaster, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
+    _maybe_fetch_link_preview(broadcaster, room_id, message)
 
 
 async def broadcast_message_update(
@@ -122,9 +137,15 @@ async def broadcast_message_update(
         "room_id": str(room_id),
         "content": message.content,
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        # Lets the frontend clear a stale preview when an edit changes or
+        # removes the URL it came from -- it compares this against the
+        # link_preview it already has for the message rather than blindly
+        # keeping whatever was there before the edit.
+        "preview_url": message.preview_url,
     }
     await broadcaster.publish(room_id, payload)
     await dispatch_event(db, "message.updated", room_id, payload)
+    _maybe_fetch_link_preview(broadcaster, room_id, message)
 
 
 async def broadcast_reaction_update(

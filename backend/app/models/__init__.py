@@ -4,6 +4,7 @@ from app.models.base import Base
 from app.models.custom_theme import CustomTheme
 from app.models.event_subscription import EventSubscription
 from app.models.invite import InviteStatus
+from app.models.link_preview import LinkPreview
 from app.models.membership import RoomMembership, RoomRole
 from app.models.message import Message
 from app.models.message_file import MessageFile
@@ -41,4 +42,5 @@ __all__ = [
     "WebhookIncoming",
     "EventSubscription",
     "CustomTheme",
+    "LinkPreview",
 ]
