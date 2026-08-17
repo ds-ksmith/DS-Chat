@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { ALL_EMOJI, EMOJI_CATEGORIES } from '../lib/emoji'
 import { EMOJI_NAMES } from '../lib/emojiNames'
+import { getRecentEmoji, recordEmojiUsed } from '../lib/recentEmoji'
 import './EmojiPicker.css'
 
 interface EmojiPickerProps {
@@ -39,6 +40,16 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
   const [query, setQuery] = useState('')
   const searchResults = useMemo(() => searchEmoji(query), [query])
   const searching = query.trim().length > 0
+  // A snapshot taken once when the picker opens, not live-updating as picks
+  // happen within this same session -- picking an emoji always closes the
+  // picker (see Composer.tsx/MessageList.tsx), so there's never a second
+  // pick in the same open session to show an updated list to.
+  const [recent] = useState(getRecentEmoji)
+
+  function pick(emoji: string) {
+    recordEmojiUsed(emoji)
+    onPick(emoji)
+  }
 
   return (
     <>
@@ -65,7 +76,7 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
                   role="menuitem"
                   className="emoji-picker-item"
                   title={EMOJI_NAMES[emoji]?.name}
-                  onClick={() => onPick(emoji)}
+                  onClick={() => pick(emoji)}
                 >
                   {emoji}
                 </button>
@@ -75,25 +86,46 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
             <div className="emoji-picker-no-results">No emoji found</div>
           )
         ) : (
-          EMOJI_CATEGORIES.map((category) => (
-            <div key={category.label} className="emoji-picker-category">
-              <div className="emoji-picker-category-label">{category.label}</div>
-              <div className="emoji-picker-grid">
-                {category.emoji.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    role="menuitem"
-                    className="emoji-picker-item"
-                    title={EMOJI_NAMES[emoji]?.name}
-                    onClick={() => onPick(emoji)}
-                  >
-                    {emoji}
-                  </button>
-                ))}
+          <>
+            {recent.length > 0 && (
+              <div className="emoji-picker-category">
+                <div className="emoji-picker-category-label">Recently used</div>
+                <div className="emoji-picker-grid">
+                  {recent.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      role="menuitem"
+                      className="emoji-picker-item"
+                      title={EMOJI_NAMES[emoji]?.name}
+                      onClick={() => pick(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))
+            )}
+            {EMOJI_CATEGORIES.map((category) => (
+              <div key={category.label} className="emoji-picker-category">
+                <div className="emoji-picker-category-label">{category.label}</div>
+                <div className="emoji-picker-grid">
+                  {category.emoji.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      role="menuitem"
+                      className="emoji-picker-item"
+                      title={EMOJI_NAMES[emoji]?.name}
+                      onClick={() => pick(emoji)}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </>
