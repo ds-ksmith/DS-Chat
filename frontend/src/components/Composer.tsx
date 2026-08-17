@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
@@ -55,8 +56,14 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
   const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null)
   const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null)
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
+  const [dragActive, setDragActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Counts nested dragenter/dragleave pairs (the overlay, the composer box,
+  // the textarea are all separate elements a drag passes over) so the
+  // highlight doesn't flicker off every time the pointer crosses a child
+  // element boundary -- only actually leaving the whole composer zeroes it.
+  const dragCounterRef = useRef(0)
   const online = useOnlineStatus()
 
   const mentionMatches = useMemo(() => {
@@ -148,11 +155,7 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
     setMentionActiveIndex(0)
   }
 
-  async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-
+  async function handleFile(file: File) {
     setUploadError(null)
 
     if (maxUploadBytes !== null && file.size > maxUploadBytes) {
@@ -177,6 +180,44 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
     } finally {
       setUploading(false)
     }
+  }
+
+  function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) handleFile(file)
+  }
+
+  function handleDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    if (disabled) return
+    dragCounterRef.current++
+    setDragActive(true)
+  }
+
+  function handleDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
+    if (dragCounterRef.current === 0) setDragActive(false)
+  }
+
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    // Required even though it does nothing else -- without preventDefault()
+    // here, the browser rejects the element as a drop target entirely and
+    // handleDrop never fires (it just navigates to/opens the dropped file).
+    e.preventDefault()
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    dragCounterRef.current = 0
+    setDragActive(false)
+    if (disabled) return
+    // Only the first dropped file, matching the existing single-attachment-
+    // per-message limit (the button-triggered file input isn't `multiple`
+    // either).
+    const file = e.dataTransfer.files?.[0]
+    if (file) handleFile(file)
   }
 
   function removePendingImage() {
@@ -205,7 +246,18 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
   }
 
   return (
-    <div className="composer">
+    <div
+      className="composer"
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {dragActive && (
+        <div className="composer-drop-overlay">
+          <span>Drop to attach</span>
+        </div>
+      )}
       {pendingImage && (
         <div className="composer-attachment">
           <img src={pendingImage.previewUrl} alt="" className="composer-attachment-thumb" />
