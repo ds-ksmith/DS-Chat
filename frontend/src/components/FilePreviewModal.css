@@ -20,6 +20,15 @@
   overflow: hidden;
 }
 
+/* Wider and taller than the text/markdown case -- a PDF needs real room to
+   be readable, and its own viewer chrome (page controls, zoom) benefits
+   from more space than a text snippet ever would. */
+.file-preview-modal-pdf {
+  width: min(900px, 100%);
+  height: min(90vh, 1100px);
+  max-height: min(90vh, 1100px);
+}
+
 .file-preview-header {
   display: flex;
   align-items: center;
@@ -74,6 +83,22 @@
 .file-preview-body {
   padding: var(--sp-4);
   overflow: auto;
+}
+
+/* No padding, and let the iframe fill the available space -- the native
+   PDF viewer already has its own margins/toolbar, and needs the full body
+   height, not just its content's natural size. */
+.file-preview-body-pdf {
+  padding: 0;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.file-preview-pdf-frame {
+  flex: 1;
+  width: 100%;
+  border: none;
 }
 
 .file-preview-loading,

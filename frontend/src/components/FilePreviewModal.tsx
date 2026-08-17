@@ -6,7 +6,7 @@ import type { MessageFileInfo } from '../types'
 import { MARKDOWN_OPTIONS } from './MessageContent'
 import './FilePreviewModal.css'
 
-export type PreviewKind = 'markdown' | 'text'
+export type PreviewKind = 'markdown' | 'text' | 'pdf'
 
 // Deliberately extension-based, not content_type-based: the browser-supplied
 // content_type for less-common extensions like .md is inconsistent (often
@@ -16,6 +16,7 @@ export function getPreviewKind(filename: string): PreviewKind | null {
   const lower = filename.toLowerCase()
   if (lower.endsWith('.md') || lower.endsWith('.markdown')) return 'markdown'
   if (lower.endsWith('.txt')) return 'text'
+  if (lower.endsWith('.pdf')) return 'pdf'
   return null
 }
 
@@ -29,35 +30,56 @@ interface FilePreviewModalProps {
 export function FilePreviewModal({ roomId, file, kind, onClose }: FilePreviewModalProps) {
   useEscapeKey(onClose)
   const [content, setContent] = useState<string | null>(null)
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileUrl = getRoomFileUrl(roomId, file.id)
 
   useEffect(() => {
     let cancelled = false
+    let objectUrl: string | null = null
     // A plain fetch() read is unaffected by the Content-Disposition:
     // attachment header the file-serve endpoint always sends -- that header
     // only steers the browser's own navigation/embed rendering, not a
     // script-initiated read of the response body. So no separate
-    // "inline"-flavored endpoint is needed just to preview text.
-    fetch(fileUrl, { credentials: 'include' })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load file (${res.status})`)
-        return res.text()
-      })
-      .then((text) => {
+    // "inline"-flavored endpoint is needed just to preview text -- or, for
+    // PDF, to preview it either: fetching the bytes ourselves and handing
+    // the browser's native viewer a blob: URL (which carries no HTTP
+    // headers of its own) sidesteps Content-Disposition the same way,
+    // without needing an <iframe>/<embed> to navigate to the real file URL
+    // directly (which *would* respect it and force a download).
+    async function load() {
+      const res = await fetch(fileUrl, { credentials: 'include' })
+      if (!res.ok) throw new Error(`Failed to load file (${res.status})`)
+      if (cancelled) return
+      if (kind === 'pdf') {
+        const blob = await res.blob()
+        if (cancelled) return
+        // Force the MIME type explicitly rather than trusting the server's
+        // reported content_type -- getPreviewKind gates on the .pdf
+        // extension alone (see its own comment), so a mislabeled upload
+        // must still render as a PDF here, not download or error.
+        objectUrl = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }))
+        setPdfUrl(objectUrl)
+      } else {
+        const text = await res.text()
         if (!cancelled) setContent(text)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load file')
-      })
+      }
+    }
+    load().catch((err) => {
+      if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load file')
+    })
     return () => {
       cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [fileUrl])
+  }, [fileUrl, kind])
 
   return (
     <div className="file-preview-overlay" onClick={onClose}>
-      <div className="file-preview-modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`file-preview-modal${kind === 'pdf' ? ' file-preview-modal-pdf' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="file-preview-header">
           <span className="file-preview-filename">{file.filename}</span>
           <div className="file-preview-actions">
@@ -77,15 +99,19 @@ export function FilePreviewModal({ roomId, file, kind, onClose }: FilePreviewMod
             </button>
           </div>
         </div>
-        <div className="file-preview-body">
+        <div className={`file-preview-body${kind === 'pdf' ? ' file-preview-body-pdf' : ''}`}>
           {error && <p className="file-preview-error">{error}</p>}
-          {!error && content === null && <p className="file-preview-loading">Loading…</p>}
+          {!error && kind !== 'pdf' && content === null && <p className="file-preview-loading">Loading…</p>}
           {!error && content !== null && kind === 'markdown' && (
             <div className="message-text file-preview-markdown">
               <Markdown options={MARKDOWN_OPTIONS}>{content}</Markdown>
             </div>
           )}
           {!error && content !== null && kind === 'text' && <pre className="file-preview-text">{content}</pre>}
+          {!error && kind === 'pdf' && !pdfUrl && <p className="file-preview-loading">Loading…</p>}
+          {!error && kind === 'pdf' && pdfUrl && (
+            <iframe src={pdfUrl} title={file.filename} className="file-preview-pdf-frame" />
+          )}
         </div>
       </div>
     </div>
