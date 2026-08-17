@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, String, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -19,6 +20,10 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(50))
     theme: Mapped[str | None] = mapped_column(String(20))
+    # Only meaningful when theme == "custom" -- kept even if the user
+    # switches to a preset and back, so switching away from custom is never
+    # destructive. Shape is CustomThemeColors (backend/app/schemas/user.py).
+    custom_theme_colors: Mapped[dict | None] = mapped_column(JSONB)
     avatar_filename: Mapped[str | None] = mapped_column(String(64))
     avatar_content_type: Mapped[str | None] = mapped_column(String(50))
     # Manual override for the presence indicator -- when set, this user

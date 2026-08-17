@@ -1,5 +1,5 @@
 import { apiFetch, ApiError, NetworkError } from './client'
-import type { ThemeName, User } from '../types'
+import type { CustomThemeColors, ThemeName, User } from '../types'
 
 // No register() here: this is an invite-only site. Accounts are created by
 // an operator via the backend CLI (`python -m app.cli create-user`), not
@@ -27,13 +27,14 @@ export function updateProfile(displayName: string | null): Promise<User> {
   })
 }
 
-// Deliberately its own call sending only `theme` -- the backend only
-// applies fields actually present in the request body, so this can't
-// clobber display_name (and updateProfile above can't clobber theme).
-export function updateTheme(theme: ThemeName): Promise<User> {
+// Deliberately its own call sending only `theme` (and, for 'custom',
+// `custom_theme_colors` alongside it) -- the backend only applies fields
+// actually present in the request body, so this can't clobber display_name
+// (and updateProfile above can't clobber theme).
+export function updateTheme(theme: ThemeName, customThemeColors?: CustomThemeColors): Promise<User> {
   return apiFetch<User>('/api/auth/me', {
     method: 'PATCH',
-    body: JSON.stringify({ theme }),
+    body: JSON.stringify({ theme, custom_theme_colors: customThemeColors }),
   })
 }
 

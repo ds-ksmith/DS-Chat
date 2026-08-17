@@ -176,6 +176,60 @@
   background: #fca050;
 }
 
+.custom-theme-editor {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.custom-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--sp-3);
+}
+
+.custom-theme-field {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 0.8rem;
+  color: var(--ds-text);
+  cursor: pointer;
+}
+
+.custom-theme-field input[type='color'] {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--ds-border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.custom-theme-scheme {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  font-size: 0.8rem;
+  color: var(--ds-muted);
+}
+
+.custom-theme-scheme-toggle {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.custom-theme-scheme-active {
+  border-color: var(--ds-accent);
+  color: var(--ds-accent);
+}
+
 .toggle-row {
   display: flex;
   align-items: center;

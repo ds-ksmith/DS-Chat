@@ -3,6 +3,7 @@ import * as authApi from '../api/auth'
 import { ApiError, NetworkError } from '../api/client'
 import { clearLastUser, loadLastUser, saveLastUser } from '../lib/lastUser'
 import { unsubscribeFromPush } from '../lib/push'
+import { applyTheme } from '../lib/theme'
 import type { User } from '../types'
 
 interface AuthContextValue {
@@ -22,8 +23,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [offline, setOffline] = useState(false)
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', user?.theme ?? 'dark')
-  }, [user?.theme])
+    applyTheme(user?.theme ?? null, user?.custom_theme_colors ?? null)
+  }, [user?.theme, user?.custom_theme_colors])
 
   useEffect(() => {
     authApi

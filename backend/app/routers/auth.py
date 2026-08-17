@@ -85,6 +85,8 @@ async def update_profile(
         current_user.display_name = display_name or None
     if "theme" in updates:
         current_user.theme = updates["theme"]
+    if "custom_theme_colors" in updates:
+        current_user.custom_theme_colors = updates["custom_theme_colors"]
     if "appear_offline" in updates:
         current_user.appear_offline = updates["appear_offline"]
     await db.commit()

@@ -4,7 +4,8 @@ import { ApiError } from '../api/client'
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
-import type { ThemeName } from '../types'
+import { applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
+import type { CustomThemeColors, ThemeName } from '../types'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
 
@@ -13,6 +14,21 @@ const THEME_OPTIONS: { name: ThemeName; label: string }[] = [
   { name: 'light', label: 'Light' },
   { name: 'midnight', label: 'Midnight' },
   { name: 'sunset', label: 'Sunset' },
+]
+
+const CUSTOM_COLOR_FIELDS: { key: keyof Omit<CustomThemeColors, 'color_scheme'>; label: string }[] = [
+  { key: 'void', label: 'Background' },
+  { key: 'void_2', label: 'Sidebar background' },
+  { key: 'surface', label: 'Surface' },
+  { key: 'surface_2', label: 'Surface (secondary)' },
+  { key: 'border', label: 'Border' },
+  { key: 'text', label: 'Text' },
+  { key: 'muted', label: 'Muted text' },
+  { key: 'accent', label: 'Accent' },
+  { key: 'accent_2', label: 'Accent (secondary)' },
+  { key: 'accent_3', label: 'Accent (tertiary)' },
+  { key: 'highlight', label: 'Highlight' },
+  { key: 'danger', label: 'Danger' },
 ]
 
 interface ProfileModalProps {
@@ -27,6 +43,11 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [themeError, setThemeError] = useState<string | null>(null)
+  const [customColors, setCustomColors] = useState<CustomThemeColors>(
+    user?.custom_theme_colors ?? DEFAULT_CUSTOM_COLORS,
+  )
+  const [customColorsDirty, setCustomColorsDirty] = useState(false)
+  const [savingColors, setSavingColors] = useState(false)
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -44,7 +65,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     try {
       const updated = await updateProfile(displayName.trim() || null)
       updateUser(updated)
-      onClose()
+      handleClose()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
       setSavingName(false)
@@ -80,16 +101,53 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   async function handleSelectTheme(theme: ThemeName) {
     // Instant visual feedback, then persist -- mirrors avatar upload's
     // apply-immediately pattern rather than requiring a separate Save.
-    document.documentElement.setAttribute('data-theme', theme)
+    // For 'custom', this always sends the current draft palette alongside
+    // the theme name (previously-saved colors if any, else the defaults),
+    // so selecting Custom never leaves theme='custom' persisted with no
+    // palette behind it.
+    applyTheme(theme, theme === 'custom' ? customColors : null)
     setThemeError(null)
     try {
-      const updated = await updateTheme(theme)
+      const updated = await updateTheme(theme, theme === 'custom' ? customColors : undefined)
       updateUser(updated)
+      setCustomColorsDirty(false)
     } catch (err) {
       // Revert the optimistic DOM change if it didn't actually persist.
-      document.documentElement.setAttribute('data-theme', user?.theme ?? 'dark')
+      applyTheme(user?.theme ?? 'dark', user?.custom_theme_colors ?? null)
       setThemeError(err instanceof ApiError ? err.message : String(err))
     }
+  }
+
+  function handleCustomColorChange(key: keyof CustomThemeColors, value: string) {
+    const next = { ...customColors, [key]: value }
+    setCustomColors(next)
+    setCustomColorsDirty(true)
+    // Live preview only -- deliberately not persisted per keystroke (a
+    // native color input fires continuously while dragging), see
+    // handleSaveColors for the actual persist step.
+    applyTheme('custom', next)
+  }
+
+  async function handleSaveColors() {
+    setSavingColors(true)
+    setThemeError(null)
+    try {
+      const updated = await updateTheme('custom', customColors)
+      updateUser(updated)
+      setCustomColorsDirty(false)
+    } catch (err) {
+      setThemeError(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setSavingColors(false)
+    }
+  }
+
+  function handleClose() {
+    // Unsaved color edits were only ever a live preview -- revert to
+    // whatever's actually persisted so closing without saving doesn't leave
+    // the app visually stuck on a draft.
+    if (customColorsDirty) applyTheme(user?.theme ?? 'dark', user?.custom_theme_colors ?? null)
+    onClose()
   }
 
   async function handleChangePassword(e: FormEvent) {
@@ -117,11 +175,11 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const avatarUrl = user.avatar_filename ? getUserAvatarUrl(user.id, user.avatar_filename) : null
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <div className="modal-scrim" onClick={handleClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>Profile settings</h2>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+          <button type="button" className="modal-close" onClick={handleClose} aria-label="Close">
             &times;
           </button>
         </div>
@@ -178,8 +236,69 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
               <span className="theme-swatch-label">{option.label}</span>
             </button>
           ))}
+          <button
+            type="button"
+            className={`theme-swatch${user.theme === 'custom' ? ' theme-swatch-selected' : ''}`}
+            onClick={() => handleSelectTheme('custom')}
+            aria-pressed={user.theme === 'custom'}
+          >
+            <span
+              className="theme-swatch-preview"
+              aria-hidden="true"
+              style={{ background: customColors.void }}
+            >
+              <span className="theme-swatch-accent" style={{ background: customColors.accent }} />
+            </span>
+            <span className="theme-swatch-label">Custom</span>
+          </button>
         </div>
         {themeError && <p className="modal-error">{themeError}</p>}
+
+        {user.theme === 'custom' && (
+          <div className="custom-theme-editor">
+            <div className="custom-theme-grid">
+              {CUSTOM_COLOR_FIELDS.map((field) => (
+                <label key={field.key} className="custom-theme-field">
+                  <input
+                    type="color"
+                    value={customColors[field.key]}
+                    onChange={(e) => handleCustomColorChange(field.key, e.target.value)}
+                  />
+                  <span>{field.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="custom-theme-scheme">
+              <span>Native controls (scrollbars, form inputs)</span>
+              <div className="custom-theme-scheme-toggle">
+                <button
+                  type="button"
+                  className={`btn-secondary${customColors.color_scheme === 'light' ? ' custom-theme-scheme-active' : ''}`}
+                  onClick={() => handleCustomColorChange('color_scheme', 'light')}
+                >
+                  Light
+                </button>
+                <button
+                  type="button"
+                  className={`btn-secondary${customColors.color_scheme === 'dark' ? ' custom-theme-scheme-active' : ''}`}
+                  onClick={() => handleCustomColorChange('color_scheme', 'dark')}
+                >
+                  Dark
+                </button>
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={handleSaveColors}
+                disabled={savingColors || !customColorsDirty}
+              >
+                {savingColors ? 'Saving…' : 'Save colors'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <hr className="modal-divider" />
 
@@ -194,7 +313,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
           />
           {error && <p className="modal-error">{error}</p>}
           <div className="modal-actions">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+            <button type="button" className="btn-secondary" onClick={handleClose}>
               Close
             </button>
             <button type="submit" className="btn-primary" disabled={savingName}>
