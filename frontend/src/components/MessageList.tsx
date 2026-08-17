@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { formatFileSize } from '../lib/fileSize'
@@ -76,6 +76,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
   const [reactingId, setReactingId] = useState<string | null>(null)
   const [reactionPlacement, setReactionPlacement] = useState<'above' | 'below'>('below')
   const [previewFile, setPreviewFile] = useState<MessageFileInfo | null>(null)
+  const memberUsernames = useMemo(() => new Set(members.map((m) => m.username)), [members])
 
   function displayNameForUserId(userId: string): string {
     const member = members.find((m) => m.user_id === userId)
@@ -166,7 +167,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                   )}
                   {msg.content && (
                     <div className="message-text">
-                      <MessageContent content={msg.content} />
+                      <MessageContent content={msg.content} memberUsernames={memberUsernames} />
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}

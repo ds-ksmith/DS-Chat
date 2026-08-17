@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Message, MessageFile, Room, RoomMembership, User
+from app.models import Message, MessageFile, MessageMention, Room, RoomMembership, User
 from app.schemas.message import ReactionSummary
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
@@ -31,6 +31,11 @@ async def _notify_offline_members(
     if not offline_ids:
         return
 
+    result = await db.execute(
+        select(MessageMention.user_id).where(MessageMention.message_id == message.id)
+    )
+    mentioned_ids = {row[0] for row in result.all()}
+
     # This is also exactly the right audience for "give this room an unread
     # dot": presence.connected_user_ids(room_id) means "has this room's
     # channel joined right now" -- which the client only does while the tab
@@ -39,22 +44,29 @@ async def _notify_offline_members(
     # not just rooms that aren't open at all.
     for user_id in offline_ids:
         await broadcaster.publish_to_user(
-            user_id, {"type": "unread_update", "room_id": str(room_id)}
+            user_id,
+            {
+                "type": "unread_update",
+                "room_id": str(room_id),
+                "mentioned": user_id in mentioned_ids,
+            },
         )
 
     room = await db.get(Room, room_id)
-    if message.content:
-        body = f"{sender.username}: {message.content}"[:120]
-    elif message.file_id:
-        body = f"{sender.username} sent a file"
-    else:
-        body = f"{sender.username} sent an image"
-    payload = {
-        "title": f"#{room.name}" if room else "New message",
-        "body": body,
-        "room_id": str(room_id),
-    }
     for user_id in offline_ids:
+        mentioned = user_id in mentioned_ids
+        if message.content:
+            prefix = f"{sender.username} mentioned you: " if mentioned else f"{sender.username}: "
+            body = (prefix + message.content)[:120]
+        elif message.file_id:
+            body = f"{sender.username} sent a file"
+        else:
+            body = f"{sender.username} sent an image"
+        payload = {
+            "title": f"#{room.name}" if room else "New message",
+            "body": body,
+            "room_id": str(room_id),
+        }
         await send_push_to_user(db, user_id, payload)
 
 

@@ -140,8 +140,9 @@ async def list_my_rooms_endpoint(
             created_at=room.created_at,
             role=role,
             has_unread=has_unread,
+            has_mention=has_mention,
         )
-        for room, role, has_unread in rooms
+        for room, role, has_unread, has_mention in rooms
     ]
 
 

@@ -78,7 +78,7 @@ def test_message_marks_room_unread_and_notifies_offline_member(ws_client_factory
             assert message["type"] == "message"
 
         update = _recv(bob_ws)
-        assert update == {"type": "unread_update", "room_id": room["id"]}
+        assert update == {"type": "unread_update", "room_id": room["id"], "mentioned": False}
 
     bob_rooms = instance2.get("/api/rooms/mine").json()
     assert _has_unread(bob_rooms, room["id"]) is True

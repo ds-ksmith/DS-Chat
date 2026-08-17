@@ -1,8 +1,14 @@
 import Markdown from 'markdown-to-jsx'
+import type { ReactNode } from 'react'
 import { EMOJI_SHORTCODES } from '../lib/emojiShortcodes'
 
 interface MessageContentProps {
   content: string
+  // Validated against actual room members so a bare '@' in prose can't
+  // false-positive -- optional since FilePreviewModal reuses this same
+  // component for markdown file previews, where "@mentioning a person"
+  // doesn't apply.
+  memberUsernames?: Set<string>
 }
 
 interface MarkdownImageLinkProps {
@@ -20,6 +26,27 @@ function MarkdownImageLink({ src, alt, title }: MarkdownImageLinkProps) {
   return (
     <a href={src} target="_blank" rel="noopener noreferrer" title={title}>
       {alt || src}
+    </a>
+  )
+}
+
+interface MarkdownLinkProps {
+  href?: string
+  children?: ReactNode
+}
+
+// highlightMentions (below) turns a validated @username into a
+// `[@username](mention:username)` link so markdown-to-jsx parses it as a
+// normal link node -- this override is what turns that back into a styled
+// span instead of an actual anchor. Everything else renders as a real link,
+// same as before mentions existed.
+function MarkdownLink({ href, children }: MarkdownLinkProps) {
+  if (href?.startsWith('mention:')) {
+    return <span className="message-mention">{children}</span>
+  }
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer">
+      {children}
     </a>
   )
 }
@@ -49,6 +76,41 @@ function convertShortcodes(text: string): string {
         .map((part, i) =>
           i % 2 === 0
             ? part.replace(SHORTCODE_PATTERN, (match, name) => EMOJI_SHORTCODES[name] ?? match)
+            : part,
+        )
+        .join('')
+    })
+    .join('\n')
+}
+
+const MENTION_PATTERN = /@([a-zA-Z0-9_.-]+)/g
+
+// Turns a validated @username into `[@username](mention:username)` --
+// markdown-to-jsx parses that as an ordinary link node, which the `a`
+// override above then renders as a styled span instead of an anchor. Skips
+// fenced code blocks and inline code spans, same convention (and same
+// reasoning) as convertShortcodes above -- pasted code containing a bare
+// '@' shouldn't light up as if someone were paged. Kept in sync with
+// backend/app/services/mention_service.py's equivalent server-side skip
+// logic, which decides who actually gets notified.
+function highlightMentions(text: string, memberUsernames: Set<string>): string {
+  if (memberUsernames.size === 0) return text
+  const lines = text.split('\n')
+  let inFence = false
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part, i) =>
+          i % 2 === 0
+            ? part.replace(MENTION_PATTERN, (match, username) =>
+                memberUsernames.has(username) ? `[${match}](mention:${username})` : match,
+              )
             : part,
         )
         .join('')
@@ -87,11 +149,12 @@ export const MARKDOWN_OPTIONS = {
   // and printed literally instead of being parsed into elements.
   disableParsingRawHTML: true,
   overrides: {
-    a: { props: { target: '_blank', rel: 'noopener noreferrer' } },
+    a: { component: MarkdownLink },
     img: { component: MarkdownImageLink },
   },
 }
 
-export function MessageContent({ content }: MessageContentProps) {
-  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(convertShortcodes(content))}</Markdown>
+export function MessageContent({ content, memberUsernames }: MessageContentProps) {
+  const withMentions = memberUsernames ? highlightMentions(content, memberUsernames) : content
+  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(convertShortcodes(withMentions))}</Markdown>
 }

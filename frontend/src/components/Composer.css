@@ -13,9 +13,14 @@
   align-items: flex-end;
 }
 
-.composer-box textarea {
+.composer-textarea-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
+}
+
+.composer-box textarea {
+  width: 100%;
   resize: none;
   background: var(--ds-surface-2);
   border: 1px solid var(--ds-border);

@@ -58,3 +58,14 @@
   border-radius: 50%;
   background: var(--ds-accent);
 }
+
+/* Distinct from the plain unread dot -- --ds-highlight is already this
+   app's second brand color (see tokens.css), reused here rather than
+   introducing a new semantic color just for mentions. */
+.room-row-mention-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ds-highlight);
+}

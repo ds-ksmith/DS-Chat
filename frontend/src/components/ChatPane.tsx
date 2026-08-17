@@ -184,7 +184,13 @@ export function ChatPane({
         onEdit={sendEdit}
         onReact={sendReaction}
       />
-      <Composer roomId={room.id} roomName={room.name} disabled={!connected} onSend={send} />
+      <Composer
+        roomId={room.id}
+        roomName={room.name}
+        members={members}
+        disabled={!connected}
+        onSend={send}
+      />
     </section>
   )
 }

@@ -39,6 +39,10 @@ class MyRoomItem(RoomRead):
     # computed by the router/service, not a stored column on Room itself
     # (it's inherently per-viewer, unlike everything else on RoomRead).
     has_unread: bool
+    # Unread AND mentions this user specifically -- takes visual priority
+    # over has_unread in the sidebar (see RoomRow.tsx), not shown alongside
+    # it.
+    has_mention: bool
 
 
 class RoomMemberRead(BaseModel):

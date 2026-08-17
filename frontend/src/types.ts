@@ -67,6 +67,9 @@ export interface RoomListItem extends Room {
 export interface MyRoomItem extends Room {
   role: RoomRole
   has_unread: boolean
+  // Unread and mentions the current user -- takes visual priority over
+  // has_unread in the sidebar (see RoomRow.tsx), not shown alongside it.
+  has_mention: boolean
 }
 
 export interface RoomMember {
@@ -171,6 +174,7 @@ export interface ChatMemberUpdatedEnvelope {
 export interface ChatUnreadUpdateEnvelope {
   type: 'unread_update'
   room_id: string
+  mentioned: boolean
 }
 
 export type ServerEnvelope =

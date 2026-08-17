@@ -1,20 +1,49 @@
-import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
 import { formatFileSize } from '../lib/fileSize'
+import type { RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
+import { MentionAutocomplete } from './MentionAutocomplete'
 import './Composer.css'
 
 interface ComposerProps {
   roomId: string
   roomName: string
+  members: RoomMember[]
   disabled?: boolean
   onSend: (content: string, imageId?: string, fileId?: string) => void
 }
 
+interface MentionQuery {
+  start: number
+  end: number
+  text: string
+}
 
-export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) {
+// Scans left from the cursor for an active "@partial" token -- an '@' not
+// preceded by a word character (so "foo@bar" mid-email doesn't trigger)
+// with only mention-safe characters between it and the cursor (a space
+// breaks out of the query entirely, closing the dropdown).
+function detectMentionQuery(text: string, cursor: number): MentionQuery | null {
+  let i = cursor - 1
+  while (i >= 0 && /[a-zA-Z0-9_.-]/.test(text[i])) i--
+  if (i < 0 || text[i] !== '@') return null
+  const prevChar = text[i - 1]
+  if (prevChar && /\w/.test(prevChar)) return null
+  return { start: i, end: cursor, text: text.slice(i + 1, cursor) }
+}
+
+export function Composer({ roomId, roomName, members, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
   const [pendingFile, setPendingFile] = useState<{ id: string; filename: string; size: number } | null>(
@@ -24,9 +53,17 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null)
+  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null)
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const online = useOnlineStatus()
+
+  const mentionMatches = useMemo(() => {
+    if (!mentionQuery) return []
+    const q = mentionQuery.text.toLowerCase()
+    return members.filter((m) => m.username.toLowerCase().startsWith(q)).slice(0, 8)
+  }, [mentionQuery, members])
 
   useEffect(() => {
     getUploadLimit()
@@ -49,16 +86,66 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
     if (!trimmed && !pendingImage && !pendingFile) return
     onSend(trimmed, pendingImage?.id, pendingFile?.id)
     setValue('')
+    setMentionQuery(null)
     removePendingImage()
     setPendingFile(null)
     requestAnimationFrame(autoGrow)
   }
 
+  function selectMention(username: string) {
+    const query = mentionQuery
+    if (!query) return
+    const el = textareaRef.current
+    const next = value.slice(0, query.start) + '@' + username + ' ' + value.slice(query.end)
+    setValue(next)
+    setMentionQuery(null)
+    requestAnimationFrame(() => {
+      if (!el) return
+      el.focus()
+      const cursor = query.start + username.length + 2 // '@' + username + trailing space
+      el.setSelectionRange(cursor, cursor)
+      autoGrow()
+    })
+  }
+
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (mentionQuery && mentionMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionActiveIndex((i) => (i + 1) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionActiveIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        selectMention(mentionMatches[mentionActiveIndex].username)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMentionQuery(null)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
+  }
+
+  // Re-detects the active @query on every cursor move, not just typing --
+  // React's onSelect fires for clicks and arrow-key navigation too, so
+  // moving the cursor out of a partial mention (without deleting it) still
+  // correctly closes the dropdown.
+  function handleSelectionChange(e: FormEvent<HTMLTextAreaElement>) {
+    const el = e.currentTarget
+    const query = detectMentionQuery(el.value, el.selectionStart ?? 0)
+    setMentionQuery(query)
+    setMentionActiveIndex(0)
   }
 
   async function handleFileSelected(e: ChangeEvent<HTMLInputElement>) {
@@ -205,19 +292,32 @@ export function Composer({ roomId, roomName, disabled, onSend }: ComposerProps) 
             />
           )}
         </div>
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          value={value}
-          disabled={disabled}
-          onChange={(e) => {
-            setValue(e.target.value)
-            autoGrow()
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? (online ? 'Connecting…' : "You're offline") : `Message #${roomName}`}
-          spellCheck
-        />
+        <div className="composer-textarea-wrap">
+          <textarea
+            ref={textareaRef}
+            rows={1}
+            value={value}
+            disabled={disabled}
+            onChange={(e) => {
+              setValue(e.target.value)
+              autoGrow()
+              setMentionQuery(detectMentionQuery(e.target.value, e.target.selectionStart ?? 0))
+              setMentionActiveIndex(0)
+            }}
+            onSelect={handleSelectionChange}
+            onKeyDown={handleKeyDown}
+            placeholder={disabled ? (online ? 'Connecting…' : "You're offline") : `Message #${roomName}`}
+            spellCheck
+          />
+          {mentionQuery && mentionMatches.length > 0 && (
+            <MentionAutocomplete
+              matches={mentionMatches}
+              activeIndex={mentionActiveIndex}
+              onPick={selectMention}
+              onHover={setMentionActiveIndex}
+            />
+          )}
+        </div>
         <button
           type="button"
           className="composer-send"

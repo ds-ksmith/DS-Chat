@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, Room, RoomMembership, RoomRole, User
+from app.models import Message, MessageMention, Room, RoomMembership, RoomRole, User
 from app.schemas.room import RoomCreate, RoomUpdate
 from app.services.email_service import send_email
 
@@ -81,22 +81,38 @@ async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Ro
 
 async def list_member_rooms(
     db: AsyncSession, user_id: uuid.UUID
-) -> list[tuple[Room, RoomRole, bool]]:
+) -> list[tuple[Room, RoomRole, bool, bool]]:
     last_message_at = (
         select(func.max(Message.created_at))
         .where(Message.room_id == Room.id)
         .correlate(Room)
         .scalar_subquery()
     )
+    # Unread AND mentions this user specifically -- a stronger signal than
+    # plain has_unread, surfaced as its own field so the sidebar can show a
+    # visually distinct badge instead of (not alongside) the plain dot.
+    has_unread_mention = (
+        select(MessageMention.message_id)
+        .join(Message, Message.id == MessageMention.message_id)
+        .where(
+            MessageMention.user_id == user_id,
+            Message.room_id == Room.id,
+            Message.created_at > RoomMembership.last_read_at,
+        )
+        .correlate(Room, RoomMembership)
+        .exists()
+    )
     result = await db.execute(
-        select(Room, RoomMembership.role, RoomMembership.last_read_at, last_message_at)
+        select(
+            Room, RoomMembership.role, RoomMembership.last_read_at, last_message_at, has_unread_mention
+        )
         .join(RoomMembership, RoomMembership.room_id == Room.id)
         .where(RoomMembership.user_id == user_id)
         .order_by(Room.created_at)
     )
     return [
-        (room, role, last_message_at is not None and last_message_at > last_read_at)
-        for room, role, last_read_at, last_message_at in result.all()
+        (room, role, last_message_at is not None and last_message_at > last_read_at, has_mention)
+        for room, role, last_read_at, last_message_at, has_mention in result.all()
     ]
 
 

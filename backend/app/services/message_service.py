@@ -6,8 +6,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, MessageReaction
+from app.models import Message, MessageMention, MessageReaction
 from app.schemas.message import ReactionSummary
+from app.services.mention_service import extract_mentioned_user_ids
 
 
 class MessageNotFoundError(Exception):
@@ -30,6 +31,12 @@ async def create_message(
         room_id=room_id, user_id=user_id, content=content, image_id=image_id, file_id=file_id
     )
     db.add(message)
+    # message.id is available immediately (a Python-side uuid4 default, not
+    # server-generated), so mention rows can reference it without a flush.
+    if content:
+        mentioned_ids = await extract_mentioned_user_ids(db, room_id, content)
+        for mentioned_id in mentioned_ids:
+            db.add(MessageMention(message_id=message.id, user_id=mentioned_id))
     await db.commit()
     await db.refresh(message)
     return message

@@ -32,7 +32,12 @@ export function RoomRow({ room, colorIndex, active }: RoomRowProps) {
         </div>
         {room.description && <div className="room-row-subtitle">{room.description}</div>}
       </div>
-      {room.has_unread && !active && <span className="room-row-unread-dot" aria-label="Unread messages" />}
+      {!active && room.has_mention && (
+        <span className="room-row-mention-dot" aria-label="You were mentioned" />
+      )}
+      {!active && !room.has_mention && room.has_unread && (
+        <span className="room-row-unread-dot" aria-label="Unread messages" />
+      )}
     </Link>
   )
 }
