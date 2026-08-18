@@ -47,6 +47,20 @@ import './RoomInfoPanel.css'
 
 const EVENT_TYPES: EventType[] = ['message.created', 'message.updated']
 
+// Disclosure chevron for the collapsible sections below (Files,
+// Integrations, Room settings) -- points right when collapsed, rotates 90°
+// clockwise (pointing down) when expanded, same convention as most
+// disclosure triangles rather than a +/- glyph.
+function DisclosureChevron({ open }: { open: boolean }) {
+  return (
+    <span className={`room-info-settings-chevron${open ? ' room-info-settings-chevron-open' : ''}`}>
+      <svg width="12" height="12" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+        <polyline points="7,4 13,10 7,16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  )
+}
+
 interface RoomInfoPanelProps {
   room: MyRoomItem
   members: RoomMember[]
@@ -331,7 +345,7 @@ export function RoomInfoPanel({
 
       <div className="room-info-section">
         <button type="button" className="room-info-settings-toggle" onClick={() => setFilesOpen((v) => !v)}>
-          Files {filesOpen ? '−' : '+'}
+          <DisclosureChevron open={filesOpen} /> Files
         </button>
         {filesOpen && (
           <div className="room-info-files">
@@ -419,7 +433,7 @@ export function RoomInfoPanel({
             className="room-info-settings-toggle"
             onClick={() => setIntegrationsOpen((v) => !v)}
           >
-            Integrations {integrationsOpen ? '−' : '+'}
+            <DisclosureChevron open={integrationsOpen} /> Integrations
           </button>
           {integrationsOpen && (
             <div className="room-info-integrations">
@@ -518,7 +532,7 @@ export function RoomInfoPanel({
             className="room-info-settings-toggle"
             onClick={() => setSettingsOpen((v) => !v)}
           >
-            Room settings {settingsOpen ? '−' : '+'}
+            <DisclosureChevron open={settingsOpen} /> Room settings
           </button>
           {settingsOpen && (
             <form className="room-info-settings-form" onSubmit={handleSaveSettings}>

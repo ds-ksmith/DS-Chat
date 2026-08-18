@@ -193,6 +193,9 @@
 }
 
 .room-info-settings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   background: transparent;
   border: 1px solid var(--ds-border);
   color: var(--ds-text);
@@ -203,6 +206,17 @@
   cursor: pointer;
   width: 100%;
   text-align: left;
+}
+
+.room-info-settings-chevron {
+  display: inline-flex;
+  flex: none;
+  color: var(--ds-muted);
+  transition: transform 0.15s ease;
+}
+
+.room-info-settings-chevron-open {
+  transform: rotate(90deg);
 }
 
 .room-info-settings-form {
