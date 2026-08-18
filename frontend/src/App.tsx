@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ChatSocketProvider } from './context/ChatSocketContext'
 import { AdminRoute } from './components/AdminRoute'
+import { DesktopNotificationBridge } from './components/DesktopNotificationBridge'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { UpdateBanner } from './components/UpdateBanner'
 import { LoginPage } from './pages/LoginPage'
@@ -55,7 +56,12 @@ function AppRoutes() {
   // is currently open.
   const { user } = useAuth()
   if (!user) return routes
-  return <ChatSocketProvider key={user.id}>{routes}</ChatSocketProvider>
+  return (
+    <ChatSocketProvider key={user.id}>
+      <DesktopNotificationBridge />
+      {routes}
+    </ChatSocketProvider>
+  )
 }
 
 function App() {

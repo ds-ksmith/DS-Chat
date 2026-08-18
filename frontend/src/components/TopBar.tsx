@@ -6,10 +6,21 @@ import { ApiError } from '../api/client'
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
+import {
+  getDesktopNotificationsEnabled,
+  isDesktopNotificationsSupported,
+  setDesktopNotificationsEnabled,
+} from '../lib/desktopBridge'
 import { getPushSubscriptionStatus, isPushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push'
 import { ProfileModal } from './ProfileModal'
 import { UserAvatar } from './UserAvatar'
 import './TopBar.css'
+
+// #49: inside DS Chat Desktop, notifications are delivered over the socket
+// bridge instead of Web Push (Electron has no push delivery service
+// configured) -- checked once, not re-derived per render, since bridge
+// presence can't change over a session's lifetime.
+const desktopMode = isDesktopNotificationsSupported()
 
 export function TopBar() {
   const { user, updateUser, logout } = useAuth()
@@ -19,12 +30,25 @@ export function TopBar() {
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
+  const [desktopNotificationsEnabled, setDesktopNotificationsEnabledState] = useState(
+    getDesktopNotificationsEnabled,
+  )
   const [presenceBusy, setPresenceBusy] = useState(false)
   const [presenceError, setPresenceError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Never touch PushManager at all in desktop mode -- Electron has no
+    // push service configured, so even the read-only getSubscription()
+    // check has no reason to run there.
+    if (desktopMode) return
     getPushSubscriptionStatus().then(setPushSubscribed)
   }, [])
+
+  function handleToggleDesktopNotifications() {
+    const next = !desktopNotificationsEnabled
+    setDesktopNotificationsEnabled(next)
+    setDesktopNotificationsEnabledState(next)
+  }
 
   async function handleTogglePush() {
     setPushBusy(true)
@@ -119,15 +143,21 @@ export function TopBar() {
                   Admin
                 </button>
               )}
-              {isPushSupported() && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={handleTogglePush}
-                  disabled={pushBusy}
-                >
-                  {pushSubscribed ? 'Disable notifications' : 'Enable notifications'}
+              {desktopMode ? (
+                <button type="button" role="menuitem" onClick={handleToggleDesktopNotifications}>
+                  {desktopNotificationsEnabled ? 'Disable notifications' : 'Enable notifications'}
                 </button>
+              ) : (
+                isPushSupported() && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={handleTogglePush}
+                    disabled={pushBusy}
+                  >
+                    {pushSubscribed ? 'Disable notifications' : 'Enable notifications'}
+                  </button>
+                )
               )}
               {pushError && <div className="top-bar-menu-error">{pushError}</div>}
               <button type="button" role="menuitem" onClick={() => logout()}>

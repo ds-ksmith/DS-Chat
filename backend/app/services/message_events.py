@@ -55,6 +55,7 @@ async def _notify_offline_members(
         )
 
     room = await db.get(Room, room_id)
+    title = f"#{room.name}" if room else "New message"
     for user_id in offline_ids:
         mentioned = user_id in mentioned_ids
         if message.content:
@@ -64,12 +65,28 @@ async def _notify_offline_members(
             body = f"{sender.username} sent a file"
         else:
             body = f"{sender.username} sent an image"
-        payload = {
-            "title": f"#{room.name}" if room else "New message",
-            "body": body,
-            "room_id": str(room_id),
-        }
+        payload = {"title": title, "body": body, "room_id": str(room_id)}
         await send_push_to_user(db, user_id, payload)
+        # Desktop notifications (#49): delivered over this same already-open
+        # authenticated socket rather than Web Push, since Electron has no
+        # push delivery service configured. Broadcast to every eligible
+        # offline member regardless of push-subscription status -- the
+        # client decides whether to act on it (only when window.dsDesktop
+        # is present), so the server doesn't need to track which clients
+        # are running inside Electron. `id` is the message's own id
+        # (stable, not random) so the client can dedupe across socket
+        # reconnects/replays, the same way Electron's own eventId dedup
+        # does on its side.
+        await broadcaster.publish_to_user(
+            user_id,
+            {
+                "type": "desktop_notification",
+                "id": str(message.id),
+                "room_id": str(room_id),
+                "title": title,
+                "body": body,
+            },
+        )
 
 
 async def _message_payload(db: AsyncSession, message: Message, username: str) -> dict:

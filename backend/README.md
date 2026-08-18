@@ -311,6 +311,40 @@ that point, so nothing online-facing is delayed, and it sidesteps
 on. An expired/invalid subscription (pywebpush 404/410) is deleted
 automatically.
 
+## Desktop notifications
+
+DS Chat Desktop (a separate Electron wrapper, not this repo) has no push
+delivery service configured, so it can't receive Web Push. Instead,
+`app/services/message_events.py`'s existing offline-member computation
+(`room members - Presence.connected_user_ids(room_id) - {sender}` — the
+same audience Web Push uses, described above) also broadcasts a
+`desktop_notification` WS envelope (`{type, id, room_id, title, body}`,
+`id` being the message's own id so the client can dedupe across
+reconnects) to every eligible offline member over their already-open
+authenticated socket, unconditionally — the server has no notion of which
+clients are running inside Electron. It's sent alongside the Web Push
+send, not instead of it, so a member with only a browser tab open is
+unaffected.
+
+The client decides whether to act on it: `frontend/src/lib/desktopBridge.ts`
+feature-detects `window.dsDesktop` (the bridge Electron's preload script
+exposes, per-method rather than via user-agent sniffing — an older wrapper
+build may be missing individual methods) and only calls
+`showNotification` when the bridge is present and the user's
+localStorage-backed preference (`ds-chat-desktop-notifications-enabled`,
+default on) allows it. This preference is deliberately a plain client-side
+flag rather than reusing `PushSubscription` — desktop notifications need
+no server round trip to enable/disable, unlike a push subscription which
+has a row to create/delete. `frontend/src/components/DesktopNotificationBridge.tsx`
+is mounted once, as a sibling of the routed pages inside the `user.id`-keyed
+`ChatSocketProvider`, so it subscribes exactly once per authenticated
+session; it also wires `window.dsDesktop.onNotificationClick` to navigate
+to the notification's room.
+
+No `User`/`PushSubscription` schema change was needed for this feature —
+the only backend change is the new `desktop_notification` envelope type,
+covered by `backend/tests/test_desktop_notifications.py`.
+
 ## Room roles and membership (Phase 2)
 
 Rooms can be `open` (anyone can join via `POST /api/rooms/{id}/join`) or

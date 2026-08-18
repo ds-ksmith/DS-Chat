@@ -206,6 +206,20 @@ export interface ChatUnreadUpdateEnvelope {
   mentioned: boolean
 }
 
+// #49: delivered over this same socket, alongside the existing Web Push
+// send, to every eligible offline member regardless of push-subscription
+// status -- see backend/app/services/message_events.py's
+// _notify_offline_members. `id` is the source message's own id (stable,
+// not random) so the desktop bridge's dedup can key on it across socket
+// reconnects/replays.
+export interface ChatDesktopNotificationEnvelope {
+  type: 'desktop_notification'
+  id: string
+  room_id: string
+  title: string
+  body: string
+}
+
 export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
@@ -216,6 +230,7 @@ export type ServerEnvelope =
   | ChatRoomAddedEnvelope
   | ChatMemberUpdatedEnvelope
   | ChatUnreadUpdateEnvelope
+  | ChatDesktopNotificationEnvelope
 
 export interface AdminUser {
   id: string
