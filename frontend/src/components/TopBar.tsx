@@ -125,6 +125,16 @@ export function TopBar() {
               <button
                 type="button"
                 role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  navigate('/help')
+                }}
+              >
+                Help
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 onClick={handleTogglePresence}
                 disabled={presenceBusy}
               >

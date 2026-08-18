@@ -11,6 +11,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/ResetPasswordPage'
 import { ChatShellPage } from './pages/ChatShellPage'
 import { AdminPage } from './pages/AdminPage'
+import { HelpPage } from './pages/HelpPage'
 
 function AppRoutes() {
   const routes = (
@@ -41,6 +42,14 @@ function AppRoutes() {
           <AdminRoute>
             <AdminPage />
           </AdminRoute>
+        }
+      />
+      <Route
+        path="/help"
+        element={
+          <ProtectedRoute>
+            <HelpPage />
+          </ProtectedRoute>
         }
       />
       <Route path="*" element={<Navigate to="/rooms" replace />} />

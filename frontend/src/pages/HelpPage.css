@@ -1,0 +1,36 @@
+.help-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ds-void);
+}
+
+.help-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-6) var(--sp-8);
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.help-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-6);
+}
+
+.help-header h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+
+.help-loading {
+  color: var(--ds-muted);
+}
+
+.help-content a[href^='#'] {
+  word-break: normal;
+}
