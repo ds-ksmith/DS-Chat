@@ -12,39 +12,56 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
 import { formatFileSize } from '../lib/fileSize'
-import type { RoomMember } from '../types'
+import type { MyRoomItem, RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
 import { MentionAutocomplete } from './MentionAutocomplete'
+import { RoomReferenceAutocomplete } from './RoomReferenceAutocomplete'
 import './Composer.css'
 
 interface ComposerProps {
   roomId: string
   roomName: string
   members: RoomMember[]
+  // #47: rooms this user belongs to, for the #roomname autocomplete --
+  // deliberately the same list ChatPane already resolves message-display
+  // references against (see its myRooms comment), so what autocompletes
+  // while typing and what actually renders as a link later agree.
+  rooms: MyRoomItem[]
   disabled?: boolean
   onSend: (content: string, imageId?: string, fileId?: string) => void
 }
 
-interface MentionQuery {
+interface TriggerQuery {
   start: number
   end: number
   text: string
 }
 
-// Scans left from the cursor for an active "@partial" token -- an '@' not
-// preceded by a word character (so "foo@bar" mid-email doesn't trigger)
-// with only mention-safe characters between it and the cursor (a space
-// breaks out of the query entirely, closing the dropdown).
-function detectMentionQuery(text: string, cursor: number): MentionQuery | null {
+// Scans left from the cursor for an active "<trigger>partial" token -- the
+// trigger char not preceded by a word character (so "foo@bar" mid-email
+// doesn't trigger a mention query, and a literal '#' inside a word doesn't
+// trigger a room-reference one) with only identifier-safe characters
+// between it and the cursor (a space breaks out of the query entirely,
+// closing the dropdown). Shared by both @mention and #roomname detection --
+// only the trigger character differs.
+function detectTriggerQuery(text: string, cursor: number, trigger: string): TriggerQuery | null {
   let i = cursor - 1
   while (i >= 0 && /[a-zA-Z0-9_.-]/.test(text[i])) i--
-  if (i < 0 || text[i] !== '@') return null
+  if (i < 0 || text[i] !== trigger) return null
   const prevChar = text[i - 1]
   if (prevChar && /\w/.test(prevChar)) return null
   return { start: i, end: cursor, text: text.slice(i + 1, cursor) }
 }
 
-export function Composer({ roomId, roomName, members, disabled, onSend }: ComposerProps) {
+function detectMentionQuery(text: string, cursor: number): TriggerQuery | null {
+  return detectTriggerQuery(text, cursor, '@')
+}
+
+function detectRoomReferenceQuery(text: string, cursor: number): TriggerQuery | null {
+  return detectTriggerQuery(text, cursor, '#')
+}
+
+export function Composer({ roomId, roomName, members, rooms, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
   const [pendingFile, setPendingFile] = useState<{ id: string; filename: string; size: number } | null>(
@@ -54,8 +71,10 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false)
   const [maxUploadBytes, setMaxUploadBytes] = useState<number | null>(null)
-  const [mentionQuery, setMentionQuery] = useState<MentionQuery | null>(null)
+  const [mentionQuery, setMentionQuery] = useState<TriggerQuery | null>(null)
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
+  const [roomQuery, setRoomQuery] = useState<TriggerQuery | null>(null)
+  const [roomActiveIndex, setRoomActiveIndex] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -71,6 +90,12 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
     const q = mentionQuery.text.toLowerCase()
     return members.filter((m) => m.username.toLowerCase().startsWith(q)).slice(0, 8)
   }, [mentionQuery, members])
+
+  const roomMatches = useMemo(() => {
+    if (!roomQuery) return []
+    const q = roomQuery.text.toLowerCase()
+    return rooms.filter((r) => r.name.toLowerCase().startsWith(q)).slice(0, 8)
+  }, [roomQuery, rooms])
 
   useEffect(() => {
     getUploadLimit()
@@ -94,6 +119,7 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
     onSend(trimmed, pendingImage?.id, pendingFile?.id)
     setValue('')
     setMentionQuery(null)
+    setRoomQuery(null)
     removePendingImage()
     setPendingFile(null)
     requestAnimationFrame(autoGrow)
@@ -110,6 +136,22 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
       if (!el) return
       el.focus()
       const cursor = query.start + username.length + 2 // '@' + username + trailing space
+      el.setSelectionRange(cursor, cursor)
+      autoGrow()
+    })
+  }
+
+  function selectRoomReference(roomName: string) {
+    const query = roomQuery
+    if (!query) return
+    const el = textareaRef.current
+    const next = value.slice(0, query.start) + '#' + roomName + ' ' + value.slice(query.end)
+    setValue(next)
+    setRoomQuery(null)
+    requestAnimationFrame(() => {
+      if (!el) return
+      el.focus()
+      const cursor = query.start + roomName.length + 2 // '#' + roomName + trailing space
       el.setSelectionRange(cursor, cursor)
       autoGrow()
     })
@@ -138,21 +180,45 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
         return
       }
     }
+    if (roomQuery && roomMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setRoomActiveIndex((i) => (i + 1) % roomMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setRoomActiveIndex((i) => (i - 1 + roomMatches.length) % roomMatches.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        selectRoomReference(roomMatches[roomActiveIndex].name)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setRoomQuery(null)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
   }
 
-  // Re-detects the active @query on every cursor move, not just typing --
+  // Re-detects the active @/# query on every cursor move, not just typing --
   // React's onSelect fires for clicks and arrow-key navigation too, so
-  // moving the cursor out of a partial mention (without deleting it) still
-  // correctly closes the dropdown.
+  // moving the cursor out of a partial mention/reference (without deleting
+  // it) still correctly closes the dropdown.
   function handleSelectionChange(e: FormEvent<HTMLTextAreaElement>) {
     const el = e.currentTarget
-    const query = detectMentionQuery(el.value, el.selectionStart ?? 0)
-    setMentionQuery(query)
+    const cursor = el.selectionStart ?? 0
+    setMentionQuery(detectMentionQuery(el.value, cursor))
     setMentionActiveIndex(0)
+    setRoomQuery(detectRoomReferenceQuery(el.value, cursor))
+    setRoomActiveIndex(0)
   }
 
   async function handleFile(file: File) {
@@ -353,8 +419,11 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
             onChange={(e) => {
               setValue(e.target.value)
               autoGrow()
-              setMentionQuery(detectMentionQuery(e.target.value, e.target.selectionStart ?? 0))
+              const cursor = e.target.selectionStart ?? 0
+              setMentionQuery(detectMentionQuery(e.target.value, cursor))
               setMentionActiveIndex(0)
+              setRoomQuery(detectRoomReferenceQuery(e.target.value, cursor))
+              setRoomActiveIndex(0)
             }}
             onSelect={handleSelectionChange}
             onKeyDown={handleKeyDown}
@@ -367,6 +436,14 @@ export function Composer({ roomId, roomName, members, disabled, onSend }: Compos
               activeIndex={mentionActiveIndex}
               onPick={selectMention}
               onHover={setMentionActiveIndex}
+            />
+          )}
+          {roomQuery && roomMatches.length > 0 && (
+            <RoomReferenceAutocomplete
+              matches={roomMatches}
+              activeIndex={roomActiveIndex}
+              onPick={selectRoomReference}
+              onHover={setRoomActiveIndex}
             />
           )}
         </div>

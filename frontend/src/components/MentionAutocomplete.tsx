@@ -1,5 +1,5 @@
 import type { RoomMember } from '../types'
-import './MentionAutocomplete.css'
+import './ComposerAutocomplete.css'
 
 interface MentionAutocompleteProps {
   matches: RoomMember[]
@@ -10,14 +10,14 @@ interface MentionAutocompleteProps {
 
 export function MentionAutocomplete({ matches, activeIndex, onPick, onHover }: MentionAutocompleteProps) {
   return (
-    <div className="mention-autocomplete" role="listbox">
+    <div className="composer-autocomplete" role="listbox">
       {matches.map((member, i) => (
         <button
           key={member.user_id}
           type="button"
           role="option"
           aria-selected={i === activeIndex}
-          className={`mention-autocomplete-item${i === activeIndex ? ' mention-autocomplete-item-active' : ''}`}
+          className={`composer-autocomplete-item${i === activeIndex ? ' composer-autocomplete-item-active' : ''}`}
           // Selecting must survive the textarea's blur (which would
           // otherwise fire first and could dismiss the dropdown) --
           // onMouseDown fires before blur, onClick fires after.
@@ -25,9 +25,9 @@ export function MentionAutocomplete({ matches, activeIndex, onPick, onHover }: M
           onClick={() => onPick(member.username)}
           onMouseEnter={() => onHover(i)}
         >
-          <span className="mention-autocomplete-username">@{member.username}</span>
+          <span className="composer-autocomplete-primary">@{member.username}</span>
           {member.display_name && (
-            <span className="mention-autocomplete-display-name">{member.display_name}</span>
+            <span className="composer-autocomplete-secondary">{member.display_name}</span>
           )}
         </button>
       ))}

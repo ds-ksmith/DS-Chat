@@ -1,4 +1,4 @@
-.mention-autocomplete {
+.composer-autocomplete {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
@@ -16,7 +16,7 @@
   gap: 2px;
 }
 
-.mention-autocomplete-item {
+.composer-autocomplete-item {
   display: flex;
   align-items: baseline;
   gap: 6px;
@@ -29,18 +29,18 @@
   color: var(--ds-text);
 }
 
-.mention-autocomplete-item-active,
-.mention-autocomplete-item:hover {
+.composer-autocomplete-item-active,
+.composer-autocomplete-item:hover {
   background: var(--ds-surface-2);
 }
 
-.mention-autocomplete-username {
+.composer-autocomplete-primary {
   font-size: 0.84rem;
   font-weight: 700;
   color: var(--ds-accent);
 }
 
-.mention-autocomplete-display-name {
+.composer-autocomplete-secondary {
   font-size: 0.76rem;
   color: var(--ds-muted);
   overflow: hidden;

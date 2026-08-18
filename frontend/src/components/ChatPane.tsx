@@ -261,6 +261,7 @@ export function ChatPane({
         roomId={room.id}
         roomName={room.name}
         members={members}
+        rooms={rooms}
         disabled={!connected}
         onSend={send}
       />
