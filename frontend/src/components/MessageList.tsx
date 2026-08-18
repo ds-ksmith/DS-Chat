@@ -71,7 +71,13 @@ interface MessageListProps {
 
 export function MessageList({ roomId, messages, members, myRooms, onEdit, onReact }: MessageListProps) {
   const { user } = useAuth()
+  const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+  // Whether the view should be pinned to the latest message -- true right
+  // after a room switch/new message, flipped off if the user deliberately
+  // scrolls away from the bottom. Read by the image-load handler below so a
+  // late-loading image doesn't yank someone back down mid-scrollback.
+  const pinnedToBottomRef = useRef(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
@@ -86,8 +92,35 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
   }
 
   useEffect(() => {
+    pinnedToBottomRef.current = true
     bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages.length])
+  }, [roomId, messages.length])
+
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+    function handleScroll() {
+      if (!container) return
+      // Within 48px of the true bottom counts as "at the bottom" -- an
+      // exact-equality check would drop pinning from sub-pixel scroll
+      // rounding alone.
+      pinnedToBottomRef.current =
+        container.scrollHeight - container.scrollTop - container.clientHeight < 48
+    }
+    // `load` doesn't bubble, but a capture-phase listener on an ancestor
+    // still sees it fire on the way down -- lets one listener catch every
+    // image in the list (message attachments and link-preview thumbnails
+    // alike) without wiring an onLoad prop through each of them.
+    function handleContentGrow() {
+      if (pinnedToBottomRef.current) bottomRef.current?.scrollIntoView({ block: 'end' })
+    }
+    container.addEventListener('scroll', handleScroll, { passive: true })
+    container.addEventListener('load', handleContentGrow, true)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      container.removeEventListener('load', handleContentGrow, true)
+    }
+  }, [])
 
   function startEdit(msg: Message | ChatMessageEnvelope) {
     setEditingId(msg.id)
@@ -101,7 +134,7 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
   }
 
   return (
-    <div className="message-list">
+    <div className="message-list" ref={containerRef}>
       {messages.map((msg, i) => {
         const mine = msg.user_id === user?.id
         const prev = messages[i - 1]
