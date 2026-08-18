@@ -190,6 +190,8 @@ async def update_room(db: AsyncSession, room: Room, data: RoomUpdate) -> Room:
         room.name = data.name
     if data.description is not None:
         room.description = data.description
+    if data.is_private is not None:
+        room.is_private = data.is_private
     try:
         await db.commit()
     except IntegrityError as exc:

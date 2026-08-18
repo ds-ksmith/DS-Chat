@@ -42,6 +42,7 @@ import { FileAttachmentIcon } from './MessageList'
 import { RoomAvatar } from './RoomAvatar'
 import { UserAvatar } from './UserAvatar'
 import { UserPicker } from './UserPicker'
+import './Modal.css'
 import './RoomInfoPanel.css'
 
 const EVENT_TYPES: EventType[] = ['message.created', 'message.updated']
@@ -87,6 +88,7 @@ export function RoomInfoPanel({
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [nameDraft, setNameDraft] = useState(room.name)
   const [descDraft, setDescDraft] = useState(room.description ?? '')
+  const [isPrivateDraft, setIsPrivateDraft] = useState(room.is_private)
   const [roomError, setRoomError] = useState<string | null>(null)
 
   const [integrationsOpen, setIntegrationsOpen] = useState(false)
@@ -99,10 +101,15 @@ export function RoomInfoPanel({
   const [integrationsError, setIntegrationsError] = useState<string | null>(null)
 
   const canManage = myRole === 'admin' || myRole === 'owner'
+  // #48: room owner, room admin, or site admin (regardless of their role in
+  // *this* room) can edit room settings, including privacy -- matches the
+  // backend PATCH /api/rooms/{id} gate exactly (see rooms.py).
+  const canEditSettings = canManage || !!user?.is_site_admin
 
   useEffect(() => {
     setNameDraft(room.name)
     setDescDraft(room.description ?? '')
+    setIsPrivateDraft(room.is_private)
     if (canManage) {
       listIncomingWebhooks(room.id).then(setIncomingWebhooks).catch(() => setIncomingWebhooks([]))
       listEventSubscriptions(room.id).then(setEventSubscriptions).catch(() => setEventSubscriptions([]))
@@ -112,7 +119,7 @@ export function RoomInfoPanel({
       setEventSubscriptions([])
       setDirectoryUsers([])
     }
-  }, [room.id, room.name, room.description, canManage])
+  }, [room.id, room.name, room.description, room.is_private, canManage])
 
   useEffect(() => {
     // Fetched lazily (only once expanded), not alongside the section above
@@ -246,7 +253,11 @@ export function RoomInfoPanel({
     e.preventDefault()
     setRoomError(null)
     try {
-      await updateRoom(room.id, { name: nameDraft.trim(), description: descDraft.trim() })
+      await updateRoom(room.id, {
+        name: nameDraft.trim(),
+        description: descDraft.trim(),
+        is_private: isPrivateDraft,
+      })
       onRoomUpdated()
     } catch (err) {
       setRoomError(err instanceof ApiError ? err.message : String(err))
@@ -500,7 +511,7 @@ export function RoomInfoPanel({
         </div>
       )}
 
-      {myRole === 'owner' && (
+      {canEditSettings && (
         <div className="room-info-section">
           <button
             type="button"
@@ -519,13 +530,29 @@ export function RoomInfoPanel({
                 Description
                 <textarea value={descDraft} onChange={(e) => setDescDraft(e.target.value)} rows={2} />
               </label>
+              <div className="toggle-row">
+                <div className="toggle-label">
+                  <span className="t">Private room</span>
+                  <span className="d">Joinable by invite only</span>
+                </div>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={isPrivateDraft}
+                    onChange={(e) => setIsPrivateDraft(e.target.checked)}
+                  />
+                  <span className="track" />
+                </label>
+              </div>
               {roomError && <p className="room-info-error">{roomError}</p>}
               <button type="submit" className="btn-secondary">
                 Save
               </button>
-              <button type="button" className="room-info-danger-link" onClick={handleDelete}>
-                Delete room
-              </button>
+              {myRole === 'owner' && (
+                <button type="button" className="room-info-danger-link" onClick={handleDelete}>
+                  Delete room
+                </button>
+              )}
             </form>
           )}
         </div>

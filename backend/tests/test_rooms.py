@@ -2,7 +2,7 @@ import uuid
 
 from sqlalchemy import select
 
-from app.models import Room, RoomMembership, RoomRole
+from app.models import Room, RoomMembership, RoomRole, User
 from tests.conftest import login_as, register_and_login
 
 
@@ -130,6 +130,62 @@ async def test_update_room_requires_admin(client, db_session):
     resp = await client.patch(f"/api/rooms/{room_id}", json={"description": "updated"})
     assert resp.status_code == 200
     assert resp.json()["description"] == "updated"
+
+
+async def test_update_room_is_private_toggles_open_room_visibility(client, db_session):
+    # #48: owner can flip an already-created room's privacy after the fact.
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    assert "general" in {r["name"] for r in (await client.get("/api/rooms")).json()}
+
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"is_private": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_private"] is True
+    assert "general" not in {r["name"] for r in (await client.get("/api/rooms")).json()}
+
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"is_private": False})
+    assert resp.status_code == 200
+    assert resp.json()["is_private"] is False
+    assert "general" in {r["name"] for r in (await client.get("/api/rooms")).json()}
+
+
+async def test_update_room_is_private_allowed_for_room_admin_not_just_owner(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    await client.post(f"/api/rooms/{room_id}/join")
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    resp = await client.patch(
+        f"/api/rooms/{room_id}/members/{bob['id']}", json={"role": "admin"}
+    )
+    assert resp.status_code == 200
+
+    await client.post("/api/auth/logout")
+    await login_as(client, "bob")
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"is_private": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_private"] is True
+
+
+async def test_update_room_is_private_allowed_for_site_admin_non_member(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+
+    await client.post("/api/auth/logout")
+    admin = await register_and_login(client, db_session, username="carol")
+    user = await db_session.get(User, uuid.UUID(admin["id"]))
+    user.is_site_admin = True
+    await db_session.commit()
+
+    # Never joined "general" -- ordinarily require_room_role would 403 this
+    # as "Not a member of this room" before even checking role.
+    resp = await client.patch(f"/api/rooms/{room_id}", json={"is_private": True})
+    assert resp.status_code == 200
+    assert resp.json()["is_private"] is True
 
 
 async def test_delete_room_owner_only(client, db_session):

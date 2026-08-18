@@ -156,7 +156,12 @@ async def update_room_endpoint(
 ):
     try:
         room = await get_room(db, room_id)
-        await require_room_role(room_id, current_user, db, RoomRole.admin)
+        # Room owner/admin (the pre-existing gate for name/description) or a
+        # site admin regardless of membership -- #48 explicitly wants site
+        # admins able to toggle is_private even for rooms they haven't
+        # joined, unlike require_room_role's normal membership requirement.
+        if not current_user.is_site_admin:
+            await require_room_role(room_id, current_user, db, RoomRole.admin)
         return await update_room(db, room, data)
     except RoomNotFoundError:
         raise HTTPException(status_code=404, detail="Room not found")

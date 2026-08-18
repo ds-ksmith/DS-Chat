@@ -31,7 +31,7 @@ export function createRoom(
 
 export function updateRoom(
   roomId: string,
-  data: { name?: string; description?: string },
+  data: { name?: string; description?: string; is_private?: boolean },
 ): Promise<Room> {
   return apiFetch<Room>(`/api/rooms/${roomId}`, {
     method: 'PATCH',
