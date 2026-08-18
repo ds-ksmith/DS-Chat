@@ -64,11 +64,12 @@ interface MessageListProps {
   roomId: string
   messages: (Message | ChatMessageEnvelope)[]
   members: RoomMember[]
+  myRooms: Map<string, string>
   onEdit: (messageId: string, content: string) => void
   onReact: (messageId: string, emoji: string) => void
 }
 
-export function MessageList({ roomId, messages, members, onEdit, onReact }: MessageListProps) {
+export function MessageList({ roomId, messages, members, myRooms, onEdit, onReact }: MessageListProps) {
   const { user } = useAuth()
   const bottomRef = useRef<HTMLDivElement>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -168,7 +169,7 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                   )}
                   {msg.content && (
                     <div className="message-text">
-                      <MessageContent content={msg.content} memberUsernames={memberUsernames} />
+                      <MessageContent content={msg.content} memberUsernames={memberUsernames} myRooms={myRooms} />
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}

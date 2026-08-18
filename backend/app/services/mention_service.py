@@ -9,12 +9,14 @@ from app.models import RoomMembership, User
 MENTION_PATTERN = re.compile(r"@([a-zA-Z0-9_.-]+)")
 
 
-def _strip_code_spans(content: str) -> str:
+def strip_code_spans(content: str) -> str:
     """Blanks out fenced code blocks and inline code spans (replacing with
-    equal-length whitespace, so a bare '@' in pasted code -- a decorator, an
-    email fragment -- doesn't page someone. Mirrors the same skip logic
+    equal-length whitespace, so a bare '@'/'#' in pasted code -- a
+    decorator, an email fragment, a shell comment -- doesn't trigger a
+    mention or room reference. Mirrors the same skip logic
     frontend/src/components/MessageContent.tsx already uses for emoji
-    shortcode conversion."""
+    shortcode conversion. Shared with room_reference_service, not private
+    to this module anymore."""
     lines = content.split("\n")
     in_fence = False
     out = []
@@ -37,7 +39,7 @@ async def extract_mentioned_user_ids(
     """Resolves `@username` tokens in `content` against this room's actual
     members -- a bare '@' followed by prose that happens to not match
     anyone's username is just text, not a mention."""
-    usernames = set(MENTION_PATTERN.findall(_strip_code_spans(content)))
+    usernames = set(MENTION_PATTERN.findall(strip_code_spans(content)))
     if not usernames:
         return set()
 

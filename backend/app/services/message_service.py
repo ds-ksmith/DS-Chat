@@ -6,10 +6,11 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, MessageMention, MessageReaction
+from app.models import Message, MessageMention, MessageReaction, MessageRoomReference
 from app.schemas.message import ReactionSummary
 from app.services.link_preview_service import extract_first_url
 from app.services.mention_service import extract_mentioned_user_ids
+from app.services.room_reference_service import extract_referenced_room_ids
 
 
 class MessageNotFoundError(Exception):
@@ -43,6 +44,9 @@ async def create_message(
         mentioned_ids = await extract_mentioned_user_ids(db, room_id, content)
         for mentioned_id in mentioned_ids:
             db.add(MessageMention(message_id=message.id, user_id=mentioned_id))
+        referenced_room_ids = await extract_referenced_room_ids(db, user_id, content)
+        for referenced_room_id in referenced_room_ids:
+            db.add(MessageRoomReference(message_id=message.id, room_id=referenced_room_id))
     await db.commit()
     await db.refresh(message)
     return message

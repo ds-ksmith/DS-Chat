@@ -11,6 +11,7 @@ from app.models.message_file import MessageFile
 from app.models.message_image import MessageImage
 from app.models.message_mention import MessageMention
 from app.models.message_reaction import MessageReaction
+from app.models.message_room_reference import MessageRoomReference
 from app.models.password_reset import PasswordReset
 from app.models.push_subscription import PushSubscription
 from app.models.room import Room
@@ -31,6 +32,7 @@ __all__ = [
     "MessageImage",
     "MessageMention",
     "MessageReaction",
+    "MessageRoomReference",
     "InviteStatus",
     "PasswordReset",
     "SiteInvite",

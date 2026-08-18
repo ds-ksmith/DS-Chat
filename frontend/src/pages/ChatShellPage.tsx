@@ -117,6 +117,7 @@ export function ChatShellPage() {
             <ChatPane
               key={activeRoom.id}
               room={activeRoom}
+              rooms={rooms}
               members={members}
               isMobile={isMobile}
               onBack={() => navigate('/rooms')}

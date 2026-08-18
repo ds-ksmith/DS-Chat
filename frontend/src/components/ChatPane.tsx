@@ -9,6 +9,7 @@ import './ChatPane.css'
 
 interface ChatPaneProps {
   room: MyRoomItem
+  rooms: MyRoomItem[]
   members: RoomMember[]
   isMobile: boolean
   onBack: () => void
@@ -20,6 +21,7 @@ interface ChatPaneProps {
 
 export function ChatPane({
   room,
+  rooms,
   members,
   isMobile,
   onBack,
@@ -192,6 +194,11 @@ export function ChatPane({
     [history, live],
   )
 
+  // #47: name -> id for every room this user belongs to, so #roomname
+  // references can resolve to a real link -- deliberately the viewer's own
+  // rooms, not the sender's (see MessageContent.tsx's myRooms prop comment).
+  const myRooms = useMemo(() => new Map(rooms.map((r) => [r.name, r.id])), [rooms])
+
   const connected = socket.connected
   const send = useCallback(
     (content: string, imageId?: string, fileId?: string) => socket.send(room.id, content, imageId, fileId),
@@ -246,6 +253,7 @@ export function ChatPane({
         roomId={room.id}
         messages={messages}
         members={members}
+        myRooms={myRooms}
         onEdit={sendEdit}
         onReact={sendReaction}
       />

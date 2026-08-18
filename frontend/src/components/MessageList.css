@@ -128,6 +128,19 @@
   font-weight: 700;
 }
 
+.message-room-reference {
+  background: color-mix(in srgb, var(--ds-accent) 18%, transparent);
+  color: var(--ds-accent);
+  border-radius: 5px;
+  padding: 0 4px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.message-room-reference:hover {
+  text-decoration: underline;
+}
+
 .message-text code {
   background: var(--ds-surface-2);
   padding: 1px 5px;
