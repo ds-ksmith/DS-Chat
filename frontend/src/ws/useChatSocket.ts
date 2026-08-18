@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isDesktopNotificationsSupported } from '../lib/desktopBridge'
 import { checkForUpdate } from '../lib/swUpdate'
 import type { ServerEnvelope } from '../types'
 
@@ -8,6 +9,22 @@ interface UseChatSocketOptions {
 
 const RECONNECT_BASE_DELAY_MS = 1000
 const RECONNECT_MAX_DELAY_MS = 30000
+
+// #49 follow-up: a bare `document.visibilityState` check (below) means "not
+// minimized/hidden" -- in a browser tab that's a decent proxy for "the user
+// could be looking at this," since visibility already tracks whether this is
+// the active tab. Inside an Electron BrowserWindow it isn't: visibilityState
+// only flips on minimize/hide, not on losing OS focus, so a window sitting
+// open-but-unfocused behind another app never registers as "gone." That's
+// exactly the state a desktop notification needs to fire in, so desktop mode
+// additionally requires document.hasFocus(). Gated on desktopMode so regular
+// browser-tab behavior (already relied on by Web Push and the unread dot) is
+// completely unchanged.
+const desktopMode = isDesktopNotificationsSupported()
+
+function isPresent(): boolean {
+  return document.visibilityState === 'visible' && (!desktopMode || document.hasFocus())
+}
 
 // One connection per authenticated session, established as soon as the app
 // shell mounts -- not per-room. A room is just something this socket can be
@@ -30,7 +47,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   // backgrounded user the same as a disconnected one instead of assuming a
   // live WebSocket delivery the user can't actually see will do the job.
   const desiredRoomsRef = useRef(new Set<string>())
-  const isVisibleRef = useRef(document.visibilityState === 'visible')
+  const isVisibleRef = useRef(isPresent())
 
   const sendRoomFrame = useCallback((type: 'join' | 'leave', roomId: string) => {
     const ws = socketRef.current
@@ -74,7 +91,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         // comment): reconnecting from a backgrounded tab should stay
         // "left" for the same reason backgrounding leaves in the first
         // place (see desiredRoomsRef's comment above).
-        isVisibleRef.current = document.visibilityState === 'visible'
+        isVisibleRef.current = isPresent()
         if (isVisibleRef.current) {
           for (const roomId of desiredRoomsRef.current) {
             sendRoomFrame('join', roomId)
@@ -125,16 +142,30 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   }, [sendRoomFrame])
 
   useEffect(() => {
-    function handleVisibilityChange() {
-      const visible = document.visibilityState === 'visible'
-      if (visible === isVisibleRef.current) return
-      isVisibleRef.current = visible
+    function handlePresenceChange() {
+      const present = isPresent()
+      if (present === isVisibleRef.current) return
+      isVisibleRef.current = present
       for (const roomId of desiredRoomsRef.current) {
-        sendRoomFrame(visible ? 'join' : 'leave', roomId)
+        sendRoomFrame(present ? 'join' : 'leave', roomId)
       }
     }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+    document.addEventListener('visibilitychange', handlePresenceChange)
+    // Only in desktop mode -- see isPresent()'s comment above. Blur/focus on
+    // a browser tab fire on every click into/out of the page (e.g. opening
+    // devtools), which would be a far noisier signal than intended there;
+    // browser tabs stay on visibilitychange alone, unchanged from before.
+    if (desktopMode) {
+      window.addEventListener('focus', handlePresenceChange)
+      window.addEventListener('blur', handlePresenceChange)
+    }
+    return () => {
+      document.removeEventListener('visibilitychange', handlePresenceChange)
+      if (desktopMode) {
+        window.removeEventListener('focus', handlePresenceChange)
+        window.removeEventListener('blur', handlePresenceChange)
+      }
+    }
   }, [sendRoomFrame])
 
   const subscribe = useCallback((handler: (envelope: ServerEnvelope) => void) => {
@@ -162,7 +193,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
       // room stays in desiredRoomsRef regardless, so the next genuine
       // foreground transition (handleVisibilityChange below) still joins
       // it, just deferred instead of wrongly immediate.
-      isVisibleRef.current = document.visibilityState === 'visible'
+      isVisibleRef.current = isPresent()
       if (isVisibleRef.current) sendRoomFrame('join', roomId)
     },
     [sendRoomFrame],
