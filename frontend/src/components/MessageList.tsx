@@ -172,7 +172,9 @@ export function MessageList({ roomId, messages, members, onEdit, onReact }: Mess
                       {msg.edited_at && <span className="message-edited"> (edited)</span>}
                     </div>
                   )}
-                  {msg.link_preview && <LinkPreviewCard preview={msg.link_preview} />}
+                  {msg.link_preview && (
+                    <LinkPreviewCard preview={msg.link_preview} onImageClick={setLightboxSrc} />
+                  )}
                   {msg.reactions.length > 0 && (
                     <div className="message-reaction-pills">
                       {msg.reactions.map((r) => {

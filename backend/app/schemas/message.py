@@ -27,6 +27,7 @@ class LinkPreviewInfo(BaseModel):
     description: str | None
     image_url: str | None
     site_name: str | None
+    is_image: bool
 
 
 class MessageRead(BaseModel):

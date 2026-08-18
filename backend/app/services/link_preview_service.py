@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_factory
 from app.models import LinkPreview
 from app.services.ssrf import UnsafeUrlError, validate_target_url
+from app.storage import ALLOWED_IMAGE_CONTENT_TYPES
 from app.ws.broadcaster import Broadcaster
 
 logger = logging.getLogger(__name__)
@@ -99,8 +100,21 @@ async def _fetch_preview_data(url: str) -> dict | None:
                         continue
                     if response.status_code >= 400:
                         return None
-                    content_type = response.headers.get("content-type", "")
-                    if "text/html" not in content_type:
+                    content_type = response.headers.get("content-type", "").split(";")[0].strip()
+                    # A direct link to an image file -- render the image
+                    # itself rather than trying to scrape og: tags from
+                    # nonexistent HTML. No need to read the body at all;
+                    # the URL (now fully resolved through any redirects,
+                    # each already SSRF-validated above) *is* the preview.
+                    if content_type in ALLOWED_IMAGE_CONTENT_TYPES:
+                        return {
+                            "title": None,
+                            "description": None,
+                            "image_url": current_url,
+                            "site_name": None,
+                            "is_image": True,
+                        }
+                    if content_type != "text/html":
                         return None
                     body = b""
                     async for chunk in response.aiter_bytes():
@@ -128,6 +142,7 @@ async def _fetch_preview_data(url: str) -> dict | None:
         "description": (parser.og.get("og:description") or "").strip()[:1000] or None,
         "image_url": parser.og.get("og:image") or None,
         "site_name": (parser.og.get("og:site_name") or "").strip()[:200] or None,
+        "is_image": False,
     }
 
 
@@ -148,6 +163,7 @@ async def _get_or_fetch(db: AsyncSession, url: str) -> LinkPreview | None:
             existing.description = data["description"]
             existing.image_url = data["image_url"]
             existing.site_name = data["site_name"]
+            existing.is_image = data["is_image"]
         existing.fetched_at = datetime.now(timezone.utc)
         await db.commit()
         return None if data is None else existing
@@ -155,7 +171,16 @@ async def _get_or_fetch(db: AsyncSession, url: str) -> LinkPreview | None:
     row = LinkPreview(
         url=url,
         fetch_failed=data is None,
-        **(data or {"title": None, "description": None, "image_url": None, "site_name": None}),
+        **(
+            data
+            or {
+                "title": None,
+                "description": None,
+                "image_url": None,
+                "site_name": None,
+                "is_image": False,
+            }
+        ),
     )
     db.add(row)
     await db.commit()
@@ -192,6 +217,7 @@ async def fetch_and_broadcast_link_preview(
             "description": preview.description,
             "image_url": preview.image_url,
             "site_name": preview.site_name,
+            "is_image": preview.is_image,
         },
     )
 

@@ -23,6 +23,12 @@ class LinkPreview(Base):
     description: Mapped[str | None] = mapped_column(String(1000))
     image_url: Mapped[str | None] = mapped_column(String(2048))
     site_name: Mapped[str | None] = mapped_column(String(200))
+    # A direct link to an image file (Content-Type: image/*, no HTML to
+    # scrape og: tags from) gets image_url = the URL itself and no
+    # title/description/site_name -- this flags that case so the frontend
+    # renders it as an actual expanded image rather than the small
+    # title+description unfurl card.
+    is_image: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Cached separately from a "no row yet" state so a URL that genuinely
     # doesn't unfurl (no title, fetch error, blocked by SSRF checks) isn't
     # re-fetched on every message that references it within the TTL.

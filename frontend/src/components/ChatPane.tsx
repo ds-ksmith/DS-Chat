@@ -158,6 +158,7 @@ export function ChatPane({
             description: envelope.description,
             image_url: envelope.image_url,
             site_name: envelope.site_name,
+            is_image: envelope.is_image,
           }
           setHistory((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, link_preview: linkPreview } : m)))
           setLive((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, link_preview: linkPreview } : m)))

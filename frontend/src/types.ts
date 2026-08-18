@@ -114,6 +114,9 @@ export interface LinkPreviewInfo {
   description: string | null
   image_url: string | null
   site_name: string | null
+  // A direct link to an image file -- render the image itself (like a real
+  // attachment) rather than the small title+description unfurl card.
+  is_image: boolean
 }
 
 export interface Message {
@@ -166,6 +169,7 @@ export interface ChatLinkPreviewEnvelope {
   description: string | null
   image_url: string | null
   site_name: string | null
+  is_image: boolean
 }
 
 export interface ChatReactionUpdateEnvelope {

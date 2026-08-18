@@ -93,7 +93,7 @@ _OG_HTML = (
 )
 
 
-def _fake_client_factory(html=_OG_HTML, status_code=200, call_log=None):
+def _fake_client_factory(html=_OG_HTML, status_code=200, call_log=None, content_type="text/html"):
     class _FakeAsyncClient:
         def __init__(self, *args, **kwargs):
             pass
@@ -107,7 +107,7 @@ def _fake_client_factory(html=_OG_HTML, status_code=200, call_log=None):
         def stream(self, method, url, headers=None):
             if call_log is not None:
                 call_log.append(url)
-            return _FakeStreamCtx(_FakeResponse(status_code, {"content-type": "text/html"}, html))
+            return _FakeStreamCtx(_FakeResponse(status_code, {"content-type": content_type}, html))
 
     return _FakeAsyncClient
 
@@ -155,6 +155,36 @@ def test_ws_message_with_url_triggers_link_preview_broadcast(ws_client, monkeypa
         assert preview["description"] == "A description of the article."
         assert preview["image_url"] == "https://8.8.8.8/image.png"
         assert preview["site_name"] == "Example"
+        assert preview["is_image"] is False
+
+
+def test_ws_message_with_direct_image_url_expands_the_image(ws_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.services.link_preview_service.httpx.AsyncClient",
+        _fake_client_factory(html=b"", content_type="image/png"),
+    )
+    url = _unique_url() + ".png"
+
+    username = _unique("alice")
+    _register_ws(ws_client, username=username)
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert _recv(ws)["type"] == "joined"
+
+        ws.send_json({"type": "message", "room_id": room["id"], "content": f"lol {url}"})
+        message = _recv(ws)
+        assert message["link_preview"] is None
+
+        preview = _recv(ws)
+        assert preview["type"] == "link_preview"
+        assert preview["url"] == url
+        assert preview["image_url"] == url
+        assert preview["is_image"] is True
+        assert preview["title"] is None
+        assert preview["description"] is None
+        assert preview["site_name"] is None
 
 
 def test_ws_message_with_private_url_gets_no_preview(ws_client, monkeypatch):
