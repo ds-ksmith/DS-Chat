@@ -115,6 +115,10 @@ self.addEventListener('push', (event) => {
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
       data: { room_id: payload.room_id },
+      // Without this, the OS default auto-dismiss (a few seconds on most
+      // platforms) closes it long before anyone reliably notices -- stays
+      // on screen until the user actually dismisses or clicks it instead.
+      requireInteraction: true,
     }),
   )
 })
