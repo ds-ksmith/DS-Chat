@@ -168,6 +168,43 @@ def test_start_dm_notifies_other_participant_via_websocket(ws_client_factory):
         assert received == {"type": "room_added", "room_id": room["id"]}
 
 
+def test_new_message_notifies_recipient_who_hid_the_dm_via_websocket(ws_client_factory):
+    # A second production report on the same underlying gap: hiding a DM
+    # correctly clears out of GET /rooms/mine, but when the other person
+    # messages again, the *only* existing signal for that (unread_update)
+    # does `setRooms(prev => prev.map(...))` -- a no-op for a room that
+    # isn't in `prev` at all, which a hidden DM by definition isn't. Needs
+    # the same room_added signal a brand new DM gets, not just a DB-level
+    # un-hide.
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+
+    room = instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]}).json()
+    resp = instance2.post(f"/api/rooms/{room['id']}/hide")
+    assert resp.status_code == 204
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        with instance1.websocket_connect("/ws/chat") as alice_ws:
+            alice_ws.send_json({"type": "join", "room_id": room["id"]})
+            assert alice_ws.receive_json()["type"] == "joined"
+            alice_ws.send_json({"type": "message", "room_id": room["id"], "content": "you there?"})
+            alice_ws.receive_json()
+            # Sync barrier (see test_mentions.py's identical helper): the
+            # message ack only proves the room-level broadcast happened,
+            # not that broadcast_new_message's own continuation (which
+            # un-hides the room and publishes room_added) has finished --
+            # a second frame's own ack proves that before this connection
+            # closes underneath it.
+            alice_ws.send_json({"type": "join", "room_id": room["id"]})
+            assert alice_ws.receive_json()["type"] == "joined"
+
+        received = bob_ws.receive_json()
+        assert received == {"type": "room_added", "room_id": room["id"]}
+
+
 def test_profile_update_notifies_room_members_via_websocket(ws_client_factory, monkeypatch):
     # Only reaches clients that have the room's own channel joined --
     # exactly the case where a stale avatar/display name would actually be

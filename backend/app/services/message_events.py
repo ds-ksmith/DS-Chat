@@ -143,13 +143,24 @@ async def broadcast_new_message(
     # A no-op for a regular room (hidden_at is only ever set on a DM's
     # membership row -- see RoomMembership.hidden_at) -- new activity
     # un-hiding a DM someone closed matches find_or_create_dm's own
-    # un-hide-on-reopen behavior.
-    await db.execute(
+    # un-hide-on-reopen behavior. `.returning` so we know exactly who was
+    # un-hidden -- their client needs the same room_added signal a brand
+    # new DM does (see broadcast_room_added's docstring): the room wasn't
+    # in their already-loaded room list at all, so unread_update's plain
+    # setRooms(prev => prev.map(...)) can't make it reappear -- there's
+    # nothing in `prev` for it to match.
+    unhidden_result = await db.execute(
         update(RoomMembership)
         .where(RoomMembership.room_id == room_id, RoomMembership.hidden_at.is_not(None))
         .values(hidden_at=None)
+        .returning(RoomMembership.user_id)
     )
+    unhidden_user_ids = list(unhidden_result.scalars().all())
     await db.commit()
+    for unhidden_user_id in unhidden_user_ids:
+        await broadcaster.publish_to_user(
+            unhidden_user_id, {"type": "room_added", "room_id": str(room_id)}
+        )
     await _notify_offline_members(db, broadcaster, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
