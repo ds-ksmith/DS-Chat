@@ -60,6 +60,14 @@ export function leaveRoom(roomId: string): Promise<void> {
   return apiFetch<void>(`/api/rooms/${roomId}/leave`, { method: 'POST' })
 }
 
+// #52 follow-up: only for DMs -- hides it from this user's own sidebar
+// without touching the other participant's copy. Reversible: messaging
+// again (startDm, above) or a new message from the other person un-hides
+// it automatically.
+export function hideDm(roomId: string): Promise<void> {
+  return apiFetch<void>(`/api/rooms/${roomId}/hide`, { method: 'POST' })
+}
+
 export function listRoomMembers(roomId: string): Promise<RoomMember[]> {
   return apiFetch<RoomMember[]>(`/api/rooms/${roomId}/members`)
 }

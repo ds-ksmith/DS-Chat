@@ -53,6 +53,7 @@ from app.services.room_service import (
     DuplicateRoomError,
     InsufficientRoleError,
     MembershipNotFoundError,
+    NotADmError,
     OwnerMustTransferError,
     RoomIsPrivateError,
     RoomNotFoundError,
@@ -63,6 +64,7 @@ from app.services.room_service import (
     delete_room,
     find_or_create_dm,
     get_room,
+    hide_dm,
     join_room,
     leave_room,
     list_member_rooms,
@@ -256,6 +258,24 @@ async def leave_room_endpoint(
         raise HTTPException(
             status_code=400, detail="Transfer ownership before leaving this room"
         )
+    except MembershipNotFoundError:
+        raise HTTPException(status_code=404, detail="Not a member of this room")
+
+
+@router.post("/{room_id}/hide", status_code=204)
+async def hide_dm_endpoint(
+    room_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+    try:
+        room = await get_room(db, room_id)
+        await hide_dm(db, room, current_user.id)
+    except RoomNotFoundError:
+        raise HTTPException(status_code=404, detail="Room not found")
+    except NotADmError:
+        raise HTTPException(status_code=400, detail="Only DMs can be hidden")
     except MembershipNotFoundError:
         raise HTTPException(status_code=404, detail="Not a member of this room")
 

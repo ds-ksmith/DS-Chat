@@ -3,8 +3,30 @@ import uuid
 from sqlalchemy import select
 
 from app.models import Room, RoomMembership
+from app.schemas.user import UserCreate
+from app.services.auth_service import register_user
 from app.services.room_service import dm_room_name
 from tests.conftest import login_as, register_and_login
+
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _register_ws(ws_client, username: str) -> dict:
+    async def _seed():
+        async with ws_client.session_factory() as session:
+            await register_user(
+                session,
+                UserCreate(username=username, email=f"{username}@example.com", password="password123"),
+            )
+
+    ws_client.portal.call(_seed)
+    resp = ws_client.post(
+        "/api/auth/login", json={"username_or_email": username, "password": "password123"}
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
 
 
 async def test_start_dm_creates_private_room_with_both_members(client, db_session):
@@ -176,3 +198,80 @@ async def test_dm_rejects_add_member_and_join(client, db_session):
     await login_as(client, "carol")
     resp = await client.post(f"/api/rooms/{dm['id']}/join")
     assert resp.status_code == 400
+
+
+async def test_hide_dm_removes_it_from_mine_for_that_user_only(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    dm = (await client.post("/api/rooms/dm", json={"other_user_id": alice["id"]})).json()
+
+    resp = await client.post(f"/api/rooms/{dm['id']}/hide")
+    assert resp.status_code == 204
+
+    mine = (await client.get("/api/rooms/mine")).json()
+    assert all(r["id"] != dm["id"] for r in mine)
+
+    # Alice never hid it -- still sees it, proving this is per-viewer, not
+    # something that touched the room or bob's membership for everyone.
+    await client.post("/api/auth/logout")
+    await login_as(client, "alice")
+    mine = (await client.get("/api/rooms/mine")).json()
+    assert any(r["id"] == dm["id"] for r in mine)
+
+
+async def test_hide_dm_rejects_regular_rooms(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    room = (await client.post("/api/rooms", json={"name": "general"})).json()
+    resp = await client.post(f"/api/rooms/{room['id']}/hide")
+    assert resp.status_code == 400
+
+
+async def test_starting_a_dm_again_unhides_it(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    await client.post("/api/auth/logout")
+    bob = await register_and_login(client, db_session, username="bob")
+    dm = (await client.post("/api/rooms/dm", json={"other_user_id": alice["id"]})).json()
+
+    await client.post(f"/api/rooms/{dm['id']}/hide")
+    mine = (await client.get("/api/rooms/mine")).json()
+    assert all(r["id"] != dm["id"] for r in mine)
+
+    # bob clicking alice in the People list again -- find_or_create_dm
+    # resolves to the same room and un-hides it for him.
+    resp = await client.post("/api/rooms/dm", json={"other_user_id": alice["id"]})
+    assert resp.status_code == 201
+    assert resp.json()["id"] == dm["id"]
+
+    mine = (await client.get("/api/rooms/mine")).json()
+    assert any(r["id"] == dm["id"] for r in mine)
+
+
+def test_new_message_unhides_dm_for_both_participants(ws_client):
+    alice = _register_ws(ws_client, _unique("alice"))
+    bob = _register_ws(ws_client, _unique("bob"))  # ws_client is now logged in as bob
+    dm = ws_client.post("/api/rooms/dm", json={"other_user_id": alice["id"]}).json()
+
+    ws_client.post(f"/api/rooms/{dm['id']}/hide")
+    assert all(r["id"] != dm["id"] for r in ws_client.get("/api/rooms/mine").json())
+
+    ws_client.post(
+        "/api/auth/login", json={"username_or_email": alice["username"], "password": "password123"}
+    )
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": dm["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        ws.send_json({"type": "message", "room_id": dm["id"], "content": "you there?"})
+        ws.receive_json()
+        # Sync barrier (see test_mentions.py's identical helper): the
+        # message ack only proves the room-level broadcast happened, not
+        # that broadcast_new_message's own continuation (which un-hides
+        # the room) has finished -- a second frame's own ack proves that.
+        ws.send_json({"type": "join", "room_id": dm["id"]})
+        assert ws.receive_json()["type"] == "joined"
+
+    # bob never re-opened the DM himself -- alice's message alone unhid it.
+    ws_client.post(
+        "/api/auth/login", json={"username_or_email": bob["username"], "password": "password123"}
+    )
+    assert any(r["id"] == dm["id"] for r in ws_client.get("/api/rooms/mine").json())

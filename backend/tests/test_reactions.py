@@ -9,13 +9,19 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+_NOISE_TYPES = {"member_updated", "desktop_notification", "unread_update"}
+
+
 def _recv(ws) -> dict:
-    """Reads the next frame, transparently discarding member_updated
-    presence-change broadcasts -- another connection in the same room going
-    online/offline is real, expected noise these tests aren't about."""
+    """Reads the next frame, transparently discarding presence/offline-
+    notify noise -- another connection in the same room going online/
+    offline, or a per-user-channel side effect of an earlier offline
+    member's own message, can legitimately arrive right as a connection is
+    established, before its own "joined" ack. Not what these tests are
+    about."""
     while True:
         msg = ws.receive_json()
-        if msg.get("type") != "member_updated":
+        if msg.get("type") not in _NOISE_TYPES:
             return msg
 
 
@@ -122,7 +128,7 @@ def test_reaction_broadcasts_to_other_room_members(ws_client):
         )
         with ws_client.websocket_connect("/ws/chat") as bob_ws:
             bob_ws.send_json({"type": "join", "room_id": room["id"]})
-            assert bob_ws.receive_json()["type"] == "joined"
+            assert _recv(bob_ws)["type"] == "joined"
 
             ws_client.post(
                 "/api/auth/login",

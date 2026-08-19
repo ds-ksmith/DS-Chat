@@ -7,6 +7,7 @@ import {
   deleteRoom,
   getRoomFileUrl,
   getRoomImageUrl,
+  hideDm,
   leaveRoom,
   listRoomAttachments,
   removeMember,
@@ -264,6 +265,15 @@ export function RoomInfoPanel({
     if (myRole === 'owner') return
     if (!confirm(`Leave #${room.name}?`)) return
     await leaveRoom(room.id)
+    onLeft()
+  }
+
+  async function handleHideDm() {
+    const name = room.dm_partner?.display_name || room.dm_partner?.username || 'this conversation'
+    if (!confirm(`Hide your conversation with ${name}? It'll come back if either of you sends a new message.`)) {
+      return
+    }
+    await hideDm(room.id)
     onLeft()
   }
 
@@ -596,7 +606,11 @@ export function RoomInfoPanel({
         </div>
       )}
 
-      {!room.is_dm && (
+      {room.is_dm ? (
+        <button type="button" className="room-info-leave" onClick={handleHideDm}>
+          Hide conversation
+        </button>
+      ) : (
         <button
           type="button"
           className="room-info-leave"

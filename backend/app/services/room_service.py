@@ -68,6 +68,10 @@ class CannotModifyDmError(Exception):
     pass
 
 
+class NotADmError(Exception):
+    pass
+
+
 def dm_room_name(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> str:
     """Deterministic, internal-only name for the DM room between these two
     users -- same canonical string regardless of argument order, so
@@ -77,6 +81,27 @@ def dm_room_name(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> str:
     info instead of its `name` (see MyRoomItem)."""
     ids = sorted((str(user_a_id), str(user_b_id)))
     return f"dm:{ids[0]}:{ids[1]}"
+
+
+async def _unhide(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    membership = (
+        await db.execute(
+            select(RoomMembership).where(
+                RoomMembership.room_id == room_id, RoomMembership.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if membership is not None and membership.hidden_at is not None:
+        membership.hidden_at = None
+        await db.commit()
+
+
+async def hide_dm(db: AsyncSession, room: Room, user_id: uuid.UUID) -> None:
+    if not room.is_dm:
+        raise NotADmError()
+    membership = await _get_membership(db, room.id, user_id)
+    membership.hidden_at = func.now()
+    await db.commit()
 
 
 async def create_room(db: AsyncSession, owner_id: uuid.UUID, data: RoomCreate) -> Room:
@@ -110,6 +135,7 @@ async def find_or_create_dm(db: AsyncSession, user_id: uuid.UUID, other_user_id:
     result = await db.execute(select(Room).where(Room.name == name))
     room = result.scalar_one_or_none()
     if room is not None:
+        await _unhide(db, room.id, user_id)
         return room
 
     # is_private=True is belt-and-suspenders here -- list_open_rooms also
@@ -130,7 +156,9 @@ async def find_or_create_dm(db: AsyncSession, user_id: uuid.UUID, other_user_id:
         # race is the room we actually want.
         await db.rollback()
         result = await db.execute(select(Room).where(Room.name == name))
-        return result.scalar_one()
+        room = result.scalar_one()
+        await _unhide(db, room.id, user_id)
+        return room
 
     db.add(RoomMembership(room_id=room.id, user_id=user_id, role=RoomRole.member))
     db.add(RoomMembership(room_id=room.id, user_id=other_user_id, role=RoomRole.member))
@@ -180,7 +208,7 @@ async def list_member_rooms(
             Room, RoomMembership.role, RoomMembership.last_read_at, last_message_at, has_unread_mention
         )
         .join(RoomMembership, RoomMembership.room_id == Room.id)
-        .where(RoomMembership.user_id == user_id)
+        .where(RoomMembership.user_id == user_id, RoomMembership.hidden_at.is_(None))
         # A secondary key on the primary key -- without it, Postgres has no
         # obligation to return two same-instant rooms (a plausible tie:
         # bulk-created/migrated rooms, or just two created in quick

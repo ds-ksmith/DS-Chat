@@ -33,6 +33,15 @@ class RoomMembership(Base):
     last_read_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # #52 follow-up: lets a DM be hidden from one participant's own sidebar
+    # without touching the other participant's copy or deleting anything --
+    # a DM has no sensible "leave" (it would corrupt find_or_create_dm's
+    # exactly-two-members assumption), so this is deliberately a per-viewer
+    # display flag on their own membership row, not a membership deletion.
+    # Cleared automatically (see message_events.py) whenever a new message
+    # arrives in the room, or when find_or_create_dm resolves back to it --
+    # both count as the conversation being active again.
+    hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     room = relationship("Room", back_populates="memberships")
     user = relationship("User")

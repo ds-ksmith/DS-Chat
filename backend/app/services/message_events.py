@@ -1,7 +1,7 @@
 import asyncio
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Message, MessageFile, MessageMention, Room, RoomMembership, User
@@ -140,6 +140,16 @@ async def broadcast_new_message(
     trigger identical fan-out/push/event behavior."""
     payload = await _message_payload(db, message, sender.username)
     await broadcaster.publish(room_id, payload)
+    # A no-op for a regular room (hidden_at is only ever set on a DM's
+    # membership row -- see RoomMembership.hidden_at) -- new activity
+    # un-hiding a DM someone closed matches find_or_create_dm's own
+    # un-hide-on-reopen behavior.
+    await db.execute(
+        update(RoomMembership)
+        .where(RoomMembership.room_id == room_id, RoomMembership.hidden_at.is_not(None))
+        .values(hidden_at=None)
+    )
+    await db.commit()
     await _notify_offline_members(db, broadcaster, presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
