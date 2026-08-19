@@ -12,6 +12,7 @@ import {
   setDesktopNotificationsEnabled,
 } from '../lib/desktopBridge'
 import { getPushSubscriptionStatus, isPushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push'
+import { AboutModal } from './AboutModal'
 import { ProfileModal } from './ProfileModal'
 import { UserAvatar } from './UserAvatar'
 import './TopBar.css'
@@ -27,6 +28,7 @@ export function TopBar() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [aboutModalOpen, setAboutModalOpen] = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushError, setPushError] = useState<string | null>(null)
@@ -135,6 +137,16 @@ export function TopBar() {
               <button
                 type="button"
                 role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
+                  setAboutModalOpen(true)
+                }}
+              >
+                About
+              </button>
+              <button
+                type="button"
+                role="menuitem"
                 onClick={handleTogglePresence}
                 disabled={presenceBusy}
               >
@@ -178,6 +190,7 @@ export function TopBar() {
         )}
       </div>
       {profileModalOpen && <ProfileModal onClose={() => setProfileModalOpen(false)} />}
+      {aboutModalOpen && <AboutModal onClose={() => setAboutModalOpen(false)} />}
     </header>
   )
 }

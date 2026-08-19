@@ -1,0 +1,27 @@
+.about-modal-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+
+.about-modal-logo {
+  width: 40px;
+  height: 40px;
+  flex: none;
+}
+
+.about-modal-name {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.about-modal-version {
+  color: var(--ds-muted);
+  font-size: 0.85rem;
+}
+
+.about-modal-line {
+  margin: 0 0 var(--sp-2);
+  font-size: 0.9rem;
+}
