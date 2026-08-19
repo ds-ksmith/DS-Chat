@@ -101,3 +101,9 @@ CORS configuration is needed in development.
 See [DEPLOYMENT.md](DEPLOYMENT.md) for the full production runbook — two
 Debian 13 servers, no containers, matching
 [ARCHITECTURE.md §9](ARCHITECTURE.md#9-deployment-architecture--two-linux-servers-no-docker).
+
+## License
+
+AGPL-3.0-or-later — see [LICENSE](LICENSE). If you run a modified version
+of this software as a network service, you must make the corresponding
+source available to its users (AGPL §13).

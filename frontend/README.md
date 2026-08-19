@@ -97,3 +97,7 @@ src/
                                precache + NetworkFirst runtime caching, push/notificationclick
                                handlers, SKIP_WAITING messaging for the update-prompt flow
 ```
+
+## License
+
+AGPL-3.0-or-later — see [`../LICENSE`](../LICENSE).
