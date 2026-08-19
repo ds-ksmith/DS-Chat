@@ -105,6 +105,11 @@
   cursor: not-allowed;
 }
 
+.composer-attach-wrap {
+  position: relative;
+  flex: none;
+}
+
 .composer-attach {
   width: 36px;
   height: 36px;
@@ -117,6 +122,42 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+}
+
+.composer-attach-menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.composer-attach-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 31;
+  background: var(--card-bg);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: var(--sp-2);
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.composer-attach-menu button[role='menuitem'] {
+  background: transparent;
+  border: none;
+  color: var(--ds-text);
+  text-align: left;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.composer-attach-menu button[role='menuitem']:hover {
+  background: var(--ds-surface-2);
 }
 
 .composer-attach:hover:not(:disabled) {

@@ -8,6 +8,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
+import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
@@ -61,6 +62,33 @@ function detectRoomReferenceQuery(text: string, cursor: number): TriggerQuery | 
   return detectTriggerQuery(text, cursor, '#')
 }
 
+interface AttachMenuProps {
+  onPickPhoto: () => void
+  onPickFile: () => void
+  onClose: () => void
+}
+
+// #29: splits into two explicit choices rather than one unrestricted file
+// input -- see photoInputRef's comment on the Composer below for why a
+// single input can't reliably offer both "any file type" and a mobile
+// gallery shortcut at once.
+function AttachMenu({ onPickPhoto, onPickFile, onClose }: AttachMenuProps) {
+  useEscapeKey(onClose)
+  return (
+    <>
+      <div className="composer-attach-menu-scrim" onClick={onClose} />
+      <div className="composer-attach-menu" role="menu">
+        <button type="button" role="menuitem" onClick={onPickPhoto}>
+          Photo or video
+        </button>
+        <button type="button" role="menuitem" onClick={onPickFile}>
+          File
+        </button>
+      </div>
+    </>
+  )
+}
+
 export function Composer({ roomId, roomName, members, rooms, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
@@ -76,8 +104,18 @@ export function Composer({ roomId, roomName, members, rooms, disabled, onSend }:
   const [roomQuery, setRoomQuery] = useState<TriggerQuery | null>(null)
   const [roomActiveIndex, setRoomActiveIndex] = useState(0)
   const [dragActive, setDragActive] = useState(false)
+  const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // #29: a separate input with an image/video accept hint, so mobile
+  // browsers offer their media picker (with a direct Photos/Gallery
+  // shortcut) instead of the generic chooser a fully-unrestricted `accept`
+  // falls back to (Camera / Camera Video / Files, no gallery). The
+  // unrestricted `fileInputRef` above still exists for the "File" choice --
+  // Android can't reliably offer both a gallery shortcut and "any file
+  // type" from a single input, so the attach button now opens a small menu
+  // to pick which one you want first.
+  const photoInputRef = useRef<HTMLInputElement>(null)
   // Counts nested dragenter/dragleave pairs (the overlay, the composer box,
   // the textarea are all separate elements a drag passes over) so the
   // highlight doesn't flicker off every time the pointer crosses a child
@@ -363,34 +401,57 @@ export function Composer({ roomId, roomName, members, rooms, disabled, onSend }:
       {uploadError && <div className="composer-status composer-error">{uploadError}</div>}
       <div className="composer-box">
         <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*,video/*"
+          className="composer-file-input"
+          onChange={handleFileSelected}
+        />
+        <input
           ref={fileInputRef}
           type="file"
           className="composer-file-input"
           onChange={handleFileSelected}
         />
-        <button
-          type="button"
-          className="composer-attach"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || uploading}
-          aria-label="Attach a file"
-        >
-          {uploading ? (
-            <svg className="composer-spinner" width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
-              <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2.4" fill="none" strokeDasharray="30 14" />
-            </svg>
-          ) : (
-            <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path
-                d="M13.5 6.5 8 12a2.1 2.1 0 0 0 3 3l5.5-5.5a4 4 0 0 0-5.7-5.7L4.8 9.8a5.7 5.7 0 0 0 8 8"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+        <div className="composer-attach-wrap">
+          <button
+            type="button"
+            className="composer-attach"
+            onClick={() => setAttachMenuOpen((v) => !v)}
+            disabled={disabled || uploading}
+            aria-label="Attach a photo or file"
+            aria-expanded={attachMenuOpen}
+          >
+            {uploading ? (
+              <svg className="composer-spinner" width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
+                <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="2.4" fill="none" strokeDasharray="30 14" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                <path
+                  d="M13.5 6.5 8 12a2.1 2.1 0 0 0 3 3l5.5-5.5a4 4 0 0 0-5.7-5.7L4.8 9.8a5.7 5.7 0 0 0 8 8"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )}
+          </button>
+          {attachMenuOpen && (
+            <AttachMenu
+              onPickPhoto={() => {
+                setAttachMenuOpen(false)
+                photoInputRef.current?.click()
+              }}
+              onPickFile={() => {
+                setAttachMenuOpen(false)
+                fileInputRef.current?.click()
+              }}
+              onClose={() => setAttachMenuOpen(false)}
+            />
           )}
-        </button>
+        </div>
         <div className="composer-emoji-wrap">
           <button
             type="button"
