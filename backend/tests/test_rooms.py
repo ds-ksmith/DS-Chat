@@ -1,9 +1,50 @@
+import io
 import uuid
 
+from PIL import Image
 from sqlalchemy import select
 
-from app.models import Room, RoomMembership, RoomRole, User
+from app.models import (
+    EventSubscription,
+    MessageFile,
+    MessageImage,
+    MessageRoomReference,
+    Room,
+    RoomMembership,
+    RoomRole,
+    User,
+    WebhookIncoming,
+)
+from app.schemas.user import UserCreate
+from app.services.auth_service import register_user
+from app.storage import UPLOADS_DIR
 from tests.conftest import login_as, register_and_login
+
+
+def _unique(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+def _png_bytes() -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), color=(255, 0, 0)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _register_ws(ws_client, username: str) -> dict:
+    async def _seed():
+        async with ws_client.session_factory() as session:
+            await register_user(
+                session,
+                UserCreate(username=username, email=f"{username}@example.com", password="password123"),
+            )
+
+    ws_client.portal.call(_seed)
+    resp = ws_client.post(
+        "/api/auth/login", json={"username_or_email": username, "password": "password123"}
+    )
+    assert resp.status_code == 200, resp.text
+    return resp.json()
 
 
 async def test_create_room_requires_auth(client):
@@ -208,6 +249,88 @@ async def test_delete_room_owner_only(client, db_session):
         select(RoomMembership).where(RoomMembership.room_id == uuid.UUID(room_id))
     )
     assert result.scalar_one_or_none() is None
+
+
+def test_delete_room_with_attachments_integrations_and_cross_room_reference(ws_client):
+    # Reproduces #55: every table below has a room_id (or message_id, for a
+    # room being deleted) foreign key with no ON DELETE CASCADE at the DB
+    # level, so a room that's ever had an attachment, an integration, or
+    # been #referenced from another room's message used to 500 on delete.
+    # This sets up one of each and confirms delete_room cleans all of them
+    # up, not just whichever one originally surfaced the bug.
+    _register_ws(ws_client, _unique("alice"))
+    target_name = _unique("target-room")
+    other_name = _unique("other-room")
+    target = ws_client.post("/api/rooms", json={"name": target_name}).json()
+    other = ws_client.post("/api/rooms", json={"name": other_name}).json()
+
+    image_id = ws_client.post(
+        f"/api/rooms/{target['id']}/images",
+        files={"file": ("test.png", _png_bytes(), "image/png")},
+    ).json()["id"]
+    file_upload = ws_client.post(
+        f"/api/rooms/{target['id']}/files",
+        files={"file": ("report.pdf", b"%PDF-1.4 not real", "application/pdf")},
+    ).json()
+    file_id = file_upload["id"]
+
+    webhook = ws_client.post(f"/api/rooms/{target['id']}/webhooks/incoming", json={}).json()
+    sub = ws_client.post(
+        f"/api/rooms/{target['id']}/event-subscriptions",
+        json={"event_types": ["message.created"], "target_url": "http://8.8.8.8/hook"},
+    ).json()
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": target["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        ws.send_json({"type": "message", "room_id": target["id"], "image_id": image_id})
+        ws.receive_json()
+        ws.send_json({"type": "message", "room_id": target["id"], "file_id": file_id})
+        ws.receive_json()
+
+        ws.send_json({"type": "join", "room_id": other["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        # References target-room from a message that belongs to a
+        # *different* room -- the direction that originally 500'd, since
+        # it's keyed by the referenced room's id, not the message's room.
+        ws.send_json({"type": "message", "room_id": other["id"], "content": f"check out #{target_name}"})
+        other_message = ws.receive_json()
+
+    async def _storage_filenames():
+        async with ws_client.session_factory() as session:
+            image = await session.get(MessageImage, uuid.UUID(image_id))
+            file = await session.get(MessageFile, uuid.UUID(file_id))
+            return image.storage_filename, file.storage_filename
+
+    image_filename, file_filename = ws_client.portal.call(_storage_filenames)
+    assert (UPLOADS_DIR / image_filename).exists()
+    assert (UPLOADS_DIR / file_filename).exists()
+
+    resp = ws_client.delete(f"/api/rooms/{target['id']}")
+    assert resp.status_code == 204, resp.text
+
+    async def _assert_cleaned_up():
+        async with ws_client.session_factory() as session:
+            target_id = uuid.UUID(target["id"])
+            for model in (MessageImage, MessageFile, WebhookIncoming, EventSubscription):
+                result = await session.execute(select(model).where(model.room_id == target_id))
+                assert result.scalar_one_or_none() is None, model.__name__
+            result = await session.execute(
+                select(MessageRoomReference).where(MessageRoomReference.room_id == target_id)
+            )
+            assert result.scalar_one_or_none() is None
+
+    ws_client.portal.call(_assert_cleaned_up)
+
+    # The physical files were unlinked too, not just the DB rows.
+    assert not (UPLOADS_DIR / image_filename).exists()
+    assert not (UPLOADS_DIR / file_filename).exists()
+
+    # Sanity: deleting target-room didn't touch the unrelated other-room or
+    # its message -- the cross-room reference cleanup is scoped correctly.
+    history = ws_client.get(f"/api/rooms/{other['id']}/messages").json()
+    assert any(m["id"] == other_message["id"] for m in history)
+    assert webhook["id"] and sub["id"]  # created successfully, not otherwise asserted above
 
 
 async def test_leave_room(client, db_session):

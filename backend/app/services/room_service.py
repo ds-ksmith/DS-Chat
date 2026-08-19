@@ -1,13 +1,27 @@
 import uuid
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, MessageMention, Room, RoomMembership, RoomRole, User
+from app.models import (
+    EventSubscription,
+    Message,
+    MessageFile,
+    MessageImage,
+    MessageMention,
+    MessageReaction,
+    MessageRoomReference,
+    Room,
+    RoomMembership,
+    RoomRole,
+    User,
+    WebhookIncoming,
+)
 from app.schemas.room import RoomCreate, RoomUpdate
 from app.services.email_service import send_email
+from app.storage import delete_file
 
 
 class DuplicateRoomError(Exception):
@@ -203,11 +217,59 @@ async def update_room(db: AsyncSession, room: Room, data: RoomUpdate) -> Room:
 
 async def delete_room(db: AsyncSession, room: Room) -> None:
     # Explicit deletes rather than relying on ORM cascade + eager-loading —
-    # simpler and more predictable in async code.
+    # simpler and more predictable in async code. None of these FKs are
+    # declared ON DELETE CASCADE at the DB level (confirmed across every
+    # migration that added one), so every table referencing this room --
+    # directly, or indirectly via one of its messages -- has to be cleared
+    # explicitly, in dependency order, or the final room delete 500s on
+    # whichever one it happens to hit first (originally surfaced as a
+    # message_room_references FK violation, but every table below has the
+    # exact same gap).
+    room_message_ids = select(Message.id).where(Message.room_id == room.id).scalar_subquery()
+
+    # Message-child tables first -- these reference message_id, so they'd
+    # block deleting this room's own messages otherwise.
+    await db.execute(delete(MessageMention).where(MessageMention.message_id.in_(room_message_ids)))
+    await db.execute(delete(MessageReaction).where(MessageReaction.message_id.in_(room_message_ids)))
+    # Both directions: a reference *from* one of this room's own messages,
+    # and a reference *to* this room from a message in a completely
+    # different room (the case that originally surfaced this bug).
+    await db.execute(
+        delete(MessageRoomReference).where(
+            or_(
+                MessageRoomReference.message_id.in_(room_message_ids),
+                MessageRoomReference.room_id == room.id,
+            )
+        )
+    )
+
+    # Fetch attachment storage filenames before deleting their rows -- the
+    # actual files are only unlinked after a successful commit below, so a
+    # rolled-back transaction never leaves us having destroyed something we
+    # couldn't get back.
+    image_filenames = (
+        await db.execute(select(MessageImage.storage_filename).where(MessageImage.room_id == room.id))
+    ).scalars().all()
+    file_filenames = (
+        await db.execute(select(MessageFile.storage_filename).where(MessageFile.room_id == room.id))
+    ).scalars().all()
+
+    # Messages themselves, now that nothing still references them.
     await db.execute(delete(Message).where(Message.room_id == room.id))
+
+    # Room-scoped attachments/integrations -- messages.image_id/file_id
+    # reference these, so they must come after the message delete above.
+    await db.execute(delete(MessageImage).where(MessageImage.room_id == room.id))
+    await db.execute(delete(MessageFile).where(MessageFile.room_id == room.id))
+    await db.execute(delete(WebhookIncoming).where(WebhookIncoming.room_id == room.id))
+    await db.execute(delete(EventSubscription).where(EventSubscription.room_id == room.id))
+
     await db.execute(delete(RoomMembership).where(RoomMembership.room_id == room.id))
     await db.delete(room)
     await db.commit()
+
+    for filename in (*image_filenames, *file_filenames):
+        delete_file(filename)
 
 
 async def list_room_members(db: AsyncSession, room_id: uuid.UUID) -> list[RoomMembership]:
