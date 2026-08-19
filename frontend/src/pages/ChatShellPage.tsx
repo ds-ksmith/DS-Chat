@@ -6,6 +6,7 @@ import { BrowseRoomsModal } from '../components/BrowseRoomsModal'
 import { ChatPane } from '../components/ChatPane'
 import { NewRoomModal } from '../components/NewRoomModal'
 import { OfflineBanner } from '../components/OfflineBanner'
+import { PeopleModal } from '../components/PeopleModal'
 import { RoomInfoPanel } from '../components/RoomInfoPanel'
 import { Sidebar } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
@@ -15,7 +16,7 @@ import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import type { MyRoomItem, RoomMember } from '../types'
 import './ChatShellPage.css'
 
-type ModalKind = 'new' | 'browse' | null
+type ModalKind = 'new' | 'browse' | 'people' | null
 
 export function ChatShellPage() {
   const { roomId } = useParams<{ roomId?: string }>()
@@ -108,6 +109,7 @@ export function ChatShellPage() {
             onSearchChange={setSearch}
             onOpenNewRoom={() => setModal('new')}
             onOpenBrowse={() => setModal('browse')}
+            onOpenPeople={() => setModal('people')}
             unavailableOffline={roomsUnavailableOffline && rooms.length === 0}
           />
         )}
@@ -173,6 +175,7 @@ export function ChatShellPage() {
           }}
         />
       )}
+      {modal === 'people' && <PeopleModal onClose={() => setModal(null)} />}
     </div>
   )
 }

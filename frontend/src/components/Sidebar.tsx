@@ -10,6 +10,7 @@ interface SidebarProps {
   onSearchChange: (value: string) => void
   onOpenNewRoom: () => void
   onOpenBrowse: () => void
+  onOpenPeople: () => void
   unavailableOffline?: boolean
 }
 
@@ -20,6 +21,7 @@ export function Sidebar({
   onSearchChange,
   onOpenNewRoom,
   onOpenBrowse,
+  onOpenPeople,
   unavailableOffline,
 }: SidebarProps) {
   const query = searchQuery.trim().toLowerCase()
@@ -64,6 +66,15 @@ export function Sidebar({
             <line x1="13.5" y1="13.5" x2="18" y2="18" strokeLinecap="round" />
           </svg>
           Browse rooms
+        </button>
+        <button type="button" className="sidebar-entry" onClick={onOpenPeople}>
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="7" cy="6.5" r="3" />
+            <path d="M2 17c0-3 2.5-5 5-5s5 2 5 5" strokeLinecap="round" />
+            <circle cx="14.5" cy="7.5" r="2.3" />
+            <path d="M12.7 12.3c2-.3 4 1.2 4.8 3.7" strokeLinecap="round" />
+          </svg>
+          People
         </button>
 
         {unavailableOffline ? (
