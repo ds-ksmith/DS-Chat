@@ -60,6 +60,25 @@ class AlreadyMemberError(Exception):
     pass
 
 
+class CannotDmSelfError(Exception):
+    pass
+
+
+class CannotModifyDmError(Exception):
+    pass
+
+
+def dm_room_name(user_a_id: uuid.UUID, user_b_id: uuid.UUID) -> str:
+    """Deterministic, internal-only name for the DM room between these two
+    users -- same canonical string regardless of argument order, so
+    find_or_create_dm can look up an existing DM with a single indexed
+    query (Room.name is already unique+indexed) instead of a membership-set
+    join. Never shown to a user -- the frontend renders a DM's dm_partner
+    info instead of its `name` (see MyRoomItem)."""
+    ids = sorted((str(user_a_id), str(user_b_id)))
+    return f"dm:{ids[0]}:{ids[1]}"
+
+
 async def create_room(db: AsyncSession, owner_id: uuid.UUID, data: RoomCreate) -> Room:
     room = Room(
         name=data.name,
@@ -80,10 +99,50 @@ async def create_room(db: AsyncSession, owner_id: uuid.UUID, data: RoomCreate) -
     return room
 
 
+async def find_or_create_dm(db: AsyncSession, user_id: uuid.UUID, other_user_id: uuid.UUID) -> Room:
+    if user_id == other_user_id:
+        raise CannotDmSelfError()
+    other = await db.get(User, other_user_id)
+    if other is None:
+        raise TargetUserNotFoundError()
+
+    name = dm_room_name(user_id, other_user_id)
+    result = await db.execute(select(Room).where(Room.name == name))
+    room = result.scalar_one_or_none()
+    if room is not None:
+        return room
+
+    # is_private=True is belt-and-suspenders here -- list_open_rooms also
+    # excludes is_dm directly -- but it's also just semantically correct: a
+    # DM genuinely is a private room. Both participants get the plain
+    # `member` role (there's no meaningful owner/admin distinction for a
+    # 1:1 DM); `owner_id` still has to be someone to satisfy the column,
+    # but nothing reads it as meaningful for a DM.
+    room = Room(name=name, is_private=True, is_dm=True, owner_id=user_id)
+    db.add(room)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Lost a race with a concurrent find_or_create_dm for the same pair
+        # (e.g. both people click "message" on each other at once) -- the
+        # unique constraint on `name` is exactly what caught it, same
+        # pattern as create_room's DuplicateRoomError. The row that won the
+        # race is the room we actually want.
+        await db.rollback()
+        result = await db.execute(select(Room).where(Room.name == name))
+        return result.scalar_one()
+
+    db.add(RoomMembership(room_id=room.id, user_id=user_id, role=RoomRole.member))
+    db.add(RoomMembership(room_id=room.id, user_id=other_user_id, role=RoomRole.member))
+    await db.commit()
+    await db.refresh(room)
+    return room
+
+
 async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Room, bool]]:
     result = await db.execute(
         select(Room)
-        .where(Room.is_private.is_(False), Room.is_archived.is_(False))
+        .where(Room.is_private.is_(False), Room.is_archived.is_(False), Room.is_dm.is_(False))
         .options(selectinload(Room.memberships))
         .order_by(Room.created_at, Room.id)
     )
@@ -95,7 +154,7 @@ async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Ro
 
 async def list_member_rooms(
     db: AsyncSession, user_id: uuid.UUID
-) -> list[tuple[Room, RoomRole, bool, bool]]:
+) -> list[tuple[Room, RoomRole, bool, bool, User | None]]:
     last_message_at = (
         select(func.max(Message.created_at))
         .where(Message.room_id == Room.id)
@@ -130,9 +189,30 @@ async def list_member_rooms(
         # device's fetch and another's.
         .order_by(Room.created_at, Room.id)
     )
+    rows = result.all()
+
+    # #52: one batched follow-up query for every DM room's *other*
+    # participant, rather than a fetch per row -- a DM only ever has
+    # exactly two members, so "the other one" is unambiguous.
+    dm_room_ids = [room.id for room, *_ in rows if room.is_dm]
+    partners_by_room: dict[uuid.UUID, User] = {}
+    if dm_room_ids:
+        partner_result = await db.execute(
+            select(RoomMembership.room_id, User)
+            .join(User, User.id == RoomMembership.user_id)
+            .where(RoomMembership.room_id.in_(dm_room_ids), RoomMembership.user_id != user_id)
+        )
+        partners_by_room = {room_id: user for room_id, user in partner_result.all()}
+
     return [
-        (room, role, last_message_at is not None and last_message_at > last_read_at, has_mention)
-        for room, role, last_read_at, last_message_at, has_mention in result.all()
+        (
+            room,
+            role,
+            last_message_at is not None and last_message_at > last_read_at,
+            has_mention,
+            partners_by_room.get(room.id),
+        )
+        for room, role, last_read_at, last_message_at, has_mention in rows
     ]
 
 
@@ -200,6 +280,14 @@ async def add_member(
 
 
 async def update_room(db: AsyncSession, room: Room, data: RoomUpdate) -> Room:
+    # A DM's `name` is an internal token find_or_create_dm's lookup depends
+    # on being stable -- renaming it (even via the #48 site-admin bypass in
+    # the router) would silently orphan that invariant, not just leak a
+    # detail that's supposed to stay private. Blocked here, not just in the
+    # UI, since it's a correctness issue for every caller, not a permission
+    # one.
+    if room.is_dm:
+        raise CannotModifyDmError()
     if data.name is not None:
         room.name = data.name
     if data.description is not None:

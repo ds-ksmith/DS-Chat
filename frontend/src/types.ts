@@ -56,6 +56,7 @@ export interface Room {
   name: string
   description: string | null
   is_private: boolean
+  is_dm: boolean
   owner_id: string
   created_at: string
 }
@@ -64,12 +65,23 @@ export interface RoomListItem extends Room {
   is_member: boolean
 }
 
+export interface DmPartnerInfo {
+  user_id: string
+  username: string
+  display_name: string | null
+  avatar_filename: string | null
+  status: 'online' | 'offline'
+}
+
 export interface MyRoomItem extends Room {
   role: RoomRole
   has_unread: boolean
   // Unread and mentions the current user -- takes visual priority over
   // has_unread in the sidebar (see RoomRow.tsx), not shown alongside it.
   has_mention: boolean
+  // #52: the other participant, only for is_dm rooms -- see backend
+  // schemas/room.py's MyRoomItem for why this is precomputed server-side.
+  dm_partner: DmPartnerInfo | null
 }
 
 export interface RoomMember {

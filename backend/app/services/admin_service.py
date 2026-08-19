@@ -93,9 +93,14 @@ async def set_user_site_admin(
 
 
 async def list_rooms_admin(db: AsyncSession) -> list[tuple[Room, int]]:
+    # #52: DMs are fully private, not just unlisted -- excluded here rather
+    # than merely omitted from the response, so there's no admin-portal
+    # surface (this list, or the audit log via anything that touches this
+    # query) that reveals a DM even exists between two users.
     result = await db.execute(
         select(Room, func.count(RoomMembership.user_id))
         .outerjoin(RoomMembership, RoomMembership.room_id == Room.id)
+        .where(Room.is_dm.is_(False))
         .group_by(Room.id)
         .order_by(Room.created_at)
     )

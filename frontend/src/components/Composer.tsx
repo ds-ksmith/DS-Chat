@@ -22,6 +22,7 @@ import './Composer.css'
 interface ComposerProps {
   roomId: string
   roomName: string
+  isDm?: boolean
   members: RoomMember[]
   // #47: rooms this user belongs to, for the #roomname autocomplete --
   // deliberately the same list ChatPane already resolves message-display
@@ -89,7 +90,7 @@ function AttachMenu({ onPickPhoto, onPickFile, onClose }: AttachMenuProps) {
   )
 }
 
-export function Composer({ roomId, roomName, members, rooms, disabled, onSend }: ComposerProps) {
+export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onSend }: ComposerProps) {
   const [value, setValue] = useState('')
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
   const [pendingFile, setPendingFile] = useState<{ id: string; filename: string; size: number } | null>(
@@ -488,7 +489,13 @@ export function Composer({ roomId, roomName, members, rooms, disabled, onSend }:
             }}
             onSelect={handleSelectionChange}
             onKeyDown={handleKeyDown}
-            placeholder={disabled ? (online ? 'Connecting…' : "You're offline") : `Message #${roomName}`}
+            placeholder={
+              disabled
+                ? online
+                  ? 'Connecting…'
+                  : "You're offline"
+                : `Message ${isDm ? roomName : `#${roomName}`}`
+            }
             spellCheck
           />
           {mentionQuery && mentionMatches.length > 0 && (

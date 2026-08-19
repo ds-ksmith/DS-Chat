@@ -17,6 +17,7 @@ from app.schemas.message import LinkPreviewInfo, MessageFileInfo, MessageRead
 from app.schemas.message_file import MessageFileCreated
 from app.schemas.message_image import MessageImageCreated
 from app.schemas.room import (
+    DmPartnerInfo,
     MyRoomItem,
     RoomAttachmentRead,
     RoomCreate,
@@ -26,6 +27,7 @@ from app.schemas.room import (
     RoomMemberRoleUpdate,
     RoomRead,
     RoomUpdate,
+    StartDmRequest,
     TransferOwnershipRequest,
 )
 from app.schemas.webhook import (
@@ -45,6 +47,8 @@ from app.services.message_service import (
 from app.services.upload_settings_service import format_mb, get_upload_settings
 from app.services.room_service import (
     AlreadyMemberError,
+    CannotDmSelfError,
+    CannotModifyDmError,
     CannotRemoveOwnerError,
     DuplicateRoomError,
     InsufficientRoleError,
@@ -57,6 +61,7 @@ from app.services.room_service import (
     change_member_role,
     create_room,
     delete_room,
+    find_or_create_dm,
     get_room,
     join_room,
     leave_room,
@@ -105,6 +110,20 @@ async def create_room_endpoint(
         raise HTTPException(status_code=409, detail="A room with this name already exists")
 
 
+@router.post("/dm", response_model=RoomRead, status_code=201)
+async def start_dm_endpoint(
+    data: StartDmRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        return await find_or_create_dm(db, current_user.id, data.other_user_id)
+    except CannotDmSelfError:
+        raise HTTPException(status_code=400, detail="Cannot start a DM with yourself")
+    except TargetUserNotFoundError:
+        raise HTTPException(status_code=404, detail="No user with that ID")
+
+
 @router.get("", response_model=list[RoomListItem])
 async def list_rooms_endpoint(
     current_user: User = Depends(get_current_user),
@@ -117,6 +136,7 @@ async def list_rooms_endpoint(
             name=room.name,
             description=room.description,
             is_private=room.is_private,
+            is_dm=room.is_dm,
             owner_id=room.owner_id,
             created_at=room.created_at,
             is_member=is_member,
@@ -127,23 +147,38 @@ async def list_rooms_endpoint(
 
 @router.get("/mine", response_model=list[MyRoomItem])
 async def list_my_rooms_endpoint(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     rooms = await list_member_rooms(db, current_user.id)
+    partner_ids = [partner.id for *_, partner in rooms if partner is not None]
+    online_ids = await request.app.state.global_presence.online_user_ids(partner_ids)
     return [
         MyRoomItem(
             id=room.id,
             name=room.name,
             description=room.description,
             is_private=room.is_private,
+            is_dm=room.is_dm,
             owner_id=room.owner_id,
             created_at=room.created_at,
             role=role,
             has_unread=has_unread,
             has_mention=has_mention,
+            dm_partner=(
+                DmPartnerInfo(
+                    user_id=partner.id,
+                    username=partner.username,
+                    display_name=partner.display_name,
+                    avatar_filename=partner.avatar_filename,
+                    status=_member_status(partner, online_ids),
+                )
+                if partner is not None
+                else None
+            ),
         )
-        for room, role, has_unread, has_mention in rooms
+        for room, role, has_unread, has_mention, partner in rooms
     ]
 
 
@@ -167,6 +202,8 @@ async def update_room_endpoint(
         raise HTTPException(status_code=404, detail="Room not found")
     except DuplicateRoomError:
         raise HTTPException(status_code=409, detail="A room with this name already exists")
+    except CannotModifyDmError:
+        raise HTTPException(status_code=400, detail="DMs can't be edited")
 
 
 @router.delete("/{room_id}", status_code=204)

@@ -389,6 +389,28 @@
   border-bottom: none;
 }
 
+.modal-list-row-button {
+  width: 100%;
+  background: transparent;
+  border-left: none;
+  border-right: none;
+  border-top: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.modal-list-row-button:hover:not(:disabled) {
+  background: var(--ds-surface-2);
+}
+
+.modal-list-row-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
 .modal-list-row-body {
   flex: 1;
   min-width: 0;

@@ -175,7 +175,15 @@ export function ChatShellPage() {
           }}
         />
       )}
-      {modal === 'people' && <PeopleModal onClose={() => setModal(null)} />}
+      {modal === 'people' && (
+        <PeopleModal
+          onClose={() => setModal(null)}
+          onOpenRoom={(id) => {
+            setModal(null)
+            refreshRooms().then(() => goToRoom(id))
+          }}
+        />
+      )}
     </div>
   )
 }

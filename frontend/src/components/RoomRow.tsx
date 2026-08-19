@@ -1,6 +1,9 @@
 import { Link } from 'react-router-dom'
+import { getUserAvatarUrl } from '../api/users'
+import { hashIndex } from '../lib/avatar'
 import type { MyRoomItem } from '../types'
 import { RoomAvatar } from './RoomAvatar'
+import { UserAvatar } from './UserAvatar'
 import './RoomRow.css'
 
 interface RoomRowProps {
@@ -10,13 +13,25 @@ interface RoomRowProps {
 }
 
 export function RoomRow({ room, colorIndex, active }: RoomRowProps) {
+  const partner = room.dm_partner
+
   return (
     <Link to={`/rooms/${room.id}`} className={`room-row${active ? ' room-row-active' : ''}`}>
-      <RoomAvatar colorIndex={colorIndex} />
+      {partner ? (
+        <UserAvatar
+          username={partner.username}
+          colorIndex={hashIndex(partner.username)}
+          size={34}
+          avatarUrl={partner.avatar_filename ? getUserAvatarUrl(partner.user_id, partner.avatar_filename) : null}
+          status={partner.status}
+        />
+      ) : (
+        <RoomAvatar colorIndex={colorIndex} />
+      )}
       <div className="room-row-body">
         <div className="room-row-name">
-          {room.name}
-          {room.is_private && (
+          {partner ? partner.display_name || partner.username : room.name}
+          {!partner && room.is_private && (
             <svg
               className="room-row-lock"
               width="12"
@@ -30,7 +45,7 @@ export function RoomRow({ room, colorIndex, active }: RoomRowProps) {
             </svg>
           )}
         </div>
-        {room.description && <div className="room-row-subtitle">{room.description}</div>}
+        {!partner && room.description && <div className="room-row-subtitle">{room.description}</div>}
       </div>
       {!active && room.has_mention && (
         <span className="room-row-mention-dot" aria-label="You were mentioned" />

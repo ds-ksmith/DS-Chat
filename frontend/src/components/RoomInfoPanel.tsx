@@ -23,6 +23,7 @@ import {
 } from '../api/webhooks'
 import { useAuth } from '../context/AuthContext'
 import { useResizableWidth } from '../hooks/useResizableWidth'
+import { hashIndex } from '../lib/avatar'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
 import { formatFileSize } from '../lib/fileSize'
 import type {
@@ -117,8 +118,11 @@ export function RoomInfoPanel({
   const canManage = myRole === 'admin' || myRole === 'owner'
   // #48: room owner, room admin, or site admin (regardless of their role in
   // *this* room) can edit room settings, including privacy -- matches the
-  // backend PATCH /api/rooms/{id} gate exactly (see rooms.py).
-  const canEditSettings = canManage || !!user?.is_site_admin
+  // backend PATCH /api/rooms/{id} gate exactly (see rooms.py). #52: never
+  // for a DM regardless of role -- mirrors update_room's own
+  // CannotModifyDmError guard, since a DM's `name` is an internal token,
+  // not something editable.
+  const canEditSettings = !room.is_dm && (canManage || !!user?.is_site_admin)
 
   useEffect(() => {
     setNameDraft(room.name)
@@ -295,12 +299,32 @@ export function RoomInfoPanel({
       </div>
 
       <div className="room-info-summary">
-        <RoomAvatar colorIndex={0} size={56} />
-        <div className="room-info-name">#{room.name}</div>
-        <div className="room-info-sub">
-          {members.length} member{members.length === 1 ? '' : 's'}
-          {room.is_private && ' · Private'}
-        </div>
+        {room.dm_partner ? (
+          <>
+            <UserAvatar
+              username={room.dm_partner.username}
+              colorIndex={hashIndex(room.dm_partner.username)}
+              size={56}
+              avatarUrl={
+                room.dm_partner.avatar_filename
+                  ? getUserAvatarUrl(room.dm_partner.user_id, room.dm_partner.avatar_filename)
+                  : null
+              }
+              status={room.dm_partner.status}
+            />
+            <div className="room-info-name">{room.dm_partner.display_name || room.dm_partner.username}</div>
+            <div className="room-info-sub">{room.dm_partner.status === 'online' ? 'Online' : 'Offline'}</div>
+          </>
+        ) : (
+          <>
+            <RoomAvatar colorIndex={0} size={56} />
+            <div className="room-info-name">#{room.name}</div>
+            <div className="room-info-sub">
+              {members.length} member{members.length === 1 ? '' : 's'}
+              {room.is_private && ' · Private'}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="room-info-section">
@@ -572,15 +596,17 @@ export function RoomInfoPanel({
         </div>
       )}
 
-      <button
-        type="button"
-        className="room-info-leave"
-        onClick={handleLeave}
-        disabled={myRole === 'owner'}
-        title={myRole === 'owner' ? 'Transfer ownership before leaving' : undefined}
-      >
-        Leave room
-      </button>
+      {!room.is_dm && (
+        <button
+          type="button"
+          className="room-info-leave"
+          onClick={handleLeave}
+          disabled={myRole === 'owner'}
+          title={myRole === 'owner' ? 'Transfer ownership before leaving' : undefined}
+        >
+          Leave room
+        </button>
+      )}
 
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
       {previewFile && (

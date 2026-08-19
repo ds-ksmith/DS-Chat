@@ -25,7 +25,21 @@ export function Sidebar({
   unavailableOffline,
 }: SidebarProps) {
   const query = searchQuery.trim().toLowerCase()
-  const filtered = query ? rooms.filter((r) => r.name.toLowerCase().includes(query)) : rooms
+  // A DM's `name` is an internal token, never what a user would search for
+  // -- matched against the partner's display name/username instead.
+  function matchesQuery(room: MyRoomItem): boolean {
+    if (!query) return true
+    if (room.is_dm && room.dm_partner) {
+      return (
+        (room.dm_partner.display_name ?? '').toLowerCase().includes(query) ||
+        room.dm_partner.username.toLowerCase().includes(query)
+      )
+    }
+    return room.name.toLowerCase().includes(query)
+  }
+  const filtered = rooms.filter(matchesQuery)
+  const directMessages = filtered.filter((r) => r.is_dm)
+  const regularRooms = filtered.filter((r) => !r.is_dm)
 
   const { width, startResize } = useResizableWidth({
     storageKey: 'sidebar-width',
@@ -83,9 +97,24 @@ export function Sidebar({
           </p>
         ) : (
           <>
-            {filtered.length > 0 && <div className="sidebar-section-label">Rooms</div>}
+            {directMessages.length > 0 && (
+              <>
+                <div className="sidebar-section-label">Direct Messages</div>
+                <nav>
+                  {directMessages.map((room, i) => (
+                    <RoomRow
+                      key={room.id}
+                      room={room}
+                      colorIndex={i}
+                      active={room.id === activeRoomId}
+                    />
+                  ))}
+                </nav>
+              </>
+            )}
+            {regularRooms.length > 0 && <div className="sidebar-section-label">Rooms</div>}
             <nav>
-              {filtered.map((room, i) => (
+              {regularRooms.map((room, i) => (
                 <RoomRow
                   key={room.id}
                   room={room}

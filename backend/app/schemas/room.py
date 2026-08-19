@@ -26,12 +26,21 @@ class RoomRead(BaseModel):
     name: str
     description: str | None
     is_private: bool
+    is_dm: bool
     owner_id: uuid.UUID
     created_at: datetime
 
 
 class RoomListItem(RoomRead):
     is_member: bool
+
+
+class DmPartnerInfo(BaseModel):
+    user_id: uuid.UUID
+    username: str
+    display_name: str | None
+    avatar_filename: str | None
+    status: Literal["online", "offline"]
 
 
 class MyRoomItem(RoomRead):
@@ -44,6 +53,15 @@ class MyRoomItem(RoomRead):
     # over has_unread in the sidebar (see RoomRow.tsx), not shown alongside
     # it.
     has_mention: bool
+    # #52: populated only when is_dm is true -- the *other* participant,
+    # precomputed here so the sidebar can render a DM row (their name +
+    # avatar, not this room's internal `name`) without a second fetch per
+    # row. None for a regular room.
+    dm_partner: DmPartnerInfo | None = None
+
+
+class StartDmRequest(BaseModel):
+    other_user_id: uuid.UUID
 
 
 class RoomMemberRead(BaseModel):

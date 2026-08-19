@@ -224,8 +224,16 @@ export function ChatPane({
           </button>
         )}
         <div className="chat-pane-title-block">
-          <div className="chat-pane-title">#{room.name}</div>
-          <div className="chat-pane-subtitle">{members.length} member{members.length === 1 ? '' : 's'}</div>
+          <div className="chat-pane-title">
+            {room.dm_partner ? room.dm_partner.display_name || room.dm_partner.username : `#${room.name}`}
+          </div>
+          <div className="chat-pane-subtitle">
+            {room.dm_partner
+              ? room.dm_partner.status === 'online'
+                ? 'Online'
+                : 'Offline'
+              : `${members.length} member${members.length === 1 ? '' : 's'}`}
+          </div>
         </div>
         <button
           type="button"
@@ -259,7 +267,8 @@ export function ChatPane({
       />
       <Composer
         roomId={room.id}
-        roomName={room.name}
+        roomName={room.dm_partner ? room.dm_partner.display_name || room.dm_partner.username : room.name}
+        isDm={room.is_dm}
         members={members}
         rooms={rooms}
         disabled={!connected}

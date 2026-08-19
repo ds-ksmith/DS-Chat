@@ -29,6 +29,15 @@ export function createRoom(
   })
 }
 
+// #52: find-or-create -- returns the existing DM with this person if one
+// already exists, rather than always creating a new room.
+export function startDm(otherUserId: string): Promise<Room> {
+  return apiFetch<Room>('/api/rooms/dm', {
+    method: 'POST',
+    body: JSON.stringify({ other_user_id: otherUserId }),
+  })
+}
+
 export function updateRoom(
   roomId: string,
   data: { name?: string; description?: string; is_private?: boolean },

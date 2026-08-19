@@ -15,6 +15,10 @@ class Room(Base):
     description: Mapped[str | None] = mapped_column(Text)
     is_private: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # #52: a DM is a Room whose `name` is an internal, never-displayed
+    # deterministic token (see room_service.dm_room_name) rather than a
+    # user-chosen name -- see that function's docstring for the scheme.
+    is_dm: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     owner_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
