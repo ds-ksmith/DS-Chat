@@ -146,6 +146,28 @@ def test_add_member_notifies_target_user_via_websocket(ws_client_factory, monkey
         assert received == {"type": "room_added", "room_id": room["id"]}
 
 
+def test_start_dm_notifies_other_participant_via_websocket(ws_client_factory):
+    # A production report: bob had no idea a DM existed until he reloaded --
+    # find_or_create_dm was creating the room/membership correctly but never
+    # sending this signal, unlike every other "you're now in a room" path
+    # (add_member, above). Same shape as that test: bob is only ever
+    # "connected," never "joined," proving the signal alone is what tells
+    # his client the room exists at all.
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        resp = instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]})
+        assert resp.status_code == 201, resp.text
+        room = resp.json()
+
+        received = bob_ws.receive_json()
+        assert received == {"type": "room_added", "room_id": room["id"]}
+
+
 def test_profile_update_notifies_room_members_via_websocket(ws_client_factory, monkeypatch):
     # Only reaches clients that have the room's own channel joined --
     # exactly the case where a stale avatar/display name would actually be

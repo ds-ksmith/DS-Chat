@@ -113,15 +113,23 @@ async def create_room_endpoint(
 @router.post("/dm", response_model=RoomRead, status_code=201)
 async def start_dm_endpoint(
     data: StartDmRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        return await find_or_create_dm(db, current_user.id, data.other_user_id)
+        room = await find_or_create_dm(db, current_user.id, data.other_user_id)
     except CannotDmSelfError:
         raise HTTPException(status_code=400, detail="Cannot start a DM with yourself")
     except TargetUserNotFoundError:
         raise HTTPException(status_code=404, detail="No user with that ID")
+    # Same signal add_member sends -- without it, the other participant's
+    # already-open client has no way to know this DM exists until they
+    # reload: GET /rooms/mine is only fetched once at app mount. Sent
+    # unconditionally (not just on genuine creation) since re-finding an
+    # existing DM and refreshing their room list again is harmless.
+    await broadcast_room_added(request.app.state.broadcaster, data.other_user_id, room)
+    return room
 
 
 @router.get("", response_model=list[RoomListItem])
