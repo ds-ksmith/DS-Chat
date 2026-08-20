@@ -36,6 +36,7 @@ class ClientEnvelope(BaseModel):
     file_id: uuid.UUID | None = None
     message_id: uuid.UUID | None = None
     emoji: str | None = None
+    focused: bool | None = None
 
 
 async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> bool:
@@ -79,8 +80,14 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     manager = websocket.app.state.connection_manager
     presence = websocket.app.state.presence
     global_presence = websocket.app.state.global_presence
+    focus_presence = websocket.app.state.focus_presence
     broadcaster = websocket.app.state.broadcaster
     joined_rooms: set[uuid.UUID] = set()
+    # Tracks this connection's last-reported focus state (see the "focus"
+    # envelope below) so the disconnect cleanup can release FocusPresence's
+    # refcount if the socket closes while still blurred -- mirroring how
+    # joined_rooms tracks per-connection room membership for its own cleanup.
+    is_blurred = False
     manager.register_user(user.id, websocket)
     # Only broadcast on a genuine offline->online transition (this user's
     # first open connection), not for every extra tab -- broadcast_member_
@@ -132,6 +139,25 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     manager.leave(envelope.room_id, websocket)
                     await presence.leave(envelope.room_id, user.id)
                     joined_rooms.discard(envelope.room_id)
+
+                elif envelope.type == "focus":
+                    # Sent only by the desktop client (#59), independent of
+                    # room join/leave -- see FocusPresence's docstring for
+                    # why widening desktop_notification eligibility this
+                    # way no longer needs to touch live room delivery at
+                    # all, unlike the "leave the room's channel on blur"
+                    # approach this replaced.
+                    if envelope.focused is None:
+                        await websocket.send_json({"type": "error", "detail": "focused required"})
+                        continue
+                    if envelope.focused:
+                        if is_blurred:
+                            await focus_presence.mark_focused(user.id)
+                            is_blurred = False
+                    else:
+                        if not is_blurred:
+                            await focus_presence.mark_blurred(user.id)
+                            is_blurred = True
 
                 elif envelope.type == "message":
                     if envelope.room_id is None or (
@@ -185,7 +211,9 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     # incoming-webhook path also calls it, and a webhook's
                     # attributed sender may not actually be watching.
                     await mark_room_read(db, envelope.room_id, user.id)
-                    await broadcast_new_message(db, broadcaster, presence, envelope.room_id, message, user)
+                    await broadcast_new_message(
+                        db, broadcaster, presence, focus_presence, envelope.room_id, message, user
+                    )
 
                 elif envelope.type == "edit":
                     if envelope.room_id is None or envelope.message_id is None or not envelope.content:
@@ -268,5 +296,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
         manager.unregister_user(user.id, websocket)
         for room_id in joined_rooms:
             await presence.leave(room_id, user.id)
+        if is_blurred:
+            await focus_presence.mark_focused(user.id)
         if await global_presence.disconnect(user.id):
             await broadcast_member_updated(db, broadcaster, user.id)

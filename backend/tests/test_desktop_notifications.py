@@ -128,6 +128,87 @@ def test_desktop_notification_not_sent_to_room_member_who_is_present(ws_client_f
         assert live_message["type"] == "message"
 
 
+def test_desktop_notification_sent_to_connected_but_blurred_member(ws_client_factory):
+    # #59: bob keeps the room's channel joined (so live delivery to a room
+    # actually open on screen never stops) but reports his desktop window
+    # as unfocused via a "focus" frame -- the whole point of this fix is
+    # that notification eligibility no longer needs the client to fake
+    # "offline" by leaving the room's channel, which used to also break
+    # live delivery until the room was manually left and rejoined.
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    _register_ws(instance2, _unique("bob"))
+    instance2.post(f"/api/rooms/{room['id']}/join")
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        bob_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert bob_ws.receive_json()["type"] == "joined"
+
+        bob_ws.send_json({"type": "focus", "focused": False})
+        # Sync barrier -- see test_mentions.py's identical pattern: a
+        # second (idempotent) join only acks once the prior "focus"
+        # frame's own handling (and commit) has completed.
+        bob_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert bob_ws.receive_json()["type"] == "joined"
+
+        with instance1.websocket_connect("/ws/chat") as alice_ws:
+            alice_ws.send_json({"type": "join", "room_id": room["id"]})
+            assert alice_ws.receive_json()["type"] == "joined"
+            message = _send_and_sync(alice_ws, room["id"], "you awake?")
+            assert message["type"] == "message"
+
+        # Live delivery still works -- bob's room channel was never left.
+        live_message = _recv(bob_ws)
+        assert live_message["type"] == "message"
+        assert live_message["content"] == "you awake?"
+
+        # ...and he's still notified, despite being "connected" to the room.
+        desktop_note = _recv(bob_ws)
+        assert desktop_note == {
+            "type": "desktop_notification",
+            "id": message["id"],
+            "room_id": room["id"],
+            "title": f"#{room['name']}",
+            "body": f"{alice['username']}: you awake?",
+        }
+
+
+def test_desktop_notification_not_sent_after_refocus(ws_client_factory):
+    # Proves the "focus" signal is a live toggle, not one-way -- blurring
+    # and then refocusing before the message arrives must fully cancel out.
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    _register_ws(instance2, _unique("bob"))
+    instance2.post(f"/api/rooms/{room['id']}/join")
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        bob_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert bob_ws.receive_json()["type"] == "joined"
+
+        bob_ws.send_json({"type": "focus", "focused": False})
+        bob_ws.send_json({"type": "focus", "focused": True})
+        bob_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert bob_ws.receive_json()["type"] == "joined"
+
+        with instance1.websocket_connect("/ws/chat") as alice_ws:
+            alice_ws.send_json({"type": "join", "room_id": room["id"]})
+            assert alice_ws.receive_json()["type"] == "joined"
+            _send_and_sync(alice_ws, room["id"], "hello again")
+
+        # Refocused before the message arrived -- only the live broadcast,
+        # same as test_desktop_notification_not_sent_to_room_member_who_is_present.
+        live_message = _recv(bob_ws)
+        assert live_message["type"] == "message"
+
+
 def test_desktop_notification_not_sent_to_non_member(ws_client_factory):
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()

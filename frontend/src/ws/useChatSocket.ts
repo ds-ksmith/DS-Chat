@@ -10,20 +10,23 @@ interface UseChatSocketOptions {
 const RECONNECT_BASE_DELAY_MS = 1000
 const RECONNECT_MAX_DELAY_MS = 30000
 
-// #49 follow-up: a bare `document.visibilityState` check (below) means "not
-// minimized/hidden" -- in a browser tab that's a decent proxy for "the user
-// could be looking at this," since visibility already tracks whether this is
-// the active tab. Inside an Electron BrowserWindow it isn't: visibilityState
-// only flips on minimize/hide, not on losing OS focus, so a window sitting
-// open-but-unfocused behind another app never registers as "gone." That's
-// exactly the state a desktop notification needs to fire in, so desktop mode
-// additionally requires document.hasFocus(). Gated on desktopMode so regular
-// browser-tab behavior (already relied on by Web Push and the unread dot) is
-// completely unchanged.
 const desktopMode = isDesktopNotificationsSupported()
 
-function isPresent(): boolean {
-  return document.visibilityState === 'visible' && (!desktopMode || document.hasFocus())
+// Room join/leave (live message delivery) depends only on visibility --
+// "not minimized/hidden" -- exactly like a browser tab, in every mode.
+//
+// #49 originally had desktop mode additionally require document.hasFocus()
+// here, on the theory that losing OS focus should count as "not present"
+// the same way backgrounding a browser tab does. #59: that conflated two
+// separate concerns onto one signal -- losing focus made the desktop client
+// send "leave" for every open room, which stopped *live delivery* to a room
+// still fully visible on screen, not just notification eligibility. A
+// message wouldn't appear until the room was manually left and rejoined
+// (e.g. switching rooms and back), which is what actually got reported.
+// Focus now drives its own separate signal (see the "focus" WS frame below
+// and FocusPresence server-side) instead of gating room membership at all.
+function isVisible(): boolean {
+  return document.visibilityState === 'visible'
 }
 
 // One connection per authenticated session, established as soon as the app
@@ -47,12 +50,24 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   // backgrounded user the same as a disconnected one instead of assuming a
   // live WebSocket delivery the user can't actually see will do the job.
   const desiredRoomsRef = useRef(new Set<string>())
-  const isVisibleRef = useRef(isPresent())
+  const isVisibleRef = useRef(isVisible())
 
   const sendRoomFrame = useCallback((type: 'join' | 'leave', roomId: string) => {
     const ws = socketRef.current
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type, room_id: roomId }))
+    }
+  }, [])
+
+  // #59: reports this desktop window's focus state as its own signal,
+  // completely separate from room join/leave above -- see FocusPresence
+  // server-side. No-op (and never called) outside desktop mode, matching
+  // how the server only ever expects "focus" frames from the desktop
+  // client at all.
+  const sendFocusFrame = useCallback(() => {
+    const ws = socketRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'focus', focused: document.hasFocus() }))
     }
   }, [])
 
@@ -91,12 +106,18 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         // comment): reconnecting from a backgrounded tab should stay
         // "left" for the same reason backgrounding leaves in the first
         // place (see desiredRoomsRef's comment above).
-        isVisibleRef.current = isPresent()
+        isVisibleRef.current = isVisible()
         if (isVisibleRef.current) {
           for (const roomId of desiredRoomsRef.current) {
             sendRoomFrame('join', roomId)
           }
         }
+        // The server's FocusPresence state for this user doesn't survive a
+        // dropped connection either (see chat.py's disconnect cleanup) --
+        // report the current value fresh on every (re)connect, not just on
+        // the next focus/blur transition, so a reconnect while unfocused
+        // (e.g. after a deploy) doesn't leave the server assuming focused.
+        if (desktopMode) sendFocusFrame()
       }
 
       ws.onmessage = (event) => {
@@ -139,34 +160,38 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [sendRoomFrame])
+  }, [sendRoomFrame, sendFocusFrame])
 
   useEffect(() => {
-    function handlePresenceChange() {
-      const present = isPresent()
-      if (present === isVisibleRef.current) return
-      isVisibleRef.current = present
+    function handleVisibilityChange() {
+      const visible = isVisible()
+      if (visible === isVisibleRef.current) return
+      isVisibleRef.current = visible
       for (const roomId of desiredRoomsRef.current) {
-        sendRoomFrame(present ? 'join' : 'leave', roomId)
+        sendRoomFrame(visible ? 'join' : 'leave', roomId)
       }
     }
-    document.addEventListener('visibilitychange', handlePresenceChange)
-    // Only in desktop mode -- see isPresent()'s comment above. Blur/focus on
-    // a browser tab fire on every click into/out of the page (e.g. opening
-    // devtools), which would be a far noisier signal than intended there;
-    // browser tabs stay on visibilitychange alone, unchanged from before.
-    if (desktopMode) {
-      window.addEventListener('focus', handlePresenceChange)
-      window.addEventListener('blur', handlePresenceChange)
-    }
-    return () => {
-      document.removeEventListener('visibilitychange', handlePresenceChange)
-      if (desktopMode) {
-        window.removeEventListener('focus', handlePresenceChange)
-        window.removeEventListener('blur', handlePresenceChange)
-      }
-    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [sendRoomFrame])
+
+  // #59: focus/blur reporting, entirely separate from the visibility effect
+  // above -- losing OS focus no longer touches room membership at all, just
+  // this signal (consumed server-side by FocusPresence to widen desktop-
+  // notification eligibility). Only in desktop mode: on a browser tab,
+  // focus/blur fire on every click into/out of the page (e.g. opening
+  // devtools), a far noisier signal than intended, and browser tabs don't
+  // need it anyway -- visibility alone already matches pre-#49 behavior
+  // there.
+  useEffect(() => {
+    if (!desktopMode) return
+    window.addEventListener('focus', sendFocusFrame)
+    window.addEventListener('blur', sendFocusFrame)
+    return () => {
+      window.removeEventListener('focus', sendFocusFrame)
+      window.removeEventListener('blur', sendFocusFrame)
+    }
+  }, [sendFocusFrame])
 
   const subscribe = useCallback((handler: (envelope: ServerEnvelope) => void) => {
     subscribersRef.current.add(handler)
@@ -193,7 +218,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
       // room stays in desiredRoomsRef regardless, so the next genuine
       // foreground transition (handleVisibilityChange below) still joins
       // it, just deferred instead of wrongly immediate.
-      isVisibleRef.current = isPresent()
+      isVisibleRef.current = isVisible()
       if (isVisibleRef.current) sendRoomFrame('join', roomId)
     },
     [sendRoomFrame],

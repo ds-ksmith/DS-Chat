@@ -10,6 +10,7 @@ from app.services.link_preview_service import fetch_and_broadcast_link_preview
 from app.services.push_service import send_push_to_user
 from app.services.webhook_service import dispatch_event
 from app.ws.broadcaster import Broadcaster
+from app.ws.focus_presence import FocusPresence
 from app.ws.presence import Presence
 
 
@@ -17,6 +18,7 @@ async def _notify_offline_members(
     db: AsyncSession,
     broadcaster: Broadcaster,
     presence: Presence,
+    focus_presence: FocusPresence,
     room_id: uuid.UUID,
     sender: User,
     message: Message,
@@ -25,12 +27,28 @@ async def _notify_offline_members(
         select(RoomMembership.user_id).where(RoomMembership.room_id == room_id)
     )
     member_ids = {row[0] for row in result.all()}
+    connected_ids = await presence.connected_user_ids(room_id)
     # Subtract the sender explicitly rather than relying on them being
     # "connected" (true for the WS path, since they just sent this over an
     # active connection -- not true for the incoming-webhook REST path,
     # which has no WS connection for the attributed sender at all).
-    offline_ids = member_ids - await presence.connected_user_ids(room_id) - {sender.id}
-    if not offline_ids:
+    offline_ids = member_ids - connected_ids - {sender.id}
+
+    # #59: a desktop-mode member can be *connected* to this room's channel
+    # (it's open on screen, live messages are rendering) while their window
+    # sits unfocused behind something else -- still exactly the situation a
+    # desktop notification should fire for, same as #49's original intent.
+    # This used to be handled by the client faking "offline" (leaving the
+    # room's channel on blur), which also silently stopped live delivery to
+    # that room; FocusPresence is a separate signal so notification
+    # eligibility no longer has to ride on room-connection state at all.
+    connected_but_unfocused_ids = {
+        user_id
+        for user_id in connected_ids - {sender.id}
+        if await focus_presence.is_unfocused(user_id)
+    }
+    notify_ids = offline_ids | connected_but_unfocused_ids
+    if not notify_ids:
         return
 
     result = await db.execute(
@@ -38,12 +56,10 @@ async def _notify_offline_members(
     )
     mentioned_ids = {row[0] for row in result.all()}
 
-    # This is also exactly the right audience for "give this room an unread
-    # dot": presence.connected_user_ids(room_id) means "has this room's
-    # channel joined right now" -- which the client only does while the tab
-    # is genuinely foregrounded (see useChatSocket.ts's visibility-gated
-    # join/leave), so a backgrounded-but-open room correctly lands here too,
-    # not just rooms that aren't open at all.
+    # Unread-dot audience stays exactly offline_ids, not notify_ids: a
+    # connected-but-unfocused member still has the room open and rendering
+    # on screen right now, so it isn't actually "unread" for them the way a
+    # room they haven't got open at all is.
     for user_id in offline_ids:
         await broadcaster.publish_to_user(
             user_id,
@@ -56,7 +72,7 @@ async def _notify_offline_members(
 
     room = await db.get(Room, room_id)
     title = f"#{room.name}" if room else "New message"
-    for user_id in offline_ids:
+    for user_id in notify_ids:
         mentioned = user_id in mentioned_ids
         if message.content:
             prefix = f"{sender.username} mentioned you: " if mentioned else f"{sender.username}: "
@@ -131,6 +147,7 @@ async def broadcast_new_message(
     db: AsyncSession,
     broadcaster: Broadcaster,
     presence: Presence,
+    focus_presence: FocusPresence,
     room_id: uuid.UUID,
     message: Message,
     sender: User,
@@ -161,7 +178,7 @@ async def broadcast_new_message(
         await broadcaster.publish_to_user(
             unhidden_user_id, {"type": "room_added", "room_id": str(room_id)}
         )
-    await _notify_offline_members(db, broadcaster, presence, room_id, sender, message)
+    await _notify_offline_members(db, broadcaster, presence, focus_presence, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
 

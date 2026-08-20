@@ -27,6 +27,7 @@ from app.routers import (
 from app.ws.broadcaster import Broadcaster
 from app.ws.chat import router as ws_router
 from app.ws.connection_manager import ConnectionManager
+from app.ws.focus_presence import FocusPresence
 from app.ws.global_presence import GlobalPresence
 from app.ws.presence import Presence
 
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.state.redis = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.presence = Presence(app.state.redis)
     app.state.global_presence = GlobalPresence(app.state.redis)
+    app.state.focus_presence = FocusPresence(app.state.redis)
     app.state.broadcaster = Broadcaster(app.state.redis, app.state.connection_manager)
 
     app.include_router(health.router)

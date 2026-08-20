@@ -25,4 +25,5 @@ async def incoming_webhook_endpoint(
 
     broadcaster = request.app.state.broadcaster
     presence = request.app.state.presence
-    await broadcast_new_message(db, broadcaster, presence, room.id, message, sender)
+    focus_presence = request.app.state.focus_presence
+    await broadcast_new_message(db, broadcaster, presence, focus_presence, room.id, message, sender)
