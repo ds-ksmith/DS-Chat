@@ -171,6 +171,21 @@ export function ChatPane({
           setLive((prev) =>
             prev.map((m) => (m.id === envelope.id ? { ...m, reactions: envelope.reactions } : m)),
           )
+        } else if (envelope.type === 'message_deleted' && envelope.room_id === room.id) {
+          // Mirrors what the server already did to the row (see
+          // message_service.delete_message) -- content/image/file/preview
+          // cleared, deleted_at set. `reactions` is left alone; MessageList
+          // just doesn't render it once deleted_at is set, same as it
+          // doesn't render anything else here.
+          const tombstone = {
+            content: null,
+            image_id: null,
+            file: null,
+            link_preview: null,
+            deleted_at: new Date().toISOString(),
+          }
+          setHistory((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, ...tombstone } : m)))
+          setLive((prev) => prev.map((m) => (m.id === envelope.id ? { ...m, ...tombstone } : m)))
         } else if (envelope.type === 'error') {
           setWsError(envelope.detail)
         }
@@ -210,6 +225,10 @@ export function ChatPane({
   )
   const sendReaction = useCallback(
     (messageId: string, emoji: string) => socket.sendReaction(room.id, messageId, emoji),
+    [socket, room.id],
+  )
+  const sendDelete = useCallback(
+    (messageId: string) => socket.sendDelete(room.id, messageId),
     [socket, room.id],
   )
 
@@ -264,6 +283,7 @@ export function ChatPane({
         myRooms={myRooms}
         onEdit={sendEdit}
         onReact={sendReaction}
+        onDelete={sendDelete}
       />
       <Composer
         roomId={room.id}

@@ -6,11 +6,19 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, MessageMention, MessageReaction, MessageRoomReference
+from app.models import (
+    Message,
+    MessageFile,
+    MessageImage,
+    MessageMention,
+    MessageReaction,
+    MessageRoomReference,
+)
 from app.schemas.message import ReactionSummary
 from app.services.link_preview_service import extract_first_url
 from app.services.mention_service import extract_mentioned_user_ids
 from app.services.room_reference_service import extract_referenced_room_ids
+from app.storage import delete_file
 
 
 class MessageNotFoundError(Exception):
@@ -56,7 +64,9 @@ async def edit_message(
     db: AsyncSession, message_id: uuid.UUID, editor_id: uuid.UUID, content: str
 ) -> Message:
     message = await db.get(Message, message_id)
-    if message is None:
+    # A deleted message might as well not exist for editing purposes --
+    # same MessageNotFoundError a genuinely missing id would raise.
+    if message is None or message.deleted_at is not None:
         raise MessageNotFoundError()
     if message.user_id != editor_id:
         raise NotMessageAuthorError()
@@ -66,6 +76,50 @@ async def edit_message(
     message.edited_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(message)
+    return message
+
+
+async def delete_message(db: AsyncSession, message_id: uuid.UUID, deleter_id: uuid.UUID) -> Message:
+    message = await db.get(Message, message_id)
+    if message is None or message.deleted_at is not None:
+        raise MessageNotFoundError()
+    if message.user_id != deleter_id:
+        raise NotMessageAuthorError()
+
+    # Fetch the attachment's storage filename (if any) before clearing the
+    # message's own FK to it -- the file is only unlinked from disk after a
+    # successful commit below, mirroring delete_room's identical ordering:
+    # a rolled-back transaction should never leave us having destroyed
+    # something we couldn't get back.
+    image_filename: str | None = None
+    file_filename: str | None = None
+    if message.image_id is not None:
+        image = await db.get(MessageImage, message.image_id)
+        if image is not None:
+            image_filename = image.storage_filename
+            await db.delete(image)
+    if message.file_id is not None:
+        message_file = await db.get(MessageFile, message.file_id)
+        if message_file is not None:
+            file_filename = message_file.storage_filename
+            await db.delete(message_file)
+
+    # #53: a real delete, not just a UI hide -- content and any attachment
+    # are actually gone, not merely unlinked-but-still-fetchable. Only
+    # deleted_at (plus id/room_id/user_id/created_at, kept so the tombstone
+    # still occupies its place in history) survives.
+    message.content = None
+    message.image_id = None
+    message.file_id = None
+    message.preview_url = None
+    message.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(message)
+
+    for filename in (image_filename, file_filename):
+        if filename is not None:
+            delete_file(filename)
+
     return message
 
 

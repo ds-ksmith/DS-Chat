@@ -44,3 +44,9 @@ class MessageRead(BaseModel):
     reactions: list[ReactionSummary]
     created_at: datetime
     edited_at: datetime | None
+    # #53: null for a live message; set once deleted, at which point
+    # content/image_id/file/link_preview are all already cleared
+    # server-side (see message_service.delete_message). `reactions` isn't
+    # cleared server-side -- the frontend just doesn't render them once
+    # deleted_at is set, same as it doesn't render the rest of a tombstone.
+    deleted_at: datetime | None

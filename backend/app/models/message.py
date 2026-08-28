@@ -10,8 +10,12 @@ from app.models.base import Base
 class Message(Base):
     __tablename__ = "messages"
     __table_args__ = (
+        # #53: a deleted message clears content/image_id/file_id entirely
+        # (see message_service.delete_message) -- the "must have something"
+        # rule only applies while the message is actually live.
         CheckConstraint(
-            "content IS NOT NULL OR image_id IS NOT NULL OR file_id IS NOT NULL",
+            "content IS NOT NULL OR image_id IS NOT NULL OR file_id IS NOT NULL "
+            "OR deleted_at IS NOT NULL",
             name="messages_content_or_attachment_required",
         ),
     )

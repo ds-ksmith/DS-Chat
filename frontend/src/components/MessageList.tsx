@@ -67,9 +67,18 @@ interface MessageListProps {
   myRooms: Map<string, string>
   onEdit: (messageId: string, content: string) => void
   onReact: (messageId: string, emoji: string) => void
+  onDelete: (messageId: string) => void
 }
 
-export function MessageList({ roomId, messages, members, myRooms, onEdit, onReact }: MessageListProps) {
+export function MessageList({
+  roomId,
+  messages,
+  members,
+  myRooms,
+  onEdit,
+  onReact,
+  onDelete,
+}: MessageListProps) {
   const { user } = useAuth()
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -133,6 +142,14 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
     setEditingId(null)
   }
 
+  function handleDelete(messageId: string) {
+    // Matches the confirm() pattern already used for other destructive
+    // actions in this app (RoomInfoPanel's leave/delete-room,
+    // ProfileModal's delete-theme) rather than a custom dialog.
+    if (!confirm("Delete this message? This can't be undone.")) return
+    onDelete(messageId)
+  }
+
   return (
     <div className="message-list" ref={containerRef}>
       {messages.map((msg, i) => {
@@ -144,6 +161,7 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
         // applies uniformly, including to your own messages.
         const isGroupStart = !prev || prev.user_id !== msg.user_id
         const editing = editingId === msg.id
+        const deleted = !!msg.deleted_at
 
         return (
           <div key={msg.id} className={`message-row${isGroupStart ? ' message-row-start' : ''}`}>
@@ -166,7 +184,11 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
                   </span>
                 </div>
               )}
-              {editing ? (
+              {deleted ? (
+                <div className="message-text message-deleted-text">
+                  <em>This message was deleted</em>
+                </div>
+              ) : editing ? (
                 <textarea
                   autoFocus
                   rows={Math.min(10, draft.split('\n').length)}
@@ -231,7 +253,7 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
                 </>
               )}
             </div>
-            {!editing && (
+            {!editing && !deleted && (
               <div className="message-row-actions">
                 <div className="message-reaction-wrap">
                   <button
@@ -275,6 +297,16 @@ export function MessageList({ roomId, messages, members, myRooms, onEdit, onReac
                     aria-label="Edit message"
                   >
                     Edit
+                  </button>
+                )}
+                {mine && (
+                  <button
+                    type="button"
+                    className="message-delete-link"
+                    onClick={() => handleDelete(msg.id)}
+                    aria-label="Delete message"
+                  >
+                    Delete
                   </button>
                 )}
               </div>

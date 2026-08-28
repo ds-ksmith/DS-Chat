@@ -258,7 +258,13 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
     ws.send(JSON.stringify({ type: 'reaction', room_id: roomId, message_id: messageId, emoji }))
   }, [])
 
-  return { connected, subscribe, joinRoom, leaveRoom, send, sendEdit, sendReaction }
+  const sendDelete = useCallback((roomId: string, messageId: string) => {
+    const ws = socketRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) return
+    ws.send(JSON.stringify({ type: 'delete', room_id: roomId, message_id: messageId }))
+  }, [])
+
+  return { connected, subscribe, joinRoom, leaveRoom, send, sendEdit, sendReaction, sendDelete }
 }
 
 export type ChatSocketHandle = ReturnType<typeof useChatSocket>

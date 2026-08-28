@@ -148,6 +148,11 @@ export interface Message {
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
+  // #53: null for a live message. content/image_id/file/link_preview are
+  // already cleared server-side once this is set -- MessageList renders a
+  // tombstone off this alone rather than inferring deletion from the rest
+  // being empty.
+  deleted_at: string | null
 }
 
 export interface ChatMessageEnvelope {
@@ -163,6 +168,10 @@ export interface ChatMessageEnvelope {
   reactions: ReactionSummary[]
   created_at: string
   edited_at: string | null
+  // Always null here -- a just-sent message can't already be deleted --
+  // but declared so MessageList can read msg.deleted_at uniformly across
+  // the Message | ChatMessageEnvelope union, same as edited_at above.
+  deleted_at: string | null
 }
 
 export interface ChatMessageUpdateEnvelope {
@@ -194,6 +203,12 @@ export interface ChatReactionUpdateEnvelope {
   id: string
   room_id: string
   reactions: ReactionSummary[]
+}
+
+export interface ChatMessageDeletedEnvelope {
+  type: 'message_deleted'
+  id: string
+  room_id: string
 }
 
 export interface ChatJoinedEnvelope {
@@ -252,6 +267,7 @@ export type ServerEnvelope =
   | ChatMessageEnvelope
   | ChatMessageUpdateEnvelope
   | ChatReactionUpdateEnvelope
+  | ChatMessageDeletedEnvelope
   | ChatLinkPreviewEnvelope
   | ChatJoinedEnvelope
   | ChatErrorEnvelope

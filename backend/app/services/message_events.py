@@ -134,6 +134,10 @@ async def _message_payload(db: AsyncSession, message: Message, username: str) ->
         "reactions": [],
         "created_at": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        # Always null here -- a message just being created can't already be
+        # deleted -- but included for wire-format parity with MessageRead
+        # and message_deleted (#53).
+        "deleted_at": None,
     }
 
 
@@ -202,6 +206,16 @@ async def broadcast_message_update(
     await broadcaster.publish(room_id, payload)
     await dispatch_event(db, "message.updated", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
+
+
+async def broadcast_message_delete(broadcaster: Broadcaster, room_id: uuid.UUID, message_id: uuid.UUID) -> None:
+    # #53: no dispatch_event() call, deliberately -- same scope cut as
+    # broadcast_reaction_update's, and for the same reason (see
+    # backend/README.md): message.deleted isn't an outgoing-webhook event
+    # type here.
+    await broadcaster.publish(
+        room_id, {"type": "message_deleted", "id": str(message_id), "room_id": str(room_id)}
+    )
 
 
 async def broadcast_reaction_update(

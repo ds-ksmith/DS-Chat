@@ -11,6 +11,7 @@ from app.services.bot_service import resolve_token
 from app.services.message_events import (
     broadcast_dm_presence_update,
     broadcast_member_updated,
+    broadcast_message_delete,
     broadcast_message_update,
     broadcast_new_message,
     broadcast_reaction_update,
@@ -19,6 +20,7 @@ from app.services.message_service import (
     MessageNotFoundError,
     NotMessageAuthorError,
     create_message,
+    delete_message,
     edit_message,
     toggle_reaction,
 )
@@ -261,6 +263,36 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         continue
                     await broadcast_message_update(db, broadcaster, envelope.room_id, message)
 
+                elif envelope.type == "delete":
+                    if envelope.room_id is None or envelope.message_id is None:
+                        await websocket.send_json(
+                            {"type": "error", "detail": "room_id and message_id required"}
+                        )
+                        continue
+                    if _missing_scope(api_token, "write:messages"):
+                        await websocket.send_json(
+                            {"type": "error", "detail": "Token missing required scope: write:messages"}
+                        )
+                        continue
+                    if envelope.room_id not in joined_rooms or not await _is_room_member(
+                        db, envelope.room_id, user.id
+                    ):
+                        await websocket.send_json(
+                            {"type": "error", "detail": "Not a member of this room"}
+                        )
+                        continue
+                    try:
+                        await delete_message(db, envelope.message_id, user.id)
+                    except MessageNotFoundError:
+                        await websocket.send_json({"type": "error", "detail": "Message not found"})
+                        continue
+                    except NotMessageAuthorError:
+                        await websocket.send_json(
+                            {"type": "error", "detail": "You can only delete your own messages"}
+                        )
+                        continue
+                    await broadcast_message_delete(broadcaster, envelope.room_id, envelope.message_id)
+
                 elif envelope.type == "reaction":
                     if (
                         envelope.room_id is None
@@ -285,7 +317,11 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         )
                         continue
                     target_message = await db.get(Message, envelope.message_id)
-                    if target_message is None or target_message.room_id != envelope.room_id:
+                    if (
+                        target_message is None
+                        or target_message.room_id != envelope.room_id
+                        or target_message.deleted_at is not None
+                    ):
                         await websocket.send_json({"type": "error", "detail": "Message not found"})
                         continue
                     reactions = await toggle_reaction(db, envelope.message_id, user.id, envelope.emoji)

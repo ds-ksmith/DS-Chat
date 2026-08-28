@@ -433,6 +433,7 @@ async def get_room_messages_endpoint(
             reactions=reactions_by_message.get(m.id, []),
             created_at=m.created_at,
             edited_at=m.edited_at,
+            deleted_at=m.deleted_at,
         )
         for m in messages
     ]

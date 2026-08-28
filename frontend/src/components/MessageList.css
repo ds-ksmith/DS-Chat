@@ -304,6 +304,25 @@
   border-color: var(--ds-accent);
 }
 
+.message-delete-link {
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  color: var(--ds-muted);
+  font-size: 0.68rem;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.message-delete-link:hover {
+  color: var(--ds-danger);
+  border-color: var(--ds-danger);
+}
+
+.message-deleted-text {
+  color: var(--ds-muted);
+}
+
 .message-reaction-wrap {
   position: relative;
 }
