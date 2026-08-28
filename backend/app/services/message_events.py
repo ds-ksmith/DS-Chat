@@ -6,12 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Message, MessageFile, MessageMention, Room, RoomMembership, User
 from app.schemas.message import ReactionSummary
+from app.services.email_service import send_email
 from app.services.link_preview_service import fetch_and_broadcast_link_preview
 from app.services.push_service import send_push_to_user
 from app.services.room_service import list_dm_partner_ids
 from app.services.webhook_service import dispatch_event
 from app.ws.broadcaster import Broadcaster
 from app.ws.focus_presence import FocusPresence
+from app.ws.global_presence import GlobalPresence
 from app.ws.presence import Presence
 
 
@@ -148,11 +150,82 @@ def _maybe_fetch_link_preview(broadcaster: Broadcaster, room_id: uuid.UUID, mess
         )
 
 
+async def _maybe_email_dm_notification(
+    db: AsyncSession,
+    global_presence: GlobalPresence,
+    base_url: str,
+    room_id: uuid.UUID,
+    sender: User,
+    message: Message,
+) -> None:
+    """#66: DMs only, deliberately narrower than _notify_offline_members'
+    own "offline" -- that one means "not connected to this room's channel
+    right now," which fires on every message and is fine for a lightweight
+    channel (push/desktop). Email is heavier-weight and a DM's other
+    participant could easily be actively using the app in a different room,
+    so this uses GlobalPresence (genuinely no open connection anywhere)
+    instead -- the same "is this user actually offline" logic as
+    rooms.py's private _member_status (not importable from here), just
+    re-derived.
+    """
+    room = await db.get(Room, room_id)
+    if room is None or not room.is_dm:
+        return
+
+    result = await db.execute(
+        select(RoomMembership).where(
+            RoomMembership.room_id == room_id, RoomMembership.user_id != sender.id
+        )
+    )
+    membership = result.scalar_one_or_none()
+    if membership is None:
+        return
+    recipient = await db.get(User, membership.user_id)
+    if recipient is None:
+        return
+    # appear_offline is a manual "always look offline" override -- treated
+    # the same as genuinely offline here, same as everywhere else it's
+    # checked in this codebase.
+    if not recipient.appear_offline and await global_presence.is_online(recipient.id):
+        return
+
+    # Debounced to the first unread message in this conversation, not
+    # every single one -- a burst of DMs while someone's asleep should be
+    # one email, not one per message.
+    already_unread = await db.execute(
+        select(Message.id)
+        .where(
+            Message.room_id == room_id,
+            Message.id != message.id,
+            Message.created_at > membership.last_read_at,
+        )
+        .limit(1)
+    )
+    if already_unread.scalar_one_or_none() is not None:
+        return
+
+    if message.content:
+        body_line = f"{sender.username}: {message.content[:200]}"
+    elif message.file_id:
+        body_line = f"{sender.username} sent a file"
+    else:
+        body_line = f"{sender.username} sent an image"
+    link = f"{base_url.rstrip('/')}/rooms/{room_id}"
+    await send_email(
+        db,
+        recipient.email,
+        f"New message from {sender.username}",
+        f"{body_line}\n\nView it here:\n{link}",
+    )
+
+
 async def broadcast_new_message(
     db: AsyncSession,
     broadcaster: Broadcaster,
     presence: Presence,
     focus_presence: FocusPresence,
+    global_presence: GlobalPresence,
+    base_url: str,
     room_id: uuid.UUID,
     message: Message,
     sender: User,
@@ -184,6 +257,7 @@ async def broadcast_new_message(
             unhidden_user_id, {"type": "room_added", "room_id": str(room_id)}
         )
     await _notify_offline_members(db, broadcaster, presence, focus_presence, room_id, sender, message)
+    await _maybe_email_dm_notification(db, global_presence, base_url, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
 

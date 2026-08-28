@@ -230,7 +230,15 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     # attributed sender may not actually be watching.
                     await mark_room_read(db, envelope.room_id, user.id)
                     await broadcast_new_message(
-                        db, broadcaster, presence, focus_presence, envelope.room_id, message, user
+                        db,
+                        broadcaster,
+                        presence,
+                        focus_presence,
+                        global_presence,
+                        str(websocket.base_url),
+                        envelope.room_id,
+                        message,
+                        user,
                     )
 
                 elif envelope.type == "edit":
