@@ -305,8 +305,10 @@ export function AdminPage() {
 
   async function handleRevokeSiteInvite(invite: SiteInvite) {
     await withBusy(invite.id, async () => {
-      const updated = await revokeSiteInvite(invite.id)
-      setSiteInvites((prev) => prev.map((i) => (i.id === updated.id ? updated : i)))
+      await revokeSiteInvite(invite.id)
+      // #61: the list is pending-only (server-filtered), so a revoked
+      // invite drops out of it rather than sticking around relabeled.
+      setSiteInvites((prev) => prev.filter((i) => i.id !== invite.id))
     })
   }
 
@@ -417,21 +419,17 @@ export function AdminPage() {
               {siteInvites.map((invite) => (
                 <div key={invite.id} className="admin-token-row">
                   <span className="admin-token-scopes">{invite.email}</span>
-                  <span className={`invite-status-badge invite-status-${invite.status}`}>{invite.status}</span>
                   <span className="admin-token-meta">
-                    {invite.status === 'pending' &&
-                      `Expires ${new Date(invite.expires_at).toLocaleDateString()}`}
+                    Expires {new Date(invite.expires_at).toLocaleDateString()}
                   </span>
-                  {invite.status === 'pending' && (
-                    <button
-                      type="button"
-                      className="admin-token-revoke"
-                      disabled={busyId === invite.id}
-                      onClick={() => handleRevokeSiteInvite(invite)}
-                    >
-                      Revoke
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    className="admin-token-revoke"
+                    disabled={busyId === invite.id}
+                    onClick={() => handleRevokeSiteInvite(invite)}
+                  >
+                    Revoke
+                  </button>
                 </div>
               ))}
             </div>

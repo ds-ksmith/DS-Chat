@@ -185,35 +185,6 @@
   margin-bottom: var(--sp-2);
 }
 
-.invite-status-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: var(--radius-pill);
-  font-size: 0.68rem;
-  font-weight: 800;
-  padding: 2px 8px;
-  text-transform: capitalize;
-  flex: none;
-}
-
-.invite-status-pending {
-  border: 1px solid var(--ds-border);
-  background: transparent;
-  color: var(--ds-muted);
-}
-
-.invite-status-accepted {
-  border: 1px solid color-mix(in srgb, var(--ds-accent) 50%, transparent);
-  background: color-mix(in srgb, var(--ds-accent) 14%, transparent);
-  color: var(--ds-accent);
-}
-
-.invite-status-revoked {
-  border: 1px solid color-mix(in srgb, var(--ds-danger) 50%, transparent);
-  background: color-mix(in srgb, var(--ds-danger) 14%, transparent);
-  color: var(--ds-danger);
-}
-
 .admin-token-list {
   display: flex;
   flex-direction: column;

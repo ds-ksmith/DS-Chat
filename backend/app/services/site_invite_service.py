@@ -52,8 +52,14 @@ async def create_site_invite(
 
 
 async def list_site_invites(db: AsyncSession) -> list[SiteInvite]:
+    # Pending only (#61) -- the admin UI's only consumer of this list labels
+    # it "Pending invites" and had no way to drop a row once it was accepted
+    # or revoked, since the backend returned every invite ever sent forever.
+    # An accepted/revoked invite has nothing further to act on here; its
+    # history already lives in the audit log ("user.invite"/"invite.revoke").
     result = await db.execute(
         select(SiteInvite)
+        .where(SiteInvite.status == InviteStatus.pending)
         .options(selectinload(SiteInvite.inviter))
         .order_by(SiteInvite.created_at.desc())
     )

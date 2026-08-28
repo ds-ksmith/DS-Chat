@@ -194,3 +194,54 @@ async def test_list_site_invites(client, db_session, monkeypatch):
     assert resp.status_code == 200
     emails = [i["email"] for i in resp.json()]
     assert "listed@example.com" in emails
+
+
+async def test_list_site_invites_excludes_revoked_invite(client, db_session, monkeypatch):
+    # #61: the admin UI labels this list "Pending invites" -- a revoked
+    # invite has nothing left to act on and must actually drop out of it,
+    # not just get relabeled in place.
+    _fake_smtp(monkeypatch)
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await _configure_smtp(client)
+
+    resp = await client.post("/api/admin/invites", json={"email": "revoked-from-list@example.com"})
+    invite_id = resp.json()["id"]
+
+    revoke = await client.delete(f"/api/admin/invites/{invite_id}")
+    assert revoke.status_code == 200
+
+    listed = await client.get("/api/admin/invites")
+    emails = [i["email"] for i in listed.json()]
+    assert "revoked-from-list@example.com" not in emails
+
+
+async def test_list_site_invites_excludes_accepted_invite(client, db_session, monkeypatch):
+    # Same gap, the other trigger: completing signup accepts the invite
+    # out-of-band from the admin's own session, but it must still be gone
+    # from the pending list on the admin's next fetch.
+    calls = _fake_smtp(monkeypatch)
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await _configure_smtp(client)
+
+    await client.post("/api/admin/invites", json={"email": "accepted-from-list@example.com"})
+    token = _extract_token(calls[0]["message"].get_content())
+
+    complete = await client.post(
+        "/api/signup",
+        json={
+            "token": token,
+            "username": "acceptedfromlist",
+            "password": "password123",
+            "password_confirm": "password123",
+        },
+    )
+    assert complete.status_code == 200, complete.text
+
+    # Signup logs the new user's session in on `client` -- switch back to
+    # the admin to check the list the way the admin actually would.
+    await login_as(client, "admin1")
+    listed = await client.get("/api/admin/invites")
+    emails = [i["email"] for i in listed.json()]
+    assert "accepted-from-list@example.com" not in emails
