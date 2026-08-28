@@ -965,3 +965,15 @@ export const EMOJI_SHORTCODES: Record<string, string> = {
   'zebra': '🦓',
   'zipper_mouth_face': '🤐',
 }
+
+// Reverse of the above, for #54's composer autocomplete: showing recently-
+// used emoji (tracked by glyph, see recentEmoji.ts) as suggestions when the
+// user has just typed a bare ":" with nothing after it yet. Several glyphs
+// have more than one valid shortcode (e.g. 🖕 is both 'fu' and
+// 'middle_finger') -- first one wins, in the object's own key order, which
+// is deterministic but otherwise arbitrary.
+export const SHORTCODE_BY_GLYPH: Record<string, string> = Object.fromEntries(
+  Object.entries(EMOJI_SHORTCODES)
+    .reverse()
+    .map(([shortcode, glyph]) => [glyph, shortcode]),
+)

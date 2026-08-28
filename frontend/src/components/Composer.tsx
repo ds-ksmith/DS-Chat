@@ -12,9 +12,12 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
+import { EMOJI_SHORTCODES, SHORTCODE_BY_GLYPH } from '../lib/emojiShortcodes'
 import { formatFileSize } from '../lib/fileSize'
+import { getRecentEmoji, recordEmojiUsed } from '../lib/recentEmoji'
 import type { MyRoomItem, RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
+import { EmojiShortcodeAutocomplete, type EmojiShortcodeMatch } from './EmojiShortcodeAutocomplete'
 import { MentionAutocomplete } from './MentionAutocomplete'
 import { RoomReferenceAutocomplete } from './RoomReferenceAutocomplete'
 import './Composer.css'
@@ -63,6 +66,19 @@ function detectRoomReferenceQuery(text: string, cursor: number): TriggerQuery | 
   return detectTriggerQuery(text, cursor, '#')
 }
 
+// #54: a dedicated scan rather than detectTriggerQuery(text, cursor, ':')
+// -- shortcode names (see emojiShortcodes.ts) can contain '+'/'-' (':+1:',
+// ':t-rex:') but never '.', the reverse of what the shared @/# charset
+// allows, so it doesn't fit that helper's single fixed charset.
+function detectEmojiQuery(text: string, cursor: number): TriggerQuery | null {
+  let i = cursor - 1
+  while (i >= 0 && /[a-zA-Z0-9_+-]/.test(text[i])) i--
+  if (i < 0 || text[i] !== ':') return null
+  const prevChar = text[i - 1]
+  if (prevChar && /\w/.test(prevChar)) return null
+  return { start: i, end: cursor, text: text.slice(i + 1, cursor) }
+}
+
 interface AttachMenuProps {
   onPickPhoto: () => void
   onPickFile: () => void
@@ -104,6 +120,8 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0)
   const [roomQuery, setRoomQuery] = useState<TriggerQuery | null>(null)
   const [roomActiveIndex, setRoomActiveIndex] = useState(0)
+  const [emojiQuery, setEmojiQuery] = useState<TriggerQuery | null>(null)
+  const [emojiActiveIndex, setEmojiActiveIndex] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -136,6 +154,26 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
     return rooms.filter((r) => r.name.toLowerCase().startsWith(q)).slice(0, 8)
   }, [roomQuery, rooms])
 
+  const emojiMatches = useMemo((): EmojiShortcodeMatch[] => {
+    if (!emojiQuery) return []
+    const q = emojiQuery.text.toLowerCase()
+    // A bare ":" with nothing typed yet -- suggest recently-used emoji
+    // (already capped to 8, see recentEmoji.ts) rather than an arbitrary
+    // slice of the ~950 known shortcodes.
+    if (!q) {
+      return getRecentEmoji()
+        .map((glyph) => {
+          const shortcode = SHORTCODE_BY_GLYPH[glyph]
+          return shortcode ? { shortcode, glyph } : null
+        })
+        .filter((match): match is EmojiShortcodeMatch => match !== null)
+    }
+    return Object.keys(EMOJI_SHORTCODES)
+      .filter((shortcode) => shortcode.startsWith(q))
+      .slice(0, 8)
+      .map((shortcode) => ({ shortcode, glyph: EMOJI_SHORTCODES[shortcode] }))
+  }, [emojiQuery])
+
   useEffect(() => {
     getUploadLimit()
       .then((limit) => setMaxUploadBytes(limit.max_upload_bytes))
@@ -159,6 +197,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
     setValue('')
     setMentionQuery(null)
     setRoomQuery(null)
+    setEmojiQuery(null)
     removePendingImage()
     setPendingFile(null)
     requestAnimationFrame(autoGrow)
@@ -191,6 +230,27 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
       if (!el) return
       el.focus()
       const cursor = query.start + roomName.length + 2 // '#' + roomName + trailing space
+      el.setSelectionRange(cursor, cursor)
+      autoGrow()
+    })
+  }
+
+  function selectEmojiShortcode(shortcode: string) {
+    const query = emojiQuery
+    const glyph = EMOJI_SHORTCODES[shortcode]
+    if (!query || !glyph) return
+    // Matches EmojiPicker's own insertEmoji -- a shortcode-completed emoji
+    // counts as "used" the same as one picked from the picker, so it
+    // shows up there too next time.
+    recordEmojiUsed(glyph)
+    const el = textareaRef.current
+    const next = value.slice(0, query.start) + glyph + ' ' + value.slice(query.end)
+    setValue(next)
+    setEmojiQuery(null)
+    requestAnimationFrame(() => {
+      if (!el) return
+      el.focus()
+      const cursor = query.start + glyph.length + 1 // glyph + trailing space
       el.setSelectionRange(cursor, cursor)
       autoGrow()
     })
@@ -241,6 +301,28 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
         return
       }
     }
+    if (emojiQuery && emojiMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setEmojiActiveIndex((i) => (i + 1) % emojiMatches.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setEmojiActiveIndex((i) => (i - 1 + emojiMatches.length) % emojiMatches.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        selectEmojiShortcode(emojiMatches[emojiActiveIndex].shortcode)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setEmojiQuery(null)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -258,6 +340,8 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
     setMentionActiveIndex(0)
     setRoomQuery(detectRoomReferenceQuery(el.value, cursor))
     setRoomActiveIndex(0)
+    setEmojiQuery(detectEmojiQuery(el.value, cursor))
+    setEmojiActiveIndex(0)
   }
 
   async function handleFile(file: File) {
@@ -486,6 +570,8 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
               setMentionActiveIndex(0)
               setRoomQuery(detectRoomReferenceQuery(e.target.value, cursor))
               setRoomActiveIndex(0)
+              setEmojiQuery(detectEmojiQuery(e.target.value, cursor))
+              setEmojiActiveIndex(0)
             }}
             onSelect={handleSelectionChange}
             onKeyDown={handleKeyDown}
@@ -512,6 +598,14 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
               activeIndex={roomActiveIndex}
               onPick={selectRoomReference}
               onHover={setRoomActiveIndex}
+            />
+          )}
+          {emojiQuery && emojiMatches.length > 0 && (
+            <EmojiShortcodeAutocomplete
+              matches={emojiMatches}
+              activeIndex={emojiActiveIndex}
+              onPick={selectEmojiShortcode}
+              onHover={setEmojiActiveIndex}
             />
           )}
         </div>

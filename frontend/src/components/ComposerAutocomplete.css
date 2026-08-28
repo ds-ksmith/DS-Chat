@@ -40,6 +40,11 @@
   color: var(--ds-accent);
 }
 
+.composer-autocomplete-emoji-glyph {
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .composer-autocomplete-secondary {
   font-size: 0.76rem;
   color: var(--ds-muted);
