@@ -27,6 +27,10 @@ class SubscriptionNotFoundError(Exception):
     pass
 
 
+class RoomArchivedError(Exception):
+    pass
+
+
 async def create_incoming_webhook(
     db: AsyncSession, actor: User, room_id: uuid.UUID, description: str | None
 ) -> WebhookIncoming:
@@ -82,6 +86,11 @@ async def post_via_webhook(db: AsyncSession, token: str, content: str) -> tuple[
     webhook = result.scalar_one_or_none()
     if webhook is None:
         raise WebhookNotFoundError()
+    # #57: same read-only rule as a human posting from the composer -- an
+    # archived room shouldn't gain new messages through a bot integration
+    # either.
+    if webhook.room.is_archived:
+        raise RoomArchivedError()
 
     message = await create_message(db, webhook.room_id, webhook.created_by, content)
     return message, webhook.room, webhook.creator

@@ -57,6 +57,11 @@ export interface Room {
   description: string | null
   is_private: boolean
   is_dm: boolean
+  // #57: exposed here (not just the admin-only AdminRoom) so a member who
+  // still has this room -- direct link, or before their sidebar list next
+  // refreshes -- can be shown it's read-only instead of just silently
+  // failing to send.
+  is_archived: boolean
   owner_id: string
   created_at: string
 }

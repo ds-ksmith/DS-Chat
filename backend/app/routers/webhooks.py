@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas.webhook import IncomingWebhookPost
 from app.services.message_events import broadcast_new_message
-from app.services.webhook_service import WebhookNotFoundError, post_via_webhook
+from app.services.webhook_service import RoomArchivedError, WebhookNotFoundError, post_via_webhook
 
 router = APIRouter(prefix="/api/webhooks", tags=["webhooks"])
 
@@ -22,6 +22,8 @@ async def incoming_webhook_endpoint(
         message, room, sender = await post_via_webhook(db, token, data.content)
     except WebhookNotFoundError:
         raise HTTPException(status_code=404, detail="Unknown webhook")
+    except RoomArchivedError:
+        raise HTTPException(status_code=403, detail="This room has been archived and is read-only")
 
     broadcaster = request.app.state.broadcaster
     presence = request.app.state.presence

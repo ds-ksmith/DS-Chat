@@ -37,7 +37,11 @@ export function Sidebar({
     }
     return room.name.toLowerCase().includes(query)
   }
-  const filtered = rooms.filter(matchesQuery)
+  // #57: archived rooms keep flowing through in `rooms` (so a member who
+  // still has one open via a direct link resolves fine -- see ChatPane),
+  // but they're a dead end going forward, so they don't belong in the list
+  // you'd browse/search from.
+  const filtered = rooms.filter((r) => !r.is_archived).filter(matchesQuery)
   const directMessages = filtered.filter((r) => r.is_dm)
   const regularRooms = filtered.filter((r) => !r.is_dm)
 

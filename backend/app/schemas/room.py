@@ -27,6 +27,11 @@ class RoomRead(BaseModel):
     description: str | None
     is_private: bool
     is_dm: bool
+    # #57: previously only exposed on the admin-only AdminRoom schema, so a
+    # member of an archived room had no way to even know it was archived --
+    # the flag was set server-side but had no effect on their own view of
+    # the room at all.
+    is_archived: bool
     owner_id: uuid.UUID
     created_at: datetime
 

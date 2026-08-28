@@ -272,6 +272,7 @@ export function ChatPane({
         members={members}
         rooms={rooms}
         disabled={!connected}
+        archived={room.is_archived}
         onSend={send}
       />
     </section>

@@ -33,6 +33,12 @@ interface ComposerProps {
   // while typing and what actually renders as a link later agree.
   rooms: MyRoomItem[]
   disabled?: boolean
+  // #57: an archived room is permanently read-only, not just transiently
+  // disconnected -- kept as its own prop rather than folded into `disabled`
+  // so the placeholder/status text can say why, instead of the connecting/
+  // offline copy below (which would be actively misleading here: waiting
+  // won't ever re-enable this).
+  archived?: boolean
   onSend: (content: string, imageId?: string, fileId?: string) => void
 }
 
@@ -106,7 +112,12 @@ function AttachMenu({ onPickPhoto, onPickFile, onClose }: AttachMenuProps) {
   )
 }
 
-export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onSend }: ComposerProps) {
+export function Composer({ roomId, roomName, isDm, members, rooms, disabled, archived, onSend }: ComposerProps) {
+  // Every gate below (attach/emoji buttons, textarea, send button) reads
+  // this instead of the raw `disabled` prop -- an archived room must be
+  // just as unwritable as a disconnected one, it just says why differently
+  // (see the placeholder/status text further down).
+  const isDisabled = disabled || archived
   const [value, setValue] = useState('')
   const [pendingImage, setPendingImage] = useState<{ id: string; previewUrl: string } | null>(null)
   const [pendingFile, setPendingFile] = useState<{ id: string; filename: string; size: number } | null>(
@@ -379,7 +390,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
 
   function handleDragEnter(e: DragEvent<HTMLDivElement>) {
     e.preventDefault()
-    if (disabled) return
+    if (isDisabled) return
     dragCounterRef.current++
     setDragActive(true)
   }
@@ -401,7 +412,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
     e.preventDefault()
     dragCounterRef.current = 0
     setDragActive(false)
-    if (disabled) return
+    if (isDisabled) return
     // Only the first dropped file, matching the existing single-attachment-
     // per-message limit (the button-triggered file input isn't `multiple`
     // either).
@@ -503,7 +514,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
             type="button"
             className="composer-attach"
             onClick={() => setAttachMenuOpen((v) => !v)}
-            disabled={disabled || uploading}
+            disabled={isDisabled || uploading}
             aria-label="Attach a photo or file"
             aria-expanded={attachMenuOpen}
           >
@@ -542,7 +553,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
             type="button"
             className="composer-emoji-trigger"
             onClick={() => setEmojiPickerOpen((v) => !v)}
-            disabled={disabled}
+            disabled={isDisabled}
             aria-label="Insert an emoji"
           >
             🙂
@@ -561,7 +572,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
             ref={textareaRef}
             rows={1}
             value={value}
-            disabled={disabled}
+            disabled={isDisabled}
             onChange={(e) => {
               setValue(e.target.value)
               autoGrow()
@@ -576,11 +587,13 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
             onSelect={handleSelectionChange}
             onKeyDown={handleKeyDown}
             placeholder={
-              disabled
-                ? online
-                  ? 'Connecting…'
-                  : "You're offline"
-                : `Message ${isDm ? roomName : `#${roomName}`}`
+              archived
+                ? 'This room has been archived'
+                : disabled
+                  ? online
+                    ? 'Connecting…'
+                    : "You're offline"
+                  : `Message ${isDm ? roomName : `#${roomName}`}`
             }
             spellCheck
           />
@@ -613,7 +626,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
           type="button"
           className="composer-send"
           onClick={handleSend}
-          disabled={disabled || (!value.trim() && !pendingImage && !pendingFile)}
+          disabled={isDisabled || (!value.trim() && !pendingImage && !pendingFile)}
           aria-label="Send message"
         >
           <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden="true">
@@ -621,8 +634,12 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, onS
           </svg>
         </button>
       </div>
-      {disabled && (
-        <div className="composer-status">{online ? 'Connecting…' : "You're offline — messages can't be sent right now"}</div>
+      {archived ? (
+        <div className="composer-status">This room has been archived and is read-only</div>
+      ) : (
+        disabled && (
+          <div className="composer-status">{online ? 'Connecting…' : "You're offline — messages can't be sent right now"}</div>
+        )
       )}
     </div>
   )

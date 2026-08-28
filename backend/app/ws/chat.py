@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import ApiToken, Message, MessageFile, MessageImage, RoomMembership, User
+from app.models import ApiToken, Message, MessageFile, MessageImage, Room, RoomMembership, User
 from app.services.bot_service import resolve_token
 from app.services.message_events import (
     broadcast_dm_presence_update,
@@ -47,6 +47,11 @@ async def _is_room_member(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UU
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+async def _is_room_archived(db: AsyncSession, room_id: uuid.UUID) -> bool:
+    room = await db.get(Room, room_id)
+    return room is not None and room.is_archived
 
 
 def _missing_scope(api_token: ApiToken | None, scope: str) -> bool:
@@ -184,6 +189,15 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     ):
                         await websocket.send_json(
                             {"type": "error", "detail": "Not a member of this room"}
+                        )
+                        continue
+                    if await _is_room_archived(db, envelope.room_id):
+                        # #57: history stays fully readable (joining/reading
+                        # an archived room's channel is untouched above),
+                        # this is the one gate that actually makes archiving
+                        # do something for people who were already members.
+                        await websocket.send_json(
+                            {"type": "error", "detail": "This room has been archived and is read-only"}
                         )
                         continue
                     image_id = None
