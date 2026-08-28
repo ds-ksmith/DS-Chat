@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { checkForUpdate, setSwRegistration } from '../lib/swUpdate'
 import './UpdateBanner.css'
@@ -25,6 +26,21 @@ export function UpdateBanner() {
       setInterval(checkForUpdate, UPDATE_CHECK_INTERVAL_MS)
     },
   })
+
+  useEffect(() => {
+    // #58: a third trigger, alongside WS-reconnect and the hourly interval
+    // above -- a tab backgrounded across a deploy gets checked the moment
+    // someone actually looks at it again, rather than waiting on whichever
+    // of those two happens to land first. Cheap insurance against either
+    // one missing its moment (e.g. the reconnect-triggered check landing
+    // during the same network blip that caused the reconnect, and failing
+    // -- see checkForUpdate's own comment).
+    function handleVisibilityChange() {
+      if (document.visibilityState === 'visible') checkForUpdate()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
 
   if (!needRefresh) return null
 
