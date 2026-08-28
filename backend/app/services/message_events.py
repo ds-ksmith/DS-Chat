@@ -8,6 +8,7 @@ from app.models import Message, MessageFile, MessageMention, Room, RoomMembershi
 from app.schemas.message import ReactionSummary
 from app.services.link_preview_service import fetch_and_broadcast_link_preview
 from app.services.push_service import send_push_to_user
+from app.services.room_service import list_dm_partner_ids
 from app.services.webhook_service import dispatch_event
 from app.ws.broadcaster import Broadcaster
 from app.ws.focus_presence import FocusPresence
@@ -234,6 +235,29 @@ async def broadcast_member_updated(db: AsyncSession, broadcaster: Broadcaster, u
     for (room_id,) in result.all():
         await broadcaster.publish(
             room_id, {"type": "member_updated", "room_id": str(room_id), "user_id": str(user_id)}
+        )
+
+
+async def broadcast_dm_presence_update(
+    db: AsyncSession, broadcaster: Broadcaster, user_id: uuid.UUID, online: bool
+) -> None:
+    """Tells every one of user_id's DM partners that their online/offline
+    status just changed (#63) -- on each partner's own per-user channel,
+    not the DM room's channel. The room channel alone doesn't reach the
+    sidebar: Presence gates room-channel delivery on actually having that
+    specific room's channel joined right now, which is only ever the one
+    room currently open in the UI -- so a DM sitting unopened in the
+    sidebar (which is the normal case; the sidebar shows every DM's status
+    at once) never saw its partner's status change until something else
+    forced a full room-list refetch."""
+    for partner_id in await list_dm_partner_ids(db, user_id):
+        await broadcaster.publish_to_user(
+            partner_id,
+            {
+                "type": "dm_presence_update",
+                "user_id": str(user_id),
+                "status": "online" if online else "offline",
+            },
         )
 
 

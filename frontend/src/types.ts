@@ -218,6 +218,17 @@ export interface ChatUnreadUpdateEnvelope {
   mentioned: boolean
 }
 
+// #63: sent on the recipient's own per-user channel, one per DM partner,
+// whenever that partner's global online/offline state changes -- lets the
+// sidebar's presence dot (MyRoomItem.dm_partner.status) stay live without
+// needing that DM to be the currently open room (member_updated's
+// room-channel delivery doesn't reach an unopened DM at all).
+export interface ChatDmPresenceUpdateEnvelope {
+  type: 'dm_presence_update'
+  user_id: string
+  status: 'online' | 'offline'
+}
+
 // #49: delivered over this same socket, alongside the existing Web Push
 // send, to every eligible offline member regardless of push-subscription
 // status -- see backend/app/services/message_events.py's
@@ -243,6 +254,7 @@ export type ServerEnvelope =
   | ChatMemberUpdatedEnvelope
   | ChatUnreadUpdateEnvelope
   | ChatDesktopNotificationEnvelope
+  | ChatDmPresenceUpdateEnvelope
 
 export interface AdminUser {
   id: string

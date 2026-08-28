@@ -244,6 +244,27 @@ async def list_member_rooms(
     ]
 
 
+async def list_dm_partner_ids(db: AsyncSession, user_id: uuid.UUID) -> list[uuid.UUID]:
+    """Every user this user_id shares a DM with (#63) -- used to know who
+    needs telling about a global online/offline transition, since Presence
+    gates room-channel delivery on actually having that specific room
+    joined right now (only ever the one room currently open in the UI), so
+    a DM sitting unopened in the sidebar would otherwise never hear about
+    its partner's status changing at all."""
+    result = await db.execute(
+        select(RoomMembership.user_id)
+        .join(Room, Room.id == RoomMembership.room_id)
+        .where(
+            Room.is_dm.is_(True),
+            RoomMembership.user_id != user_id,
+            RoomMembership.room_id.in_(
+                select(RoomMembership.room_id).where(RoomMembership.user_id == user_id)
+            ),
+        )
+    )
+    return [row[0] for row in result.all()]
+
+
 async def get_room(db: AsyncSession, room_id: uuid.UUID) -> Room:
     room = await db.get(Room, room_id)
     if room is None:

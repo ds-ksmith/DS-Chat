@@ -275,3 +275,68 @@ def test_new_message_unhides_dm_for_both_participants(ws_client):
         "/api/auth/login", json={"username_or_email": bob["username"], "password": "password123"}
     )
     assert any(r["id"] == dm["id"] for r in ws_client.get("/api/rooms/mine").json())
+
+
+def test_dm_partner_presence_update_delivered_without_room_open(ws_client_factory):
+    # #63: alice never joins the DM's own room channel anywhere in this
+    # test -- exactly the normal state for a DM sitting in the sidebar that
+    # isn't the currently open room. member_updated's room-channel broadcast
+    # would never reach her in that state (Presence gates it on having that
+    # specific room joined); this signal has to arrive on her own per-user
+    # channel instead, same as room_added.
+    #
+    # Only the connect ("online") side is exercised here, not disconnect --
+    # see test_presence.py's module docstring for why the offline half
+    # isn't reliably testable via a `with websocket_connect(...)` block
+    # closing (TestClient cancels the server task rather than delivering a
+    # real disconnect, which can interrupt a `finally` block's own awaits
+    # in tests only, never in production).
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+    instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]})
+
+    with instance1.websocket_connect("/ws/chat") as alice_ws:
+        # Sync barrier: alice's own websocket_connect() returning only
+        # proves the handshake completed, not that chat.py's connection
+        # setup (register_user, in particular -- required before bob's
+        # connect can reach her per-user channel at all) has finished.
+        # Any reply -- even an error -- proves the connection has reached
+        # its main frame loop, which setup always completes before.
+        alice_ws.send_json({"type": "__sync_barrier__"})
+        assert alice_ws.receive_json()["type"] == "error"
+
+        with instance2.websocket_connect("/ws/chat"):
+            online_update = alice_ws.receive_json()
+            assert online_update == {
+                "type": "dm_presence_update",
+                "user_id": bob["id"],
+                "status": "online",
+            }
+
+
+def test_dm_presence_update_not_sent_to_non_partner(ws_client_factory):
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+    instance3 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+    _register_ws(instance3, _unique("outsider"))
+    instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]})
+
+    with instance3.websocket_connect("/ws/chat") as outsider_ws:
+        with instance2.websocket_connect("/ws/chat"):
+            pass
+
+        # Nothing should ever arrive for an outsider who shares no DM with
+        # bob. Prove the socket stayed quiet the same way
+        # test_desktop_notifications.py's non-member test does: a harmless
+        # self-targeted join, whose prompt "joined" ack proves nothing else
+        # was already queued ahead of it.
+        room = instance3.post("/api/rooms", json={"name": _unique("outsiders-room")}).json()
+        outsider_ws.send_json({"type": "join", "room_id": room["id"]})
+        joined = outsider_ws.receive_json()
+        assert joined == {"type": "joined", "room_id": room["id"]}

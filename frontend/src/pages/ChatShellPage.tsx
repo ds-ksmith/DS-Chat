@@ -77,6 +77,14 @@ export function ChatShellPage() {
                 : r,
             ),
           )
+        } else if (envelope.type === 'dm_presence_update') {
+          setRooms((prev) =>
+            prev.map((r) =>
+              r.dm_partner && r.dm_partner.user_id === envelope.user_id
+                ? { ...r, dm_partner: { ...r.dm_partner, status: envelope.status } }
+                : r,
+            ),
+          )
         }
       }),
     [socket, refreshRooms, refreshMembers, roomId],

@@ -8,13 +8,17 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
+_NOISE_TYPES = {"member_updated", "dm_presence_update"}
+
+
 def _recv(ws) -> dict:
-    """Reads the next frame, transparently discarding member_updated
-    presence-change broadcasts -- another connection in the same room going
-    online/offline is real, expected noise these tests aren't about."""
+    """Reads the next frame, transparently discarding presence-change
+    broadcasts (member_updated, and #63's dm_presence_update) -- another
+    connection sharing a room or a DM going online/offline is real,
+    expected noise these tests aren't about."""
     while True:
         msg = ws.receive_json()
-        if msg.get("type") != "member_updated":
+        if msg.get("type") not in _NOISE_TYPES:
             return msg
 
 
@@ -201,7 +205,7 @@ def test_new_message_notifies_recipient_who_hid_the_dm_via_websocket(ws_client_f
             alice_ws.send_json({"type": "join", "room_id": room["id"]})
             assert alice_ws.receive_json()["type"] == "joined"
 
-        received = bob_ws.receive_json()
+        received = _recv(bob_ws)
         assert received == {"type": "room_added", "room_id": room["id"]}
 
 

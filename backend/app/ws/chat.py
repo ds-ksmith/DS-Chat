@@ -9,6 +9,7 @@ from app.database import get_db
 from app.models import ApiToken, Message, MessageFile, MessageImage, RoomMembership, User
 from app.services.bot_service import resolve_token
 from app.services.message_events import (
+    broadcast_dm_presence_update,
     broadcast_member_updated,
     broadcast_message_update,
     broadcast_new_message,
@@ -96,6 +97,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     # visible.
     if await global_presence.connect(user.id):
         await broadcast_member_updated(db, broadcaster, user.id)
+        await broadcast_dm_presence_update(db, broadcaster, user.id, online=True)
     # This session is shared for the connection's entire lifetime (which can
     # be hours) -- SQLAlchemy opens a transaction implicitly on first use,
     # and every read above (the auth lookup, broadcast_member_updated's own
@@ -300,3 +302,4 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
             await focus_presence.mark_focused(user.id)
         if await global_presence.disconnect(user.id):
             await broadcast_member_updated(db, broadcaster, user.id)
+            await broadcast_dm_presence_update(db, broadcaster, user.id, online=False)
