@@ -46,10 +46,13 @@ async def request_password_reset(db: AsyncSession, email: str, base_url: str) ->
         db,
         email,
         "Reset your DS Chat password",
-        f"Someone requested a password reset for this account.\n\n"
-        f"Reset it here:\n{reset_link}\n\n"
-        f"This link expires in 15 minutes. If you didn't request this, "
-        f"you can ignore this email.",
+        [
+            "Someone requested a password reset for this account.",
+            "This link expires in 15 minutes. If you didn't request this, you can ignore this email.",
+        ],
+        cta_label="Reset password",
+        cta_url=reset_link,
+        theme_user=user,
     )
 
 

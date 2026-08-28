@@ -43,6 +43,14 @@ def _extract_token(body: str) -> str:
     return match.group(1)
 
 
+def _plain_text(message) -> str:
+    # #68: the email is now multipart/alternative (HTML + plain-text
+    # fallback) -- .get_content() has no handler for a multipart message
+    # itself, get_body(preferencelist=...) is the standard way to reach a
+    # specific alternative part.
+    return message.get_body(preferencelist=("plain",)).get_content()
+
+
 async def test_create_site_invite_requires_admin(client, db_session):
     await register_and_login(client, db_session, username="alice")
     resp = await client.post("/api/admin/invites", json={"email": "newperson@example.com"})
@@ -62,7 +70,7 @@ async def test_signup_flow_end_to_end(client, db_session, monkeypatch):
     assert invite["status"] == "pending"
 
     assert len(calls) == 1
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     validate = await client.get(f"/api/signup/validate?token={token}")
     assert validate.status_code == 200
@@ -87,7 +95,7 @@ async def test_signup_rejects_mismatched_password_confirmation(client, db_sessio
     await _configure_smtp(client)
 
     await client.post("/api/admin/invites", json={"email": "typo@example.com"})
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     complete = await client.post(
         "/api/signup",
@@ -127,7 +135,7 @@ async def test_expired_token_rejected(client, db_session, monkeypatch):
 
     resp = await client.post("/api/admin/invites", json={"email": "late@example.com"})
     invite_id = resp.json()["id"]
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     db_invite = await db_session.get(SiteInvite, uuid.UUID(invite_id))
     db_invite.expires_at = datetime.now(timezone.utc) - timedelta(days=1)
@@ -147,7 +155,7 @@ async def test_used_token_cannot_be_reused(client, db_session, monkeypatch):
     await _configure_smtp(client)
 
     await client.post("/api/admin/invites", json={"email": "once@example.com"})
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     first = await client.post(
         "/api/signup",
@@ -170,7 +178,7 @@ async def test_revoke_site_invite_prevents_signup(client, db_session, monkeypatc
 
     resp = await client.post("/api/admin/invites", json={"email": "revoked@example.com"})
     invite_id = resp.json()["id"]
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     revoke = await client.delete(f"/api/admin/invites/{invite_id}")
     assert revoke.status_code == 200
@@ -226,7 +234,7 @@ async def test_list_site_invites_excludes_accepted_invite(client, db_session, mo
     await _configure_smtp(client)
 
     await client.post("/api/admin/invites", json={"email": "accepted-from-list@example.com"})
-    token = _extract_token(calls[0]["message"].get_content())
+    token = _extract_token(_plain_text(calls[0]["message"]))
 
     complete = await client.post(
         "/api/signup",

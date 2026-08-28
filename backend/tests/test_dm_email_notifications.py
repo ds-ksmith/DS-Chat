@@ -92,7 +92,10 @@ def test_dm_message_emails_globally_offline_recipient(ws_client_factory, monkeyp
     email = calls[0]["message"]
     assert email["To"] == bob["email"]
     assert f"New message from {alice['username']}" in email["Subject"]
-    body = email.get_content()
+    # #68: the email is now multipart/alternative (HTML + plain-text
+    # fallback) -- get_body(preferencelist=...) reaches a specific part,
+    # unlike get_content() which has no handler for the multipart itself.
+    body = email.get_body(preferencelist=("plain",)).get_content()
     assert f"{alice['username']}: hey, you there?" in body
     assert f"/rooms/{dm['id']}" in body
 

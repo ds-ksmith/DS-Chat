@@ -316,8 +316,10 @@ async def add_member(
         db,
         target.email,
         f"You've been added to #{room.name}",
-        f"You've been added to the #{room.name} room on DS Chat.\n\n"
-        f"Open the app: {base_url.rstrip('/')}",
+        [f"You've been added to the #{room.name} room on DS Chat."],
+        cta_label="Open DS Chat",
+        cta_url=base_url.rstrip("/"),
+        theme_user=target,
     )
 
     result = await db.execute(

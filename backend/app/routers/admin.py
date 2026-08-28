@@ -376,7 +376,7 @@ async def test_smtp_settings_endpoint(
 ):
     require_site_admin(current_user)
     try:
-        await send_test_email(db, current_user.email)
+        await send_test_email(db, current_user.email, theme_user=current_user)
     except SmtpNotConfiguredError:
         raise HTTPException(status_code=400, detail="SMTP is not configured yet")
     except Exception as exc:

@@ -40,13 +40,19 @@ async def create_site_invite(
     await db.refresh(invite)
 
     signup_link = f"{base_url.rstrip('/')}/signup?token={raw_token}"
+    # No theme_user -- the invitee doesn't have an account yet, so there's
+    # no theme of theirs to use (#68). Default palette, same as any
+    # logged-out page.
     await send_email(
         db,
         email,
         "You're invited to join DS Chat",
-        f"You've been invited to join DS Chat by {actor.username}.\n\n"
-        f"Set up your account here:\n{signup_link}\n\n"
-        f"This link expires in 7 days.",
+        [
+            f"You've been invited to join DS Chat by {actor.username}.",
+            "This link expires in 7 days.",
+        ],
+        cta_label="Set up your account",
+        cta_url=signup_link,
     )
     return invite
 

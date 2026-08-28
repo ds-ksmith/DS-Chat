@@ -215,7 +215,10 @@ async def _maybe_email_dm_notification(
         db,
         recipient.email,
         f"New message from {sender.username}",
-        f"{body_line}\n\nView it here:\n{link}",
+        [body_line],
+        cta_label="Open conversation",
+        cta_url=link,
+        theme_user=recipient,
     )
 
 

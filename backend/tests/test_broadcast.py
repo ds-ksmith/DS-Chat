@@ -25,8 +25,8 @@ def _recv(ws) -> dict:
 def _fake_send_email(monkeypatch):
     calls = []
 
-    async def fake(db, to, subject, body):
-        calls.append({"to": to, "subject": subject, "body": body})
+    async def fake(db, to, subject, paragraphs, **kwargs):
+        calls.append({"to": to, "subject": subject, "paragraphs": paragraphs, **kwargs})
 
     monkeypatch.setattr("app.services.room_service.send_email", fake)
     return calls

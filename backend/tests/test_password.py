@@ -10,8 +10,17 @@ from tests.conftest import register_and_login
 def _fake_send_email(monkeypatch):
     calls = []
 
-    async def fake(db, to, subject, body):
-        calls.append({"to": to, "subject": subject, "body": body})
+    async def fake(db, to, subject, paragraphs, *, cta_label=None, cta_url=None, theme_user=None):
+        calls.append(
+            {
+                "to": to,
+                "subject": subject,
+                "paragraphs": paragraphs,
+                "cta_label": cta_label,
+                "cta_url": cta_url,
+                "theme_user": theme_user,
+            }
+        )
 
     monkeypatch.setattr("app.services.password_service.send_email", fake)
     return calls
@@ -91,7 +100,7 @@ async def test_reset_password_flow_end_to_end(client, db_session, monkeypatch):
     await client.post("/api/auth/logout")
 
     await client.post("/api/auth/forgot-password", json={"email": "alice@example.com"})
-    token = _extract_token(calls[0]["body"])
+    token = _extract_token(calls[0]["cta_url"])
 
     validate = await client.get(f"/api/auth/reset-password/validate?token={token}")
     assert validate.status_code == 204
@@ -133,7 +142,7 @@ async def test_reset_password_expired_token_rejected(client, db_session, monkeyp
     await register_and_login(client, db_session, username="alice")
     await client.post("/api/auth/logout")
     await client.post("/api/auth/forgot-password", json={"email": "alice@example.com"})
-    token = _extract_token(calls[0]["body"])
+    token = _extract_token(calls[0]["cta_url"])
 
     reset = (await db_session.execute(select(PasswordReset))).scalar_one()
     reset.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
@@ -150,7 +159,7 @@ async def test_reset_password_used_token_cannot_be_reused(client, db_session, mo
     await register_and_login(client, db_session, username="alice")
     await client.post("/api/auth/logout")
     await client.post("/api/auth/forgot-password", json={"email": "alice@example.com"})
-    token = _extract_token(calls[0]["body"])
+    token = _extract_token(calls[0]["cta_url"])
 
     first = await client.post(
         "/api/auth/reset-password", json={"token": token, "new_password": "firstpass123"}
