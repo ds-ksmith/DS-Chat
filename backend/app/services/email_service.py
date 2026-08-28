@@ -221,7 +221,12 @@ async def send_email(
     """
     cfg = await get_smtp_settings(db)
     if cfg is None:
-        logger.debug("SMTP not configured; skipping email to %s", to_address)
+        # WARNING, not .debug -- this app has no logging config lowering
+        # the root level below Python's own WARNING default, so anything
+        # below that is silently invisible in production (confirmed live:
+        # a real "no emails arriving" report produced nothing in the logs
+        # at all, this line included, even though it was relevant).
+        logger.warning("SMTP not configured; skipping email to %s", to_address)
         return
     palette = await _resolve_palette(db, theme_user)
     html_body = _render_html(palette, subject, paragraphs, cta_label, cta_url)

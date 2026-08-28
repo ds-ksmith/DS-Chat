@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import uuid
 
 from sqlalchemy import select, update
@@ -15,6 +16,8 @@ from app.ws.broadcaster import Broadcaster
 from app.ws.focus_presence import FocusPresence
 from app.ws.global_presence import GlobalPresence
 from app.ws.presence import Presence
+
+logger = logging.getLogger(__name__)
 
 
 async def _notify_offline_members(
@@ -168,6 +171,17 @@ async def _maybe_email_dm_notification(
     rooms.py's private _member_status (not importable from here), just
     re-derived.
     """
+    # #68 follow-up: this whole function used to have zero logging on any
+    # of its early-return paths, which made "why didn't an email go out"
+    # completely undiagnosable from the outside -- confirmed live, a real
+    # report of "no emails" produced nothing in the logs at all, not even
+    # at the level that turned out to be the actual cause. logger.warning
+    # (not .info/.debug) is deliberate: this app has no logging config
+    # setting the root level below Python's own WARNING default, so
+    # anything logged lower than that is silently invisible in production
+    # regardless of what it's actually about -- these aren't really
+    # warnings, they're the only level guaranteed to reach journalctl
+    # today.
     room = await db.get(Room, room_id)
     if room is None or not room.is_dm:
         return
@@ -179,14 +193,21 @@ async def _maybe_email_dm_notification(
     )
     membership = result.scalar_one_or_none()
     if membership is None:
+        logger.warning("DM email skipped for room %s: no other participant found", room_id)
         return
     recipient = await db.get(User, membership.user_id)
     if recipient is None:
+        logger.warning(
+            "DM email skipped for room %s: recipient user %s not found", room_id, membership.user_id
+        )
         return
     # appear_offline is a manual "always look offline" override -- treated
     # the same as genuinely offline here, same as everywhere else it's
     # checked in this codebase.
     if not recipient.appear_offline and await global_presence.is_online(recipient.id):
+        logger.warning(
+            "DM email skipped for room %s: recipient %s is online", room_id, recipient.id
+        )
         return
 
     # Debounced to the first unread message in this conversation, not
@@ -202,6 +223,11 @@ async def _maybe_email_dm_notification(
         .limit(1)
     )
     if already_unread.scalar_one_or_none() is not None:
+        logger.warning(
+            "DM email skipped for room %s: recipient %s already has unread messages",
+            room_id,
+            recipient.id,
+        )
         return
 
     if message.content:
@@ -211,6 +237,7 @@ async def _maybe_email_dm_notification(
     else:
         body_line = f"{sender.username} sent an image"
     link = f"{base_url.rstrip('/')}/rooms/{room_id}"
+    logger.warning("Sending DM email to %s for room %s", recipient.email, room_id)
     await send_email(
         db,
         recipient.email,
