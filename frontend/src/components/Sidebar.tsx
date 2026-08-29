@@ -1,7 +1,63 @@
+import { useState } from 'react'
 import { useResizableWidth } from '../hooks/useResizableWidth'
 import type { MyRoomItem } from '../types'
 import { RoomRow } from './RoomRow'
 import './Sidebar.css'
+
+// #62: which of the two sections (keyed 'dm'/'rooms') are collapsed --
+// persisted the same way sidebar-width already is (see useResizableWidth),
+// a per-viewer cosmetic preference with no reason to live server-side.
+const COLLAPSED_SECTIONS_KEY = 'sidebar-collapsed-sections'
+
+function loadCollapsedSections(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_SECTIONS_KEY)
+    if (!raw) return new Set()
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? new Set(parsed.filter((s) => typeof s === 'string')) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
+function saveCollapsedSections(sections: Set<string>): void {
+  try {
+    localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...sections]))
+  } catch {
+    // storage unavailable (private browsing, quota) -- collapse state just
+    // won't persist this session, not fatal.
+  }
+}
+
+interface SidebarSectionHeaderProps {
+  label: string
+  collapsed: boolean
+  onToggle: () => void
+}
+
+function SidebarSectionHeader({ label, collapsed, onToggle }: SidebarSectionHeaderProps) {
+  return (
+    <button type="button" className="sidebar-section-label" onClick={onToggle} aria-expanded={!collapsed}>
+      <svg
+        className={`sidebar-section-chevron${collapsed ? ' sidebar-section-chevron-collapsed' : ''}`}
+        width="10"
+        height="10"
+        viewBox="0 0 10 10"
+        aria-hidden="true"
+      >
+        <path
+          d="M2 3.5 5 7 8 3.5"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          fill="none"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {label}
+    </button>
+  )
+}
 
 interface SidebarProps {
   rooms: MyRoomItem[]
@@ -24,6 +80,18 @@ export function Sidebar({
   onOpenPeople,
   unavailableOffline,
 }: SidebarProps) {
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(loadCollapsedSections)
+
+  function toggleSection(key: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      saveCollapsedSections(next)
+      return next
+    })
+  }
+
   const query = searchQuery.trim().toLowerCase()
   // A DM's `name` is an internal token, never what a user would search for
   // -- matched against the partner's display name/username instead.
@@ -103,30 +171,46 @@ export function Sidebar({
           <>
             {directMessages.length > 0 && (
               <>
-                <div className="sidebar-section-label">Direct Messages</div>
-                <nav>
-                  {directMessages.map((room, i) => (
-                    <RoomRow
-                      key={room.id}
-                      room={room}
-                      colorIndex={i}
-                      active={room.id === activeRoomId}
-                    />
-                  ))}
-                </nav>
+                <SidebarSectionHeader
+                  label="Direct Messages"
+                  collapsed={collapsedSections.has('dm')}
+                  onToggle={() => toggleSection('dm')}
+                />
+                {!collapsedSections.has('dm') && (
+                  <nav>
+                    {directMessages.map((room, i) => (
+                      <RoomRow
+                        key={room.id}
+                        room={room}
+                        colorIndex={i}
+                        active={room.id === activeRoomId}
+                      />
+                    ))}
+                  </nav>
+                )}
               </>
             )}
-            {regularRooms.length > 0 && <div className="sidebar-section-label">Rooms</div>}
-            <nav>
-              {regularRooms.map((room, i) => (
-                <RoomRow
-                  key={room.id}
-                  room={room}
-                  colorIndex={i}
-                  active={room.id === activeRoomId}
+            {regularRooms.length > 0 && (
+              <>
+                <SidebarSectionHeader
+                  label="Rooms"
+                  collapsed={collapsedSections.has('rooms')}
+                  onToggle={() => toggleSection('rooms')}
                 />
-              ))}
-            </nav>
+                {!collapsedSections.has('rooms') && (
+                  <nav>
+                    {regularRooms.map((room, i) => (
+                      <RoomRow
+                        key={room.id}
+                        room={room}
+                        colorIndex={i}
+                        active={room.id === activeRoomId}
+                      />
+                    ))}
+                  </nav>
+                )}
+              </>
+            )}
           </>
         )}
       </div>

@@ -99,12 +99,35 @@
 }
 
 .sidebar-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
   padding: 10px 16px 6px;
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: var(--ds-muted);
   text-transform: uppercase;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-section-label:hover {
+  color: var(--ds-text);
+}
+
+.sidebar-section-chevron {
+  flex: none;
+  /* Points down (expanded) by default -- rotated to point right when the
+     section is collapsed, the standard disclosure-triangle convention. */
+  transition: transform 0.15s ease;
+}
+
+.sidebar-section-chevron-collapsed {
+  transform: rotate(-90deg);
 }
 
 .sidebar-offline-note {
