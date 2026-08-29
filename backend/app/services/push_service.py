@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import uuid
+from urllib.parse import urlparse
 
 from pywebpush import WebPushException, webpush
 from sqlalchemy import delete, select
@@ -53,7 +54,23 @@ async def unsubscribe(db: AsyncSession, user_id: uuid.UUID, endpoint: str) -> No
     await db.commit()
 
 
+# #56 correction: bumping to pywebpush's latest release (2.4.0) turned out
+# not to actually fix WNS -- checked the installed package's own source
+# directly and it has no WNS-specific code anywhere; the upstream
+# discussion (web-push-libs/pywebpush#162) apparently never shipped.
+# Worked around here instead, using the `headers` param webpush() already
+# exposes for exactly this: WNS (Windows/Edge push,
+# *.notify.windows.com) has required this header since April 2024, or it
+# 400s with no useful body -- "cache" for a non-zero TTL, "no-cache" for
+# zero (this app never sets a TTL, so always the latter).
+def _is_wns_endpoint(endpoint: str) -> bool:
+    return urlparse(endpoint).hostname is not None and urlparse(endpoint).hostname.endswith(
+        "notify.windows.com"
+    )
+
+
 def _send_one(subscription: PushSubscription, payload: dict) -> None:
+    extra_headers = {"X-WNS-Cache-Policy": "no-cache"} if _is_wns_endpoint(subscription.endpoint) else None
     webpush(
         subscription_info={
             "endpoint": subscription.endpoint,
@@ -62,6 +79,7 @@ def _send_one(subscription: PushSubscription, payload: dict) -> None:
         data=json.dumps(payload),
         vapid_private_key=settings.vapid_private_key,
         vapid_claims={"sub": settings.vapid_subject},
+        headers=extra_headers,
     )
 
 

@@ -272,3 +272,61 @@ def test_non_gone_push_failure_logs_response_detail_and_keeps_subscription(ws_cl
     assert len(calls) == 1
     assert "Bad Request" in calls[0]
     assert "Ttl value conflicts with X-WNS-Cache-Policy" in calls[0]
+
+
+def test_wns_endpoint_gets_cache_policy_header(ws_client, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.services.push_service.webpush", lambda **kw: calls.append(kw))
+
+    alice = _register_ws(ws_client, _unique("alice"))
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    bob = _register_ws(ws_client, _unique("bob"))
+    ws_client.post(f"/api/rooms/{room['id']}/join")
+    ws_client.post(
+        "/api/push/subscribe",
+        json={
+            "endpoint": f"https://wns2-by3p.notify.windows.com/w/{_unique('bob')}",
+            "keys": {"p256dh": "p256dh-bob", "auth": "auth-bob"},
+        },
+    )
+
+    ws_client.post(
+        "/api/auth/login", json={"username_or_email": alice["username"], "password": "password123"}
+    )
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        ws.send_json({"type": "message", "room_id": room["id"], "content": "hello"})
+        assert ws.receive_json()["type"] == "message"
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+
+    assert len(calls) == 1
+    assert calls[0]["headers"] == {"X-WNS-Cache-Policy": "no-cache"}
+
+
+def test_non_wns_endpoint_gets_no_extra_headers(ws_client, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.services.push_service.webpush", lambda **kw: calls.append(kw))
+
+    alice = _register_ws(ws_client, _unique("alice"))
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    bob = _register_ws(ws_client, _unique("bob"))
+    ws_client.post(f"/api/rooms/{room['id']}/join")
+    ws_client.post("/api/push/subscribe", json=_subscription_payload(_unique("bob")))
+
+    ws_client.post(
+        "/api/auth/login", json={"username_or_email": alice["username"], "password": "password123"}
+    )
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        ws.send_json({"type": "message", "room_id": room["id"], "content": "hello"})
+        assert ws.receive_json()["type"] == "message"
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+
+    assert len(calls) == 1
+    assert calls[0]["headers"] is None
