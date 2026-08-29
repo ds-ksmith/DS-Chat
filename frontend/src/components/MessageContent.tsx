@@ -49,8 +49,11 @@ interface MarkdownLinkProps {
 // span instead of an actual anchor. highlightRoomReferences does the same
 // trick for #roomname, but a room reference *is* meant to be navigable, so
 // it becomes a real (client-side-routed) Link instead of an inert span.
-// Everything else renders as a real external link, same as before mentions
-// existed.
+// convertSubSuperscript (#21) reuses the identical trick for `~sub~`/`^sup^`
+// -- markdown-to-jsx has no plugin hook for new inline syntax, but a link is
+// something it already parses correctly, so `sub:`/`sup:` "URLs" are just
+// another carrier for meaning the parser was never told about. Everything
+// else renders as a real external link, same as before mentions existed.
 function MarkdownLink({ href, children }: MarkdownLinkProps) {
   if (href?.startsWith('mention:')) {
     return <span className="message-mention">{children}</span>
@@ -61,6 +64,12 @@ function MarkdownLink({ href, children }: MarkdownLinkProps) {
         {children}
       </Link>
     )
+  }
+  if (href === 'sub:') {
+    return <sub>{children}</sub>
+  }
+  if (href === 'sup:') {
+    return <sup>{children}</sup>
   }
   return (
     <a href={href} target="_blank" rel="noopener noreferrer">
@@ -99,6 +108,70 @@ function convertShortcodes(text: string): string {
         .join('')
     })
     .join('\n')
+}
+
+// #21: single tilde/caret delimiters, no spaces inside, and not doubled --
+// `~~text~~` is strikethrough (already natively supported) so a leading or
+// trailing extra `~` excludes the match, matching markdownguide.org's
+// extended syntax for both constructs. Converts a complete `~sub~`/`^sup^`
+// span to `[sub](sub:)`/`[sup](sup:)` -- see MarkdownLink's comment for why
+// a link is the carrier.
+const SUBSCRIPT_PATTERN = /(?<!~)~([^~\s]+)~(?!~)/g
+const SUPERSCRIPT_PATTERN = /\^([^^\s]+)\^/g
+
+function convertSubSuperscript(text: string): string {
+  const lines = text.split('\n')
+  let inFence = false
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part, i) =>
+          i % 2 === 0
+            ? part
+                .replace(SUBSCRIPT_PATTERN, (_match, inner: string) => `[${inner}](sub:)`)
+                .replace(SUPERSCRIPT_PATTERN, (_match, inner: string) => `[${inner}](sup:)`)
+            : part,
+        )
+        .join('')
+    })
+    .join('\n')
+}
+
+// #21: markdown-to-jsx has no option for an explicit heading anchor --
+// every heading already gets an auto-generated slug from its own text
+// (useful for linking within a message), and `{#custom-id}` is meant to
+// *override* that slug, not add a second id next to it. There's no plugin
+// hook for new block syntax either, so this strips the marker from the
+// heading's own text (same fence-skipping convention as the functions
+// above) and remembers the association by that now-bare text -- the one
+// hook markdown-to-jsx *does* expose, `slugify` (see createMarkdownOptions
+// below), gets called with exactly that text, letting the requested id
+// stand in for the auto-generated one.
+const HEADING_ID_PATTERN = /^(#{1,6}\s+.*?)\s*\{#([a-zA-Z0-9_-]+)\}\s*$/
+
+function extractHeadingIds(text: string): { text: string; headingIds: Map<string, string> } {
+  const headingIds = new Map<string, string>()
+  const lines = text.split('\n')
+  let inFence = false
+  const nextLines = lines.map((line) => {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence
+      return line
+    }
+    if (inFence) return line
+    const match = line.match(HEADING_ID_PATTERN)
+    if (!match) return line
+    const [, headingLine, customId] = match
+    headingIds.set(headingLine.replace(/^#{1,6}\s+/, ''), customId)
+    return headingLine
+  })
+  return { text: nextLines.join('\n'), headingIds }
 }
 
 const MENTION_PATTERN = /@([a-zA-Z0-9_.-]+)/g
@@ -194,20 +267,36 @@ function preserveLineBreaks(text: string): string {
 }
 
 // Shared with FilePreviewModal so both render paths carry the exact same
-// XSS mitigation (disableParsingRawHTML) -- duplicating this object would
-// risk the two drifting out of sync if one gets edited later.
-export const MARKDOWN_OPTIONS = {
-  // The core XSS mitigation: raw HTML in message content is escaped
-  // and printed literally instead of being parsed into elements.
-  disableParsingRawHTML: true,
-  overrides: {
-    a: { component: MarkdownLink },
-    img: { component: MarkdownImageLink },
-  },
+// XSS mitigation (disableParsingRawHTML) and #21's heading-id/sub/superscript
+// support -- duplicating this would risk the two drifting out of sync if
+// one gets edited later. A function, not a plain constant, since `slugify`
+// needs each render's own headingIds map (see extractHeadingIds above) --
+// there's no per-render state to close over in a module-level object.
+export function createMarkdownOptions(headingIds: Map<string, string>) {
+  return {
+    // The core XSS mitigation: raw HTML in message content is escaped
+    // and printed literally instead of being parsed into elements.
+    disableParsingRawHTML: true,
+    overrides: {
+      a: { component: MarkdownLink },
+      img: { component: MarkdownImageLink },
+    },
+    slugify: (input: string, defaultFn: (input: string) => string) =>
+      headingIds.get(input) ?? defaultFn(input),
+  }
+}
+
+// #21: preprocessing shared by MessageContent and FilePreviewModal --
+// subscript/superscript and heading-id overrides are general markdown
+// features, not chat-specific like mentions/shortcodes/room-references, so
+// a plain file preview gets them too.
+export function preprocessMarkdown(text: string): { text: string; headingIds: Map<string, string> } {
+  return extractHeadingIds(convertSubSuperscript(text))
 }
 
 export function MessageContent({ content, memberUsernames, myRooms }: MessageContentProps) {
   const withMentions = memberUsernames ? highlightMentions(content, memberUsernames) : content
   const withRoomRefs = myRooms ? highlightRoomReferences(withMentions, myRooms) : withMentions
-  return <Markdown options={MARKDOWN_OPTIONS}>{preserveLineBreaks(convertShortcodes(withRoomRefs))}</Markdown>
+  const { text, headingIds } = preprocessMarkdown(convertShortcodes(withRoomRefs))
+  return <Markdown options={createMarkdownOptions(headingIds)}>{preserveLineBreaks(text)}</Markdown>
 }

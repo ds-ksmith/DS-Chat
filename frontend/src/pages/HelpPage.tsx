@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Markdown from 'markdown-to-jsx'
 import { Link } from 'react-router-dom'
-import { MARKDOWN_OPTIONS } from '../components/MessageContent'
+import { createMarkdownOptions, preprocessMarkdown } from '../components/MessageContent'
 import { TopBar } from '../components/TopBar'
 import './HelpPage.css'
 
@@ -13,6 +13,12 @@ const GUIDE_URL = '/USER_GUIDE.md'
 export function HelpPage() {
   const [content, setContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // #21: heading-id/sub/superscript support -- the user guide is exactly
+  // the kind of document that benefits from an explicit anchor override.
+  const markdownPreview = useMemo(
+    () => (content !== null ? preprocessMarkdown(content) : null),
+    [content],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -44,9 +50,11 @@ export function HelpPage() {
         </div>
         {error && <p className="admin-error">{error}</p>}
         {!error && content === null && <p className="help-loading">Loading…</p>}
-        {!error && content !== null && (
+        {!error && markdownPreview && (
           <div className="message-text help-content">
-            <Markdown options={MARKDOWN_OPTIONS}>{content}</Markdown>
+            <Markdown options={createMarkdownOptions(markdownPreview.headingIds)}>
+              {markdownPreview.text}
+            </Markdown>
           </div>
         )}
       </div>

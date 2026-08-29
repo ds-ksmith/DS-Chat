@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Markdown from 'markdown-to-jsx'
 import { getRoomFileUrl } from '../api/rooms'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import type { MessageFileInfo } from '../types'
-import { MARKDOWN_OPTIONS } from './MessageContent'
+import { createMarkdownOptions, preprocessMarkdown } from './MessageContent'
 import './FilePreviewModal.css'
 
 export type PreviewKind = 'markdown' | 'text' | 'pdf'
@@ -33,6 +33,12 @@ export function FilePreviewModal({ roomId, file, kind, onClose }: FilePreviewMod
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const fileUrl = getRoomFileUrl(roomId, file.id)
+  // #21: subscript/superscript and heading-id support -- see MessageContent
+  // for why this needs to run before the Markdown component sees the text.
+  const markdownPreview = useMemo(
+    () => (content !== null ? preprocessMarkdown(content) : null),
+    [content],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -102,9 +108,11 @@ export function FilePreviewModal({ roomId, file, kind, onClose }: FilePreviewMod
         <div className={`file-preview-body${kind === 'pdf' ? ' file-preview-body-pdf' : ''}`}>
           {error && <p className="file-preview-error">{error}</p>}
           {!error && kind !== 'pdf' && content === null && <p className="file-preview-loading">Loading…</p>}
-          {!error && content !== null && kind === 'markdown' && (
+          {!error && kind === 'markdown' && markdownPreview && (
             <div className="message-text file-preview-markdown">
-              <Markdown options={MARKDOWN_OPTIONS}>{content}</Markdown>
+              <Markdown options={createMarkdownOptions(markdownPreview.headingIds)}>
+                {markdownPreview.text}
+              </Markdown>
             </div>
           )}
           {!error && content !== null && kind === 'text' && <pre className="file-preview-text">{content}</pre>}
