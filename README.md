@@ -18,21 +18,26 @@ build plan.
 
 ## Features
 
-- **Auth & accounts** — session-based auth, invite-only signup (admin-issued
-  site invites or room invites, both delivered by email), password reset,
-  per-user light/dark/midnight/sunset presets plus a live theme builder for
-  fully custom, named, savable color themes.
-- **Rooms** — open and private rooms, owner/admin/member roles, invites,
-  room browsing/search, file/image galleries per room.
+- **Auth & accounts** — server-side, revocable sessions (see every device
+  you're logged in from and sign one out remotely), invite-only signup
+  (admin-issued site invites or room invites, both delivered by email),
+  password reset, per-user light/dark/midnight/sunset presets plus a live
+  theme builder for fully custom, named, savable color themes.
+- **Rooms & direct messages** — open and private rooms, owner/admin/member
+  roles, invites (with resend), room browsing/search, file/image galleries
+  per room, plus 1:1 direct messages with a collapsible sidebar section.
 - **Real-time chat** — WebSocket-based messaging with automatic reconnect
-  and backoff, Markdown rendering, @mentions with autocomplete and inline
-  highlighting, emoji reactions, message editing, image and file
-  attachments (drag-and-drop, paste, or picker) with inline previews for
-  images/PDFs/text/Markdown, unread indicators, and presence (online/away/
+  and backoff, Markdown rendering (headings with custom anchors, sub/
+  superscript, tables, and more), @mentions and #room-reference links with
+  autocomplete and inline highlighting, emoji reactions and shortcodes plus
+  site-wide custom/uploaded emoji, message editing and deletion, image/
+  video/file attachments (drag-and-drop, paste, or picker) with inline
+  previews and playback, unread indicators, and presence (online/away/
   offline, with a manual "appear offline" override).
-- **Notifications** — Web Push for offline/backgrounded members, with
-  per-type opt-in/out (mentions vs. all messages), plus in-app unread
-  badges.
+- **Notifications** — Web Push and native desktop notifications for
+  offline/backgrounded members, plus email: always-on for direct messages,
+  opt-in per room (first unread message and every mention), all alongside
+  in-app unread badges.
 - **PWA** — installable, offline-capable (cached room/message data, a
   dedicated offline banner), with automatic update detection that prompts
   a reload as soon as a new deploy goes live.

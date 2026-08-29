@@ -28,7 +28,7 @@ database and Redis; the other runs the application and serves the frontend.
 | Frontend | React + Vite, vite-plugin-pwa | Generates the manifest and service worker for install + push |
 | Reverse proxy / TLS | External Nginx Proxy Manager (pre-existing infra, not deployed by this project) | Terminates TLS, forwards REST + WebSocket traffic to the app server's one port. The app itself serves the built static frontend directly — no separate static-asset server needed |
 | Process management | systemd | No Docker — native to the target Linux distro, no extra install |
-| Auth | Session cookies (httpOnly, secure) | Simplest to carry through a WebSocket handshake automatically |
+| Auth | Session cookies (httpOnly, secure), backed by a server-side session table | Cookie carries only an opaque session id — simplest way to carry auth through a WebSocket handshake automatically, while still allowing server-side revocation (see §4/§10) |
 
 ## 3. System architecture
 
@@ -85,17 +85,31 @@ users
   id, username, email, password_hash, is_bot, is_site_admin, created_at
 
 rooms
-  id, name, description, is_private, owner_id, created_at
+  id, name, description, is_private, is_dm, is_archived, owner_id, created_at
 
 room_memberships
-  room_id, user_id, role (owner | admin | member), joined_at
+  room_id, user_id, role (owner | admin | member), joined_at, last_read_at,
+  hidden_at (DM-only: hides it from one participant's sidebar),
+  email_notifications (opt-in, non-DM rooms only)
 
 room_invites
   id, room_id, invited_by, token, target_user_id or target_email,
   expires_at, status (pending | accepted | revoked)
 
 messages
-  id, room_id, user_id, content, created_at, edited_at, deleted_at
+  id, room_id, user_id, content, image_id, file_id, created_at, edited_at,
+  deleted_at
+
+message_reactions
+  id, message_id, user_id, emoji (unicode glyph or a custom emoji's
+  `:shortcode:`)
+
+custom_emoji
+  id, shortcode (unique, site-wide), storage_filename, content_type,
+  uploaded_by, created_at
+
+sessions
+  id, user_id, ip_address, user_agent, created_at, last_seen_at, revoked_at
 
 push_subscriptions
   id, user_id, endpoint, p256dh_key, auth_key, created_at
@@ -113,6 +127,13 @@ event_subscriptions
 admin_audit_log
   id, actor_id, action, target_type, target_id, metadata, created_at
 ```
+
+Not shown above (present in the implementation, omitted here for brevity):
+`message_images`, `message_files`, `message_mentions`,
+`message_room_references`, `link_previews`, `custom_themes`,
+`upload_settings`, `smtp_settings`, `site_invites`, `password_resets` — see
+`backend/README.md` for the full, current model list and per-feature
+detail on all of these.
 
 ## 5. Permission model
 
@@ -133,7 +154,13 @@ admin_audit_log
 4. Every app instance subscribed to that channel forwards it to its own connected
    members over WebSocket.
 5. For members with no active connection, the server looks up
-   `push_subscriptions` and sends a Web Push notification via `pywebpush`.
+   `push_subscriptions` and sends a Web Push notification via `pywebpush`,
+   and a native desktop notification over the socket if the client is DS
+   Chat Desktop.
+6. Separately, a genuinely-offline DM recipient always gets an email; a
+   regular room's member gets one too if they've opted in for that room
+   (first unread message, or any `@mention` regardless of debounce) — see
+   `backend/README.md`'s "Email notifications for missed messages".
 
 ## 7. Extension system: bots and AI agents
 

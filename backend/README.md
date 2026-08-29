@@ -1,18 +1,22 @@
-# DS Chat backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, admin-configurable upload size limits, emoji & reactions, user profiles, site invites & email, password reset)
+# DS Chat backend (Phase 1 + 2 + 4 + 5 + 6 + 7 + 8, image uploads, file attachments, admin-configurable upload size limits, emoji & reactions, user profiles, site invites & email, password reset, direct messages, active sessions)
 
-FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth, room
-CRUD (open and private), room roles (owner/admin/member) and direct
-membership management, a WebSocket chat endpoint that fans out across
-multiple app-server instances via Redis pub/sub, Web Push notifications for
-offline room members, a site-admin portal (user/room/bot management + an
-audit log), a bot/extension layer (scoped API tokens, live bot WebSocket
-access, incoming and outgoing webhooks, message editing), image uploads and
-generic file attachments in chat messages, emoji reactions on messages,
-self-service user profiles
-(display name, avatar), self-service password change and a token-based
-forgot-password flow, and admin-issued email invites for new accounts
-plus email notifications when a user is added to a room. See
-`../ARCHITECTURE.md` for the full system design and the phased build plan.
+FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL + Redis. Implements auth
+(server-side, revocable sessions — see Active sessions below), room CRUD
+(open and private), room roles (owner/admin/member) and direct membership
+management, direct messages, a WebSocket chat endpoint that fans out across
+multiple app-server instances via Redis pub/sub, Web Push and email
+notifications for offline room members (plus a native desktop-notification
+bridge for DS Chat Desktop), a site-admin portal (user/room/bot management +
+an audit log), a bot/extension layer (scoped API tokens, live bot WebSocket
+access, incoming and outgoing webhooks, message editing), image uploads,
+inline-playable video attachments, and generic file attachments in chat
+messages, message deletion, emoji reactions (built-in Unicode plus
+site-wide custom/uploaded emoji, both usable in reactions and inline in
+message text), self-service user profiles (display name, avatar),
+self-service password change and a token-based forgot-password flow, and
+admin-issued email invites for new accounts plus email notifications when a
+user is added to a room. See `../ARCHITECTURE.md` for the full system
+design and the phased build plan.
 
 This is an **invite-only site**: there is no public registration endpoint.
 Accounts are created by an operator on the app server — see step 4 below.
@@ -129,10 +133,14 @@ app/
                              on-disk save/read -- see Image uploads below
   cli.py                  `python -m app.cli create-user` / `generate-vapid-keys`
   models/                 SQLAlchemy models (users, rooms, room_memberships,
-                             messages, message_images, message_reactions,
+                             messages, message_images, message_files,
+                             message_reactions, message_mentions,
+                             message_room_references, link_previews,
+                             custom_emoji, custom_themes, sessions,
                              site_invites, password_resets, smtp_settings,
-                             push_subscriptions, admin_audit_log, api_tokens,
-                             webhooks_incoming, event_subscriptions)
+                             upload_settings, push_subscriptions,
+                             admin_audit_log, api_tokens, webhooks_incoming,
+                             event_subscriptions)
   schemas/                 Pydantic request/response models
   routers/                  auth, rooms, users, signup, push, admin,
                                bots, webhooks, health
@@ -345,6 +353,36 @@ No `User`/`PushSubscription` schema change was needed for this feature —
 the only backend change is the new `desktop_notification` envelope type,
 covered by `backend/tests/test_desktop_notifications.py`.
 
+## Email notifications for missed messages
+
+Two related, separately-scoped email triggers layered on top of Web Push/
+desktop notifications, both in `app/services/message_events.py`:
+
+**DMs** (`_maybe_email_dm_notification`) — always on, no opt-in toggle.
+Emails a DM's other participant when they're *genuinely* offline
+(`GlobalPresence.is_online`, not just "not connected to this room's own
+channel" the way the Web Push/desktop-notification audience is computed —
+someone actively using the app in a different room shouldn't get emailed
+for a DM) or have `appear_offline` set. Debounced to the first unread
+message in the conversation, not one email per message in a burst, by
+checking whether any other unread message already exists in the room
+since the recipient's `last_read_at`.
+
+**Regular rooms** (`_maybe_email_room_notifications`) — opt-in per
+member, per room (`RoomMembership.email_notifications`, toggled via `PATCH
+/api/rooms/{id}/notifications`; rejected for a DM — `CannotModifyDmError`
+→ 400 — since DMs already get the always-on behavior above). Two triggers,
+not one: the room's first unread message debounces the same way DMs do,
+*but* a message that `@mentions` the subscriber always emails regardless
+of that debounce — a mention is a stronger, individually-addressed signal
+that shouldn't get silently absorbed by an earlier plain message in the
+same burst already having used up the "first unread" email.
+
+Both paths go through the same `email_service.send_email` used by
+invites/room-membership notifications above, so they're silently skipped
+if SMTP isn't configured and never block message delivery on an SMTP
+outage.
+
 ## Room roles and membership (Phase 2)
 
 Rooms can be `open` (anyone can join via `POST /api/rooms/{id}/join`) or
@@ -364,6 +402,47 @@ SMTP isn't configured). There used to be a separate accept/decline
 since nothing meaningful was gained by making the target confirm first.
 `GET /api/rooms/mine` lists every room (open + private) the current user
 belongs to, alongside their role.
+
+## Direct messages
+
+A DM is a `Room` with `is_dm=True` and a deterministic, never-shown
+internal `name` (`dm_room_name(user_a, user_b)` — the two user ids sorted
+and joined, so it's the same string regardless of who initiates), not a
+separate model — `POST /api/rooms/dm` (`find_or_create_dm`) looks up an
+existing DM by that name and creates one (`is_private=True`, both
+participants as plain `member`) only if none exists yet, so starting a DM
+with the same person twice always resolves to the one conversation. The
+frontend never renders `Room.name` for a DM; `MyRoomItem.dm_partner`
+(`DmPartnerInfo`: the *other* participant's id/username/display
+name/avatar/status) is precomputed server-side instead, batched per
+request rather than N+1.
+
+**Hiding a DM**: `RoomMembership.hidden_at` lets one participant remove a
+DM from their own sidebar without touching the other participant's copy or
+deleting anything — a DM has no sensible "leave" (it would violate
+`find_or_create_dm`'s exactly-two-members assumption). `POST
+/api/rooms/{id}/hide` sets it; it's cleared automatically (un-hiding the
+DM) whenever a new message arrives in it or `find_or_create_dm` resolves
+back to an already-hidden one — both count as the conversation being
+active again, matching how a re-opened DM in Slack/Discord reappears on
+its own rather than needing an explicit "unhide."
+
+## Message deletion
+
+`DELETE`-shaped over WS (`{"type": "delete", "room_id", "message_id"}`,
+`message_service.delete_message`) — author-only (`NotMessageAuthorError` →
+error frame otherwise, no admin/moderator override yet). A real delete of
+content, not a UI-only hide: `content`, `image_id`, `file_id`, and
+`preview_url` are all cleared and any attached `MessageImage`/`MessageFile`
+row (plus its on-disk file) is actually removed, only `deleted_at` (and
+`id`/`room_id`/`user_id`/`created_at`, so the tombstone still occupies its
+place in history) survives. The attachment's storage filename is read and
+the DB row/file only unlinked *after* a successful commit — same ordering
+`delete_room` already uses, so a rolled-back transaction never leaves an
+already-destroyed file with no way back. Broadcasts
+`{"type": "message_deleted", "id", "room_id"}`; the frontend renders a
+"message deleted" placeholder rather than removing the row, so the
+conversation doesn't visibly shift when someone deletes something above.
 
 ## Image uploads
 
@@ -432,6 +511,18 @@ share them; `ImageTooLargeError` was likewise renamed to
 
 Same orphaned-upload disk-space caveat as images applies here too.
 
+**Inline video playback**: a browser-natively-playable video attachment
+(`INLINE_SAFE_VIDEO_CONTENT_TYPES` in `app/storage.py` — a strict allowlist,
+`video/mp4`/`video/webm`/`video/ogg`, deliberately not "every `video/*`
+type") is served *without* the `filename=` param above, so it plays inline
+in a `<video>` tag instead of forcing a download — the same reasoning
+`MessageImage`'s own always-inline endpoint already relies on: these are
+content types a browser only ever interprets as media, never as something
+that could execute script, so the `Content-Disposition: attachment`
+mitigation doesn't need to apply to them. Anything outside that allowlist
+(e.g. `.mov`/`video/quicktime`) still forces a download like any other
+file.
+
 ## Upload size limits
 
 The 8 MB image/file/avatar cap is no longer hardcoded — it's an
@@ -462,14 +553,17 @@ returning `None`.
 
 ## Emoji & reactions
 
-An emoji picker in the frontend composer is purely client-side (a static
-curated unicode list, no backend involvement). Message **reactions** are
-full-stack: `message_reactions` (`app/models/message_reaction.py`) has
+The built-in emoji picker in the frontend composer is purely client-side (a
+static curated unicode list, no backend involvement). Message **reactions**
+are full-stack: `message_reactions` (`app/models/message_reaction.py`) has
 `message_id`, `user_id`, `emoji`, and a `UniqueConstraint` on all three
 backing toggle semantics — the same user reacting with the same emoji on
 the same message twice removes it (Slack/Mattermost convention).
 `message_service.toggle_reaction` is a plain select-then-delete-or-insert,
-no upsert needed.
+no upsert needed. `emoji` is `String(32)`, sized to hold either a raw
+unicode glyph or a custom emoji's `:shortcode:` reference (see Custom emoji
+below) — the WS reaction envelope's own length check matches this exactly,
+not an arbitrary smaller cap.
 
 WS `"reaction"` envelope (`room_id`, `message_id`, `emoji`) toggles a
 reaction; the server broadcasts the message's **full recomputed** reaction
@@ -482,8 +576,42 @@ reload doesn't lose reaction state that only ever arrived over WS.
 
 Scope cuts: no outgoing-webhook event type for reactions (`VALID_EVENT_TYPES`
 in `webhook_service.py` is unchanged — same restraint as image uploads), no
-reaction-count limit or rate limiting, no custom/uploaded emoji (unicode
-only, curated client-side list in `frontend/src/lib/emoji.ts`).
+reaction-count limit or rate limiting.
+
+## Custom emoji
+
+Site-wide (not room-scoped), uploadable by any authenticated user —
+distinct from the built-in Unicode picker above. `CustomEmoji`
+(`app/models/custom_emoji.py`): `shortcode` (unique, 30 chars max — sized
+so a `:shortcode:` reference fits `MessageReaction.emoji`'s column
+alongside its own colons with zero width change), `storage_filename`,
+`content_type`, `uploaded_by`.
+
+- `POST /api/custom-emoji` (multipart: `shortcode` form field + `file`) —
+  reuses `app/storage.py`'s upload primitives (`read_capped`,
+  `process_image(..., square=True, max_dimension=128)`, `save_file`), same
+  pattern as avatars. Shortcode format (`^[a-z0-9_-]{2,30}$`) and
+  uniqueness are checked *before* processing/saving the image, so a
+  rejected upload never orphans a file on disk.
+- `GET /api/custom-emoji` — full list, any authenticated user.
+- `DELETE /api/custom-emoji/{id}` — the uploader or a site admin only
+  (`NotEmojiOwnerError` → 403 otherwise).
+- `GET /api/custom-emoji/{shortcode}/image` — serves the file,
+  `Cache-Control: private, no-cache` (not `immutable`, and deliberately
+  *not* a long `max-age` either — a shortcode can be deleted and
+  re-uploaded with different image data under the same URL, and a timed
+  cache let a browser keep serving the old image for its full duration
+  after that happened; `no-cache` forces revalidation on every use, still
+  cheap since `FileResponse`'s own `ETag`/`Last-Modified` make an
+  unchanged file a 304, not a full re-transfer).
+
+A `:shortcode:` reference is stored/sent as literal text everywhere (message
+content, reaction values) and resolved to an image only at render time on
+the frontend — the same convention the built-in Unicode shortcode
+autocomplete already used for glyphs, extended to a case with no unicode
+codepoint to substitute. No server-side collision check against the ~950
+built-in shortcode names (that list only exists in the frontend); the
+upload UI warns about a colliding name but doesn't hard-block it.
 
 ## User profiles
 
@@ -530,15 +658,21 @@ the Admin portal; being added directly to a room (see Room roles and
 membership above) sends a "you've been added" email too.
 
 **Email sending** (`app/services/email_service.py`, using `aiosmtplib`):
-`send_email(db, to, subject, body)` is the fire-and-forget path used by
-invite flows — if `SmtpSettings` isn't configured yet it logs at debug and
-returns (same "silently skip if unconfigured" UX push notifications already
-use for a missing VAPID key), and it never raises on delivery failure (an
-SMTP outage must not block an invite/membership action that already
-succeeded in the database). `send_test_email(db, to)` is the one exception —
-used only by the admin "send test email" button, it raises so the UI can
-show *why* it failed instead of a silent no-op. Plain-text bodies only, no
-HTML templates, matching this codebase's existing minimalism.
+`send_email(db, to, subject, paragraphs, *, cta_label=None, cta_url=None,
+theme_user=None)` is the fire-and-forget path used by invite/notification
+flows — if `SmtpSettings` isn't configured yet it logs (at `.warning`, not
+`.debug` — this app has no logging config lowering the root level below
+Python's own `WARNING` default, so anything below that is silently
+invisible in production) and returns, and it never raises on delivery
+failure (an SMTP outage must not block an invite/membership/notification
+action that already succeeded in the database). `send_test_email(db, to)`
+is the one exception — used only by the admin "send test email" button, it
+raises so the UI can show *why* it failed instead of a silent no-op.
+`paragraphs` (a `list[str]`, not a flat `body: str`) renders both an HTML
+email — styled with `theme_user`'s own selected theme palette when given,
+falling back to the default palette — and a plain-text fallback part from
+the same source, rather than a single pre-formatted string that can't
+cleanly become HTML without re-parsing it.
 
 **SMTP configuration** (`app/models/smtp_settings.py`, `app/routers/admin.py`'s
 `/settings/smtp` endpoints) lives in the database, not the env file — the
@@ -558,19 +692,25 @@ tokens use — it's a bearer secret looked up by itself). `POST /api/signup`
 (`app/routers/signup.py`) is the first genuinely public,
 unauthenticated endpoint in this app that creates a `User` row — it calls
 the existing `auth_service.register_user` directly for identical
-hashing/uniqueness handling, and logs the new user in immediately (same
-session-cookie line `auth.py`'s `login()` uses) so they land in the app
-already signed in. No new rate limiting on it — the unguessable, single-use,
-expiring token is the actual protection, inheriting the same "no rate
-limiting on human/bot traffic" gap already documented below, not a new one.
+hashing/uniqueness handling, then `session_service.start_session` (see
+Active sessions below) so they land in the app already signed in. No new
+rate limiting on it — the unguessable, single-use, expiring token is the
+actual protection, inheriting the same "no rate limiting on human/bot
+traffic" gap already documented below, not a new one.
+
+`POST /api/admin/invites/{id}/resend` (site-admin only,
+`resend_site_invite`) issues a fresh token and resets the 7-day expiry
+rather than re-sending the original link — the old link stops working the
+moment this runs, and it means resending something close to expiring buys
+the full week again, not just whatever was left. Only valid for a still-
+`pending` invite (`SiteInviteNotPendingError` otherwise).
 
 **Room-membership email**: `room_service.add_member` sends one email to
 the target user after creating the `RoomMembership`, using the live
 request's `base_url` for the link — no new "public URL" config needed.
 
 Scope cuts: no outgoing-webhook event type for these (matching image
-uploads/reactions), no resend for a site invite (revoke + re-invite covers
-it), no HTML email templates.
+uploads/reactions).
 
 ## Self-service password change and reset
 
@@ -581,10 +721,11 @@ password, and a "forgot password" flow for someone locked out.
 `current_password` + `new_password`; verifies the current one with
 `security.verify_password` before setting `password_hash =
 hash_password(new_password)`. Same self-service shape as `PATCH /api/auth/me`
-(profile update): mutate `current_user`, commit, done. No session
-invalidation elsewhere (there's no server-side session table to invalidate
-against — see Notes below), so other logged-in sessions for that account
-stay valid until they expire naturally.
+(profile update): mutate `current_user`, commit, done. Doesn't proactively
+revoke any other logged-in session for that account — a session table now
+exists (see Active sessions below), but changing your password doesn't
+walk it and revoke everything else; if you suspect a specific device, use
+Active sessions to revoke it directly instead.
 
 **Forgot password** (`app/models/password_reset.py`,
 `app/services/password_service.py`) — same hashed-token-with-expiry shape as
@@ -597,14 +738,58 @@ registered, so a miss is a silent no-op (no row created, no email sent) after
 a single `SELECT`. `GET /api/auth/reset-password/validate` lets the frontend
 show a "this link is invalid" state before rendering the password form.
 `POST /api/auth/reset-password` completes it and — like signup — logs the
-user in immediately (`request.session["user_id"]`), since they've just proven
-they control the account's email.
+user in immediately (`session_service.start_session`, see Active sessions
+below), since they've just proven they control the account's email.
 
 Scope cuts: no rate limiting on `/forgot-password` (inherits the same
 documented gap as every other endpoint below, not a new one — the
 unguessable expiring token is the actual protection once a request is made),
 no cleanup job for expired/used `password_resets` rows (same as
 `site_invites`, which has never had one either).
+
+## Active sessions
+
+Replaces the previously-stateless signed cookie (a bare `user_id`) with a
+real server-side `Session` table (`app/models/session.py`) — the cookie
+now only ever carries an opaque session id, resolved against this table
+via `session_service.resolve_session` on *every* request (`get_current_user`
+in `app/dependencies.py`, and the WS handshake in `app/ws/chat.py`), which
+is the single choke point that makes revocation actually take effect on a
+session's very next request rather than only once its cookie happens to
+expire.
+
+Each row records `ip_address` (`X-Forwarded-For`'s first entry, since
+production sits behind Nginx Proxy Manager — falls back to the direct peer
+address with nothing in front locally), `user_agent`, `created_at`, and a
+throttled `last_seen_at` (only bumped if stale by more than 5 minutes —
+`get_current_user` resolves a session on every authenticated request, so
+writing on every single one would turn a read into a write storm for no
+real benefit). `session_service.start_session` is the one place every
+"log this browser in" call site (login, signup completion, password-reset
+completion) creates the row and stashes its id in the cookie.
+
+- `GET /api/auth/sessions` — every non-revoked session for the current
+  user, newest-last-seen first, with a parsed "Browser on OS" label
+  (`app/services/user_agent_service.py` — plain substring checks against
+  the User-Agent header, no new dependency; special-cases an `Electron/`
+  token as "DS Chat Desktop" rather than the underlying Chromium version)
+  and `is_current` (compares against `request.state.session_id`, set by
+  `get_current_user`) so the frontend can label "this device" and treat
+  revoking it as a self-logout.
+- `DELETE /api/auth/sessions/{id}` — any of the current user's own
+  sessions, including their own current one (a remote sign-out of the
+  same device is a legitimate thing to do); 404 if it belongs to someone
+  else or is already revoked.
+- `POST /api/auth/logout` also revokes the session row, not just clears
+  the cookie (`revoke_session_unchecked` — no ownership check needed,
+  since a session can only ever log itself out, and never fails even if
+  the row is already gone).
+
+Scope cuts: changing your password doesn't proactively revoke other
+sessions (see Self-service password change and reset above) — this is a
+deliberate scope boundary, not an oversight, since it's a meaningfully
+different feature (auto-revoke-everywhere-on-password-change) from
+"let a user see and manually revoke what's logged in."
 
 ## Link previews
 
@@ -656,13 +841,16 @@ preview card fetched from that page's Open Graph tags (`og:title`,
 
 - Invite-only site registration: no `POST /api/auth/register`. Accounts are
   provisioned with `python -m app.cli create-user` (see step 4 above), or via
-  a site invite (see Site invites & email below). This is separate from
+  a site invite (see Site invites & email above). This is separate from
   adding an existing user to a private room — site accounts vs. room
   membership.
-- Sessions are signed cookies (Starlette `SessionMiddleware`), not a server-side
-  session table — see `ARCHITECTURE.md`'s rationale (simplest way to carry auth
-  through a WebSocket handshake). This means there's currently no way to force-
-  revoke a session server-side; that needs a real session table later.
+- Sessions are backed by a real server-side table (`app/models/session.py`,
+  see Active sessions above) — the signed cookie (Starlette
+  `SessionMiddleware`) now only ever carries an opaque session id, resolved
+  against that table on every request, which is what makes revocation
+  possible. Carrying auth through the WebSocket handshake automatically is
+  still why it's cookie-based at all, per `ARCHITECTURE.md`'s original
+  rationale.
 - No CSRF token yet — `SameSite=Lax` cookies plus a same-origin frontend dev
   proxy (see `../frontend/vite.config.ts`) is the accepted phase-1 mitigation.
 - Deleting a room explicitly deletes its messages/memberships first
