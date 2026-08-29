@@ -191,6 +191,79 @@ async def test_revoke_site_invite_prevents_signup(client, db_session, monkeypatc
     assert complete.status_code == 400
 
 
+async def test_resend_site_invite_requires_admin(client, db_session):
+    await register_and_login(client, db_session, username="alice")
+    resp = await client.post(f"/api/admin/invites/{uuid.uuid4()}/resend")
+    assert resp.status_code == 403
+
+
+async def test_resend_site_invite_unknown_id_404s(client, db_session):
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    resp = await client.post(f"/api/admin/invites/{uuid.uuid4()}/resend")
+    assert resp.status_code == 404
+
+
+async def test_resend_site_invite_new_link_works_and_old_one_doesnt(client, db_session, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await _configure_smtp(client)
+
+    resp = await client.post("/api/admin/invites", json={"email": "resend-me@example.com"})
+    invite_id = resp.json()["id"]
+    original_expires_at = datetime.fromisoformat(resp.json()["expires_at"])
+    old_token = _extract_token(_plain_text(calls[0]["message"]))
+
+    resend = await client.post(f"/api/admin/invites/{invite_id}/resend")
+    assert resend.status_code == 200, resend.text
+    assert resend.json()["id"] == invite_id
+    assert resend.json()["status"] == "pending"
+    # A fresh 7-day window, not whatever was left on the original.
+    new_expires_at = datetime.fromisoformat(resend.json()["expires_at"])
+    assert new_expires_at > original_expires_at
+
+    assert len(calls) == 2
+    new_token = _extract_token(_plain_text(calls[1]["message"]))
+    assert new_token != old_token
+
+    # The old link is dead -- resending rotates the token, it doesn't just
+    # repeat it.
+    old_validate = await client.get(f"/api/signup/validate?token={old_token}")
+    assert old_validate.status_code == 400
+
+    new_validate = await client.get(f"/api/signup/validate?token={new_token}")
+    assert new_validate.status_code == 200
+    assert new_validate.json()["email"] == "resend-me@example.com"
+
+    complete = await client.post(
+        "/api/signup",
+        json={
+            "token": new_token,
+            "username": "resentuser",
+            "password": "password123",
+            "password_confirm": "password123",
+        },
+    )
+    assert complete.status_code == 200, complete.text
+
+
+async def test_resend_site_invite_rejects_non_pending(client, db_session, monkeypatch):
+    _fake_smtp(monkeypatch)
+    admin = await register_and_login(client, db_session, username="admin1")
+    await _make_admin(db_session, admin["id"])
+    await _configure_smtp(client)
+
+    resp = await client.post("/api/admin/invites", json={"email": "already-revoked@example.com"})
+    invite_id = resp.json()["id"]
+
+    revoke = await client.delete(f"/api/admin/invites/{invite_id}")
+    assert revoke.status_code == 200
+
+    resend = await client.post(f"/api/admin/invites/{invite_id}/resend")
+    assert resend.status_code == 400
+
+
 async def test_list_site_invites(client, db_session, monkeypatch):
     _fake_smtp(monkeypatch)
     admin = await register_and_login(client, db_session, username="admin1")

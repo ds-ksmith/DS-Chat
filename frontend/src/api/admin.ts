@@ -83,6 +83,13 @@ export function revokeSiteInvite(inviteId: string): Promise<SiteInvite> {
   return apiFetch<SiteInvite>(`/api/admin/invites/${inviteId}`, { method: 'DELETE' })
 }
 
+// #60: same invite row, not a new one -- a fresh token/expiry, and the old
+// link stops working the moment this is called (see the backend's own
+// resend_site_invite for why).
+export function resendSiteInvite(inviteId: string): Promise<SiteInvite> {
+  return apiFetch<SiteInvite>(`/api/admin/invites/${inviteId}/resend`, { method: 'POST' })
+}
+
 export function getSmtpSettings(): Promise<SmtpSettings | null> {
   return apiFetch<SmtpSettings | null>('/api/admin/settings/smtp')
 }

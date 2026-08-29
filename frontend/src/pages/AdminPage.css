@@ -217,6 +217,14 @@
   cursor: pointer;
 }
 
+.admin-token-resend {
+  background: transparent;
+  border: none;
+  color: var(--ds-accent);
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
 .admin-issue-token {
   display: flex;
   align-items: center;

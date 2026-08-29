@@ -38,6 +38,7 @@ from app.services.site_invite_service import (
     SiteInviteNotPendingError,
     create_site_invite,
     list_site_invites,
+    resend_site_invite,
     revoke_site_invite,
 )
 from app.services.smtp_settings_service import get_smtp_settings, upsert_smtp_settings
@@ -316,6 +317,22 @@ async def revoke_site_invite_endpoint(
     require_site_admin(current_user)
     try:
         return await revoke_site_invite(db, current_user, invite_id)
+    except SiteInviteNotFoundError:
+        raise HTTPException(status_code=404, detail="Invite not found")
+    except SiteInviteNotPendingError:
+        raise HTTPException(status_code=400, detail="Invite is no longer pending")
+
+
+@router.post("/invites/{invite_id}/resend", response_model=SiteInviteRead)
+async def resend_site_invite_endpoint(
+    invite_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_site_admin(current_user)
+    try:
+        return await resend_site_invite(db, current_user, str(request.base_url), invite_id)
     except SiteInviteNotFoundError:
         raise HTTPException(status_code=404, detail="Invite not found")
     except SiteInviteNotPendingError:

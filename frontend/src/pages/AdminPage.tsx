@@ -15,6 +15,7 @@ import {
   listSiteInvites,
   promoteUser,
   reactivateUser,
+  resendSiteInvite,
   resetUserPassword,
   revokeSiteInvite,
   sendTestSmtpEmail,
@@ -312,6 +313,15 @@ export function AdminPage() {
     })
   }
 
+  async function handleResendSiteInvite(invite: SiteInvite) {
+    await withBusy(invite.id, async () => {
+      const updated = await resendSiteInvite(invite.id)
+      // Same row, refreshed expiry (a new token/link went out, see
+      // resend_site_invite) -- update in place rather than a full refetch.
+      setSiteInvites((prev) => prev.map((i) => (i.id === updated.id ? updated : i)))
+    })
+  }
+
   async function handleSaveSmtpSettings(e: FormEvent) {
     e.preventDefault()
     setSmtpSaving(true)
@@ -422,6 +432,14 @@ export function AdminPage() {
                   <span className="admin-token-meta">
                     Expires {new Date(invite.expires_at).toLocaleDateString()}
                   </span>
+                  <button
+                    type="button"
+                    className="admin-token-resend"
+                    disabled={busyId === invite.id}
+                    onClick={() => handleResendSiteInvite(invite)}
+                  >
+                    Resend
+                  </button>
                   <button
                     type="button"
                     className="admin-token-revoke"
