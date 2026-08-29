@@ -10,6 +10,7 @@ import { ImageLightbox } from './ImageLightbox'
 import { LinkPreviewCard } from './LinkPreviewCard'
 import { MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
+import { VideoLightbox } from './VideoLightbox'
 import './MessageList.css'
 
 export function FileAttachmentIcon() {
@@ -70,23 +71,25 @@ const PLAYABLE_VIDEO_CONTENT_TYPES = new Set(['video/mp4', 'video/webm', 'video/
 interface VideoAttachmentProps {
   file: MessageFileInfo
   roomId: string
+  onExpand: () => void
 }
 
 // Plays inline via the browser's own <video controls> (no custom overlay
 // needed for play/pause/volume/seek) -- the one thing it doesn't give a
-// small inline player is an obvious way to go bigger, so this adds an
-// explicit expand button on top calling the standard Fullscreen API
-// directly on the video element, rather than building a whole second
-// lightbox component just to re-embed the same <video>.
-function VideoAttachment({ file, roomId }: VideoAttachmentProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+// small inline player is an obvious way to go bigger. The expand button
+// opens a VideoLightbox (matching how images already expand) rather than
+// calling the Fullscreen API directly on the video element -- that API is
+// unreliable in embedded/packaged contexts (e.g. the Electron desktop
+// build), where a rejected requestFullscreen() promise just does nothing
+// with no visible error.
+function VideoAttachment({ file, roomId, onExpand }: VideoAttachmentProps) {
   return (
     <div className="message-video-wrap">
-      <video ref={videoRef} src={getRoomFileUrl(roomId, file.id)} controls className="message-video" />
+      <video src={getRoomFileUrl(roomId, file.id)} controls className="message-video" />
       <button
         type="button"
         className="message-video-expand"
-        onClick={() => videoRef.current?.requestFullscreen()}
+        onClick={onExpand}
         aria-label="Expand video"
       >
         <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -133,6 +136,7 @@ export function MessageList({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+  const [videoLightbox, setVideoLightbox] = useState<{ src: string; filename: string } | null>(null)
   const [reactingId, setReactingId] = useState<string | null>(null)
   const [reactionPlacement, setReactionPlacement] = useState<'above' | 'below'>('below')
   const [previewFile, setPreviewFile] = useState<MessageFileInfo | null>(null)
@@ -259,7 +263,16 @@ export function MessageList({
                     />
                   )}
                   {msg.file && PLAYABLE_VIDEO_CONTENT_TYPES.has(msg.file.content_type) && (
-                    <VideoAttachment file={msg.file} roomId={roomId} />
+                    <VideoAttachment
+                      file={msg.file}
+                      roomId={roomId}
+                      onExpand={() =>
+                        setVideoLightbox({
+                          src: getRoomFileUrl(roomId, msg.file!.id),
+                          filename: msg.file!.filename,
+                        })
+                      }
+                    />
                   )}
                   {msg.file && !PLAYABLE_VIDEO_CONTENT_TYPES.has(msg.file.content_type) && (
                     <FileAttachmentCard
@@ -362,6 +375,13 @@ export function MessageList({
       })}
       <div ref={bottomRef} />
       {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
+      {videoLightbox && (
+        <VideoLightbox
+          src={videoLightbox.src}
+          filename={videoLightbox.filename}
+          onClose={() => setVideoLightbox(null)}
+        />
+      )}
       {previewFile && (
         <FilePreviewModal
           roomId={roomId}
