@@ -89,6 +89,7 @@ from app.services.webhook_service import (
 from app.services.ssrf import UnsafeUrlError
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
+    INLINE_SAFE_VIDEO_CONTENT_TYPES,
     UPLOADS_DIR,
     InvalidImageError,
     UploadTooLargeError,
@@ -548,12 +549,25 @@ async def get_room_file_endpoint(
     message_file = await db.get(MessageFile, file_id)
     if message_file is None or message_file.room_id != room_id:
         raise HTTPException(status_code=404, detail="File not found")
+    # #65: a browser-playable video is served inline (no filename=) so a
+    # <video> tag can actually play it instead of triggering a download --
+    # gated to a strict allowlist (INLINE_SAFE_VIDEO_CONTENT_TYPES), the
+    # same reasoning MessageImage's own endpoint already relies on: these
+    # are content types a browser only ever interprets as media, never as
+    # something that could execute script, so the attachment-disposition
+    # mitigation below doesn't need to apply to them.
+    if message_file.content_type in INLINE_SAFE_VIDEO_CONTENT_TYPES:
+        return FileResponse(
+            UPLOADS_DIR / message_file.storage_filename,
+            media_type=message_file.content_type,
+            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+        )
     # `filename=` makes Starlette set Content-Disposition: attachment,
     # forcing a download instead of an inline render regardless of
     # content-type -- the mitigation for a same-origin-served, user-
     # uploaded file (e.g. .html/.svg) executing script in this app's own
     # origin if opened directly. No content-type allowlist needed on top
-    # of this; see backend/README.md.
+    # of this beyond the video carve-out above; see backend/README.md.
     return FileResponse(
         UPLOADS_DIR / message_file.storage_filename,
         media_type=message_file.content_type,

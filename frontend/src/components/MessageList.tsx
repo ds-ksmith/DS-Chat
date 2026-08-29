@@ -60,6 +60,49 @@ function FileAttachmentCard({ file, roomId, onPreview }: FileAttachmentCardProps
   )
 }
 
+// #65: kept in sync with backend/app/storage.py's INLINE_SAFE_VIDEO_
+// CONTENT_TYPES -- the server only ever serves these particular content
+// types without a forced download, so a <video> tag pointed at anything
+// else would just show a broken player instead of playing (or, worse,
+// trigger a download the moment the browser tries to fetch it).
+const PLAYABLE_VIDEO_CONTENT_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg'])
+
+interface VideoAttachmentProps {
+  file: MessageFileInfo
+  roomId: string
+}
+
+// Plays inline via the browser's own <video controls> (no custom overlay
+// needed for play/pause/volume/seek) -- the one thing it doesn't give a
+// small inline player is an obvious way to go bigger, so this adds an
+// explicit expand button on top calling the standard Fullscreen API
+// directly on the video element, rather than building a whole second
+// lightbox component just to re-embed the same <video>.
+function VideoAttachment({ file, roomId }: VideoAttachmentProps) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  return (
+    <div className="message-video-wrap">
+      <video ref={videoRef} src={getRoomFileUrl(roomId, file.id)} controls className="message-video" />
+      <button
+        type="button"
+        className="message-video-expand"
+        onClick={() => videoRef.current?.requestFullscreen()}
+        aria-label="Expand video"
+      >
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <path
+            d="M7 3H3v4M13 3h4v4M3 13v4h4M17 13v4h-4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+    </div>
+  )
+}
+
 interface MessageListProps {
   roomId: string
   messages: (Message | ChatMessageEnvelope)[]
@@ -215,7 +258,10 @@ export function MessageList({
                       onClick={() => setLightboxSrc(getRoomImageUrl(roomId, msg.image_id!))}
                     />
                   )}
-                  {msg.file && (
+                  {msg.file && PLAYABLE_VIDEO_CONTENT_TYPES.has(msg.file.content_type) && (
+                    <VideoAttachment file={msg.file} roomId={roomId} />
+                  )}
+                  {msg.file && !PLAYABLE_VIDEO_CONTENT_TYPES.has(msg.file.content_type) && (
                     <FileAttachmentCard
                       file={msg.file}
                       roomId={roomId}

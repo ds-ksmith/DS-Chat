@@ -99,6 +99,43 @@ async def test_serve_file_forces_download(client, db_session):
     assert "notes.txt" in disposition
 
 
+async def test_serve_allowlisted_video_inline(client, db_session):
+    # #65: a <video> tag can't play something the browser is forced to
+    # download instead -- browser-playable video types are the one carve-
+    # out from test_serve_file_forces_download's rule above.
+    await register_and_login(client, db_session, username=_unique("alice"))
+    room = (await client.post("/api/rooms", json={"name": _unique("general")})).json()
+    upload = await client.post(
+        f"/api/rooms/{room['id']}/files",
+        files={"file": ("clip.mp4", b"not a real mp4", "video/mp4")},
+    )
+    file_id = upload.json()["id"]
+
+    resp = await client.get(f"/api/rooms/{room['id']}/files/{file_id}")
+    assert resp.status_code == 200
+    assert "content-disposition" not in resp.headers
+    assert resp.headers["content-type"] == "video/mp4"
+
+
+async def test_serve_non_allowlisted_video_still_forces_download(client, db_session):
+    # video/quicktime (.mov) has spotty <video> support outside Safari, and
+    # more importantly this proves the carve-out is a strict allowlist, not
+    # "every video/* content type" -- the security-relevant boundary from
+    # test_serve_file_forces_download must still hold for anything not on
+    # INLINE_SAFE_VIDEO_CONTENT_TYPES.
+    await register_and_login(client, db_session, username=_unique("alice"))
+    room = (await client.post("/api/rooms", json={"name": _unique("general")})).json()
+    upload = await client.post(
+        f"/api/rooms/{room['id']}/files",
+        files={"file": ("clip.mov", b"not a real mov", "video/quicktime")},
+    )
+    file_id = upload.json()["id"]
+
+    resp = await client.get(f"/api/rooms/{room['id']}/files/{file_id}")
+    assert resp.status_code == 200
+    assert "attachment" in resp.headers["content-disposition"]
+
+
 def _register_ws(ws_client, username: str) -> dict:
     from app.schemas.user import UserCreate
     from app.services.auth_service import register_user

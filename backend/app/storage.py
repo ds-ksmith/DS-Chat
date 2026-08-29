@@ -25,6 +25,19 @@ ALLOWED_IMAGE_CONTENT_TYPES: dict[str, tuple[str, str]] = {
     "image/webp": (".webp", "WEBP"),
 }
 
+# #65: browser-natively-playable video formats -- used to decide whether a
+# stored MessageFile gets served inline (a <video> tag can actually play
+# it) or forced to download like every other non-image attachment (see
+# rooms.py's file-serve endpoint). Deliberately a strict allowlist, not
+# "every video/* type": .mov (video/quicktime) has spotty <video> support
+# outside Safari, and more importantly this is the one thing standing
+# between "serve with the browser trusting our declared Content-Type" and
+# reopening the same-origin-script-execution risk Content-Disposition:
+# attachment exists to close off for arbitrary uploads -- it must only
+# ever contain types a <video> tag renders as media, never as something
+# that could execute script.
+INLINE_SAFE_VIDEO_CONTENT_TYPES = frozenset({"video/mp4", "video/webm", "video/ogg"})
+
 
 class UploadTooLargeError(Exception):
     pass
