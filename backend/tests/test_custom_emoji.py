@@ -11,9 +11,9 @@ def _unique(prefix: str) -> str:
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
 
 
-def _png_bytes(size: tuple[int, int] = (10, 10)) -> bytes:
+def _png_bytes(size: tuple[int, int] = (10, 10), color: tuple[int, int, int] = (255, 0, 0)) -> bytes:
     buf = io.BytesIO()
-    Image.new("RGB", size, color=(255, 0, 0)).save(buf, format="PNG")
+    Image.new("RGB", size, color=color).save(buf, format="PNG")
     return buf.getvalue()
 
 
@@ -121,6 +121,50 @@ async def test_serve_custom_emoji_image_by_shortcode(client, db_session):
     resp = await client.get(f"/api/custom-emoji/{shortcode}/image")
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "image/png"
+
+
+async def test_serve_custom_emoji_image_forces_revalidation(client, db_session):
+    # A timed cache (the original `max-age=300`) meant a browser that had
+    # already fetched a shortcode's image kept serving those bytes for up
+    # to 5 minutes after a delete-and-reupload swapped in a different file
+    # under the same URL -- confirmed live: re-adding an emoji under a
+    # just-deleted shortcode showed the old image. `no-cache` forces
+    # revalidation on every use instead (still cheap: FileResponse's own
+    # ETag/Last-Modified make an actually-unchanged file a 304, not a full
+    # re-transfer).
+    await register_and_login(client, db_session, username=_unique("alice"))
+    shortcode = _unique("revalidated")
+    await client.post(
+        "/api/custom-emoji",
+        data={"shortcode": shortcode},
+        files={"file": ("a.png", _png_bytes(), "image/png")},
+    )
+    resp = await client.get(f"/api/custom-emoji/{shortcode}/image")
+    assert "no-cache" in resp.headers["cache-control"]
+    assert "max-age" not in resp.headers["cache-control"]
+
+
+async def test_reuploading_a_deleted_shortcode_serves_the_new_image(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+    shortcode = _unique("reused")
+    first = await client.post(
+        "/api/custom-emoji",
+        data={"shortcode": shortcode},
+        files={"file": ("red.png", _png_bytes(color=(255, 0, 0)), "image/png")},
+    )
+    assert first.status_code == 201
+    await client.delete(f"/api/custom-emoji/{first.json()['id']}")
+
+    second = await client.post(
+        "/api/custom-emoji",
+        data={"shortcode": shortcode},
+        files={"file": ("blue.png", _png_bytes(color=(0, 0, 255)), "image/png")},
+    )
+    assert second.status_code == 201
+
+    resp = await client.get(f"/api/custom-emoji/{shortcode}/image")
+    served = Image.open(io.BytesIO(resp.content)).convert("RGB")
+    assert served.getpixel((0, 0)) == (0, 0, 255)
 
 
 async def test_serve_unknown_shortcode_404s(client, db_session):

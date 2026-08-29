@@ -123,9 +123,17 @@ async def get_custom_emoji_image_endpoint(
     return FileResponse(
         UPLOADS_DIR / emoji.storage_filename,
         media_type=emoji.content_type,
-        # Site-wide and rarely changed, but a shortcode can be deleted and
-        # re-uploaded with different image data -- short-cache like the
-        # avatar endpoint, not `immutable` like content-addressed message
-        # images.
-        headers={"Cache-Control": "private, max-age=300"},
+        # #18 follow-up: `max-age=300` (the avatar endpoint's own
+        # convention) meant a browser that had already fetched this
+        # shortcode's image kept serving it from cache for up to 5 minutes
+        # after a delete-and-reupload under the same name swapped in a
+        # genuinely different file underneath the same URL -- confirmed
+        # live, re-adding an emoji with a just-deleted shortcode showed the
+        # old image. `no-cache` (despite the name, still cacheable) forces
+        # a revalidation round trip on every use instead of trusting a
+        # timed cache -- FileResponse already sets ETag/Last-Modified from
+        # the file's own mtime+size (see Starlette's set_stat_headers), so
+        # an unchanged file still gets served as a cheap 304 and only an
+        # actually-different one (any re-upload) returns fresh bytes.
+        headers={"Cache-Control": "private, no-cache"},
     )
