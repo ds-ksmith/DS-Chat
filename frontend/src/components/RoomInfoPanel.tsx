@@ -398,8 +398,8 @@ export function RoomInfoPanel({
         <div className="room-info-section">
           <div className="toggle-row">
             <div className="toggle-label">
-              <span className="t">Email me on mentions</span>
-              <span className="d">Sent only while you're offline</span>
+              <span className="t">Email notifications</span>
+              <span className="d">New messages and mentions, while you're offline</span>
             </div>
             <label className="switch">
               <input

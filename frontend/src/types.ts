@@ -87,8 +87,9 @@ export interface MyRoomItem extends Room {
   // #52: the other participant, only for is_dm rooms -- see backend
   // schemas/room.py's MyRoomItem for why this is precomputed server-side.
   dm_partner: DmPartnerInfo | null
-  // #67: this viewer's own opt-in for "email me when mentioned here while
-  // offline" -- always false for a DM (see backend's message_events.py).
+  // #67: this viewer's own opt-in for email while offline -- the room's
+  // first unread message plus every mention (see backend's
+  // message_events.py). Always false for a DM.
   email_notifications: boolean
 }
 

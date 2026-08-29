@@ -73,7 +73,7 @@ def _subscribe(ws_client, room_id: str, username: str, password: str = "password
     assert resp.status_code == 204, resp.text
 
 
-def test_room_mention_emails_offline_subscribed_member(ws_client_factory, monkeypatch):
+def test_room_first_message_emails_offline_subscribed_member(ws_client_factory, monkeypatch):
     calls = _fake_smtp(monkeypatch)
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()
@@ -88,18 +88,18 @@ def test_room_mention_emails_offline_subscribed_member(ws_client_factory, monkey
     with instance1.websocket_connect("/ws/chat") as alice_ws:
         alice_ws.send_json({"type": "join", "room_id": room["id"]})
         assert alice_ws.receive_json()["type"] == "joined"
-        _send_and_sync(alice_ws, room["id"], f"hey @{bob['username']}, look at this")
+        _send_and_sync(alice_ws, room["id"], "no mention here, just a plain message")
 
     assert len(calls) == 1
     email = calls[0]["message"]
     assert email["To"] == bob["email"]
-    assert f"New mention in #{room['name']}" in email["Subject"]
+    assert f"New message in #{room['name']}" in email["Subject"]
     body = email.get_body(preferencelist=("plain",)).get_content()
     assert alice["username"] in body
     assert f"/rooms/{room['id']}" in body
 
 
-def test_room_message_without_mention_does_not_email_subscribed_member(ws_client_factory, monkeypatch):
+def test_room_second_plain_message_does_not_reemail_before_read(ws_client_factory, monkeypatch):
     calls = _fake_smtp(monkeypatch)
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()
@@ -113,9 +113,45 @@ def test_room_message_without_mention_does_not_email_subscribed_member(ws_client
     with instance1.websocket_connect("/ws/chat") as alice_ws:
         alice_ws.send_json({"type": "join", "room_id": room["id"]})
         assert alice_ws.receive_json()["type"] == "joined"
-        _send_and_sync(alice_ws, room["id"], "hello room, no mention here")
 
-    assert calls == []
+        _send_and_sync(alice_ws, room["id"], "message one")
+        assert len(calls) == 1
+
+        # A second plain message while bob still hasn't read the first --
+        # no second email for the same unread burst.
+        _send_and_sync(alice_ws, room["id"], "message two")
+        assert len(calls) == 1
+
+
+def test_room_mention_always_emails_even_mid_unread_burst(ws_client_factory, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+    instance2.post(f"/api/rooms/{room['id']}/join")
+    _subscribe(instance2, room["id"], bob["username"])
+
+    with instance1.websocket_connect("/ws/chat") as alice_ws:
+        alice_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert alice_ws.receive_json()["type"] == "joined"
+
+        # First unread message (plain) -- emails once, uses up the debounce.
+        _send_and_sync(alice_ws, room["id"], "hey everyone")
+        assert len(calls) == 1
+
+        # A mention arriving while that first message is still unread --
+        # must email anyway, unlike a second plain message.
+        _send_and_sync(alice_ws, room["id"], f"@{bob['username']} specifically you")
+        assert len(calls) == 2
+
+    mention_email = calls[1]["message"]
+    assert mention_email["To"] == bob["email"]
+    assert f"New mention in #{room['name']}" in mention_email["Subject"]
+    body = mention_email.get_body(preferencelist=("plain",)).get_content()
+    assert f"{alice['username']} mentioned you" in body
 
 
 def test_room_mention_does_not_email_unsubscribed_member(ws_client_factory, monkeypatch):
@@ -123,7 +159,7 @@ def test_room_mention_does_not_email_unsubscribed_member(ws_client_factory, monk
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()
 
-    alice = _register_ws(instance1, _unique("alice"))
+    _register_ws(instance1, _unique("alice"))
     bob = _register_ws(instance2, _unique("bob"))
     room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
     instance2.post(f"/api/rooms/{room['id']}/join")
@@ -137,7 +173,7 @@ def test_room_mention_does_not_email_unsubscribed_member(ws_client_factory, monk
     assert calls == []
 
 
-def test_room_mention_does_not_email_online_subscribed_member(ws_client_factory, monkeypatch):
+def test_room_message_does_not_email_online_subscribed_member(ws_client_factory, monkeypatch):
     calls = _fake_smtp(monkeypatch)
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()
@@ -159,7 +195,7 @@ def test_room_mention_does_not_email_online_subscribed_member(ws_client_factory,
     assert calls == []
 
 
-def test_room_mention_email_debounced_to_first_unread_then_resets_after_read(ws_client_factory, monkeypatch):
+def test_room_notifications_reset_after_read(ws_client_factory, monkeypatch):
     calls = _fake_smtp(monkeypatch)
     instance1 = ws_client_factory()
     instance2 = ws_client_factory()
@@ -173,13 +209,7 @@ def test_room_mention_email_debounced_to_first_unread_then_resets_after_read(ws_
     with instance1.websocket_connect("/ws/chat") as alice_ws:
         alice_ws.send_json({"type": "join", "room_id": room["id"]})
         assert alice_ws.receive_json()["type"] == "joined"
-
-        _send_and_sync(alice_ws, room["id"], f"@{bob['username']} first mention")
-        assert len(calls) == 1
-
-        # A second mention while bob still hasn't read the first -- no
-        # second email for the same burst.
-        _send_and_sync(alice_ws, room["id"], f"@{bob['username']} second mention")
+        _send_and_sync(alice_ws, room["id"], "message one")
         assert len(calls) == 1
 
     instance2.post(
@@ -191,7 +221,7 @@ def test_room_mention_email_debounced_to_first_unread_then_resets_after_read(ws_
     with instance1.websocket_connect("/ws/chat") as alice_ws:
         alice_ws.send_json({"type": "join", "room_id": room["id"]})
         assert alice_ws.receive_json()["type"] == "joined"
-        _send_and_sync(alice_ws, room["id"], f"@{bob['username']} third mention")
+        _send_and_sync(alice_ws, room["id"], "message two")
 
     assert len(calls) == 2
 

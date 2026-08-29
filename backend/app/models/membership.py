@@ -42,10 +42,11 @@ class RoomMembership(Base):
     # arrives in the room, or when find_or_create_dm resolves back to it --
     # both count as the conversation being active again.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # #67: opt-in, per-member -- email when a message in this room mentions
-    # them while they're offline. Deliberately separate from #66's DM
-    # emails (always-on, no toggle) rather than a shared flag, since DMs
-    # are explicitly out of scope for this setting (see message_events.py).
+    # #67: opt-in, per-member -- email while offline on the room's first
+    # unread message, plus every mention regardless of that debounce (see
+    # message_events.py's _maybe_email_room_notifications). Deliberately
+    # separate from #66's DM emails (always-on, no toggle) rather than a
+    # shared flag, since DMs are explicitly out of scope for this setting.
     email_notifications: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
