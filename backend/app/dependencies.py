@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import RoomMembership, RoomRole, User
 from app.services.bot_service import resolve_token
+from app.services.session_service import resolve_session
 
 _ROLE_RANK = {RoomRole.member: 0, RoomRole.admin: 1, RoomRole.owner: 2}
 
@@ -29,16 +30,26 @@ async def get_current_user(
         request.state.api_token = token
         return user
 
-    user_id = request.session.get("user_id")
-    if not user_id:
+    session_id = request.session.get("session_id")
+    if not session_id:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    # #69: a session row, not a bare user_id -- resolve_session is also
+    # where a revoked session (this endpoint's own DELETE, or another
+    # device's "sign out") actually takes effect, since there's no other
+    # per-request check of that state.
+    session = await resolve_session(db, uuid.UUID(session_id))
+    if session is None:
+        request.session.clear()
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    request.state.session_id = session.id
 
     # Eager-loaded so UserRead.active_custom_theme (app/schemas/user.py) can
     # be read without a MissingGreenlet -- selectinload skips the second
     # query entirely when active_custom_theme_id is null (the common case),
     # so this costs nothing for users who've never set a custom theme.
     user = await db.get(
-        User, uuid.UUID(user_id), options=[selectinload(User.active_custom_theme)]
+        User, session.user_id, options=[selectinload(User.active_custom_theme)]
     )
     if user is None or not user.is_active:
         request.session.clear()

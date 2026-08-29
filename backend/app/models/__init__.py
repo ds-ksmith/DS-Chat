@@ -15,6 +15,7 @@ from app.models.message_room_reference import MessageRoomReference
 from app.models.password_reset import PasswordReset
 from app.models.push_subscription import PushSubscription
 from app.models.room import Room
+from app.models.session import Session
 from app.models.site_invite import SiteInvite
 from app.models.smtp_settings import SmtpSettings
 from app.models.upload_settings import UploadSettings
@@ -35,6 +36,7 @@ __all__ = [
     "MessageRoomReference",
     "InviteStatus",
     "PasswordReset",
+    "Session",
     "SiteInvite",
     "SmtpSettings",
     "UploadSettings",

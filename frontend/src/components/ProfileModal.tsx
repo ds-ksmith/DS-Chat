@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
-import { changePassword, me, removeAvatar, updateProfile, updateTheme, uploadAvatar } from '../api/auth'
+import {
+  changePassword,
+  listSessions,
+  me,
+  removeAvatar,
+  revokeSession,
+  updateProfile,
+  updateTheme,
+  uploadAvatar,
+} from '../api/auth'
 import { ApiError } from '../api/client'
 import {
   activateCustomTheme,
@@ -12,7 +21,7 @@ import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
 import { applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
-import type { CustomTheme, CustomThemeColors } from '../types'
+import type { CustomTheme, CustomThemeColors, UserSession } from '../types'
 import { ThemeBuilderModal } from './ThemeBuilderModal'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
@@ -44,7 +53,7 @@ interface ProfileModalProps {
 }
 
 export function ProfileModal({ onClose }: ProfileModalProps) {
-  const { user, updateUser } = useAuth()
+  const { user, updateUser, logout } = useAuth()
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
   const [error, setError] = useState<string | null>(null)
   const [savingName, setSavingName] = useState(false)
@@ -66,12 +75,22 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [passwordSuccess, setPasswordSuccess] = useState(false)
   const [savingPassword, setSavingPassword] = useState(false)
 
+  const [sessions, setSessions] = useState<UserSession[]>([])
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
+
   useEffect(() => {
     listCustomThemes()
       .then(setCustomThemes)
       .catch(() => {
         // Non-critical -- the saved-themes list just stays empty; presets
         // and everything else in this modal still work fine.
+      })
+    listSessions()
+      .then(setSessions)
+      .catch(() => {
+        // Same non-critical treatment -- an empty list just means this
+        // section renders no rows rather than failing the whole modal.
       })
   }, [])
 
@@ -249,6 +268,27 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
       setPasswordError(err instanceof ApiError ? err.message : String(err))
     } finally {
       setSavingPassword(false)
+    }
+  }
+
+  async function handleRevokeSession(session: UserSession) {
+    setSessionsError(null)
+    setRevokingSessionId(session.id)
+    try {
+      if (session.is_current) {
+        // Revoking your own current session is really just "sign out" --
+        // go through the normal logout path so local auth state (and the
+        // rest of the app) clears immediately, instead of waiting for the
+        // next request to organically 401.
+        await logout()
+        return
+      }
+      await revokeSession(session.id)
+      setSessions((prev) => prev.filter((s) => s.id !== session.id))
+    } catch (err) {
+      setSessionsError(err instanceof ApiError ? err.message : String(err))
+    } finally {
+      setRevokingSessionId(null)
     }
   }
 
@@ -464,6 +504,37 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             </button>
           </div>
         </form>
+
+        <hr className="modal-divider" />
+
+        <div className="modal-field-label">Active sessions</div>
+        {sessionsError && <p className="modal-error">{sessionsError}</p>}
+        {sessions.length === 0 ? (
+          <p className="modal-empty">No active sessions.</p>
+        ) : (
+          sessions.map((session) => (
+            <div key={session.id} className="modal-list-row">
+              <div className="modal-list-row-body">
+                <div className="modal-list-row-title">
+                  {session.device_label}
+                  {session.is_current && ' · This device'}
+                </div>
+                <div className="modal-list-row-sub">
+                  {session.ip_address ?? 'Unknown location'} · last active{' '}
+                  {new Date(session.last_seen_at).toLocaleString()}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="modal-list-row-action"
+                disabled={revokingSessionId === session.id}
+                onClick={() => handleRevokeSession(session)}
+              >
+                {session.is_current ? 'Sign out' : 'Revoke'}
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </div>
   )

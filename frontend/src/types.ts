@@ -42,6 +42,16 @@ export interface User {
   created_at: string
 }
 
+// #69: one row per logged-in device/browser -- see backend's app/models/session.py.
+export interface UserSession {
+  id: string
+  ip_address: string | null
+  device_label: string
+  created_at: string
+  last_seen_at: string
+  is_current: boolean
+}
+
 export interface UserDirectoryEntry {
   id: string
   username: string

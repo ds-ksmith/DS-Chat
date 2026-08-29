@@ -429,6 +429,25 @@
   color: var(--ds-muted);
 }
 
+.modal-list-row-action {
+  flex: none;
+  background: transparent;
+  border: none;
+  color: var(--ds-danger);
+  font-size: 0.76rem;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.modal-list-row-action:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.modal-list-row-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .profile-modal-avatar-row {
   display: flex;
   align-items: center;

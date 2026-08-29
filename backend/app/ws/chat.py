@@ -25,6 +25,7 @@ from app.services.message_service import (
     toggle_reaction,
 )
 from app.services.room_service import mark_room_read
+from app.services.session_service import resolve_session
 
 router = APIRouter(tags=["ws"])
 
@@ -75,11 +76,15 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
             return
         user, api_token = resolved
     else:
-        user_id_raw = websocket.session.get("user_id")
-        if not user_id_raw:
+        session_id_raw = websocket.session.get("session_id")
+        if not session_id_raw:
             await websocket.close(code=WS_UNAUTHENTICATED)
             return
-        user = await db.get(User, uuid.UUID(user_id_raw))
+        session = await resolve_session(db, uuid.UUID(session_id_raw))
+        if session is None:
+            await websocket.close(code=WS_UNAUTHENTICATED)
+            return
+        user = await db.get(User, session.user_id)
         if user is None or not user.is_active:
             await websocket.close(code=WS_UNAUTHENTICATED)
             return

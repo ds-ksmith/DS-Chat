@@ -1,5 +1,5 @@
 import { apiFetch, ApiError, NetworkError } from './client'
-import type { User } from '../types'
+import type { User, UserSession } from '../types'
 
 // No register() here: this is an invite-only site. Accounts are created by
 // an operator via the backend CLI (`python -m app.cli create-user`), not
@@ -14,6 +14,16 @@ export function login(usernameOrEmail: string, password: string): Promise<User> 
 
 export function logout(): Promise<void> {
   return apiFetch<void>('/api/auth/logout', { method: 'POST' })
+}
+
+// #69: every device/browser currently logged into this account, newest
+// last-seen first -- see backend's app/schemas/session.py.
+export function listSessions(): Promise<UserSession[]> {
+  return apiFetch<UserSession[]>('/api/auth/sessions')
+}
+
+export function revokeSession(sessionId: string): Promise<void> {
+  return apiFetch<void>(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' })
 }
 
 export function me(): Promise<User> {

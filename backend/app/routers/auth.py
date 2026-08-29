@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -7,6 +9,7 @@ from app.dependencies import get_current_user
 from app.models import User
 from app.schemas.auth import LoginRequest
 from app.schemas.password import ForgotPasswordRequest, PasswordChange, ResetPasswordComplete
+from app.schemas.session import SessionRead
 from app.schemas.user import ProfileUpdate, UserRead
 from app.services.auth_service import (
     AccountDeactivatedError,
@@ -22,7 +25,15 @@ from app.services.password_service import (
     request_password_reset,
     validate_reset_token,
 )
+from app.services.session_service import (
+    SessionNotFoundError,
+    list_sessions,
+    revoke_session,
+    revoke_session_unchecked,
+    start_session,
+)
 from app.services.upload_settings_service import format_mb, get_upload_settings
+from app.services.user_agent_service import describe_user_agent
 from app.storage import (
     ALLOWED_IMAGE_CONTENT_TYPES,
     InvalidImageError,
@@ -55,12 +66,15 @@ async def login(
     except AccountDeactivatedError:
         raise HTTPException(status_code=401, detail="Account is deactivated")
 
-    request.session["user_id"] = str(user.id)
+    await start_session(request, db, user.id)
     return user
 
 
 @router.post("/logout", status_code=204)
-async def logout(request: Request) -> Response:
+async def logout(request: Request, db: AsyncSession = Depends(get_db)) -> Response:
+    session_id = request.session.get("session_id")
+    if session_id:
+        await revoke_session_unchecked(db, uuid.UUID(session_id))
     request.session.clear()
     return Response(status_code=204)
 
@@ -218,5 +232,37 @@ async def complete_reset_password_endpoint(
     except PasswordResetInvalidError:
         raise HTTPException(status_code=400, detail="This reset link is invalid or has expired")
 
-    request.session["user_id"] = str(user.id)
+    await start_session(request, db, user.id)
     return user
+
+
+@router.get("/sessions", response_model=list[SessionRead])
+async def list_sessions_endpoint(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    sessions = await list_sessions(db, current_user.id)
+    return [
+        SessionRead(
+            id=s.id,
+            ip_address=s.ip_address,
+            device_label=describe_user_agent(s.user_agent),
+            created_at=s.created_at,
+            last_seen_at=s.last_seen_at,
+            is_current=s.id == request.state.session_id,
+        )
+        for s in sessions
+    ]
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def revoke_session_endpoint(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        await revoke_session(db, current_user.id, session_id)
+    except SessionNotFoundError:
+        raise HTTPException(status_code=404, detail="Session not found")

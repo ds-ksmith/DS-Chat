@@ -5,6 +5,7 @@ from app.database import get_db
 from app.schemas.site_invite import SignupComplete, SignupValidateRead
 from app.schemas.user import UserRead
 from app.services.auth_service import DuplicateUserError
+from app.services.session_service import start_session
 from app.services.site_invite_service import (
     SiteInviteInvalidError,
     complete_signup,
@@ -39,5 +40,5 @@ async def complete_signup_endpoint(
     except DuplicateUserError:
         raise HTTPException(status_code=409, detail="That username or email is already taken")
 
-    request.session["user_id"] = str(user.id)
+    await start_session(request, db, user.id)
     return user
