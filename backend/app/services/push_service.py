@@ -95,4 +95,17 @@ async def send_push_to_user(db: AsyncSession, user_id: uuid.UUID, payload: dict)
                 )
                 await db.commit()
             else:
-                logger.warning("Push delivery failed for %s: %s", subscription.id, exc)
+                # #56: WNS's own 400s carry the actual reason in a response
+                # *header* ("Ttl value conflicts with X-WNS-Cache-Policy"),
+                # not the body -- pywebpush's own exception message only
+                # ever surfaces the body, so that specific bug still would
+                # have needed a full journalctl+DB-dump investigation to
+                # diagnose even with a body-only log line. Logging headers
+                # too is the difference between "something is broken" and
+                # this log line alone being enough next time, for any push
+                # provider's failure, not just WNS's.
+                response = exc.response
+                detail = ""
+                if response is not None:
+                    detail = f" | response: {response.text!r} | headers: {dict(response.headers)!r}"
+                logger.warning("Push delivery failed for %s: %s%s", subscription.id, exc, detail)

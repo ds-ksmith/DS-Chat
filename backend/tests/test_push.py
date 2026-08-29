@@ -218,3 +218,57 @@ def test_expired_subscription_is_cleaned_up(ws_client, monkeypatch):
         assert ws.receive_json()["type"] == "joined"
 
     assert _fetch_subscriptions(ws_client, bob["id"]) == []
+
+
+def test_non_gone_push_failure_logs_response_detail_and_keeps_subscription(ws_client, monkeypatch):
+    # #56: a real WNS 400 carries its actual reason in a response *header*,
+    # not the body -- str(WebPushException) alone (what used to be logged)
+    # would have shown neither, which is exactly why that bug took a DB
+    # dump + journalctl correlation to diagnose instead of one log line.
+    class FakeResponse:
+        status_code = 400
+        text = "Bad Request"
+        headers = {"X-WNS-Error-Description": "Ttl value conflicts with X-WNS-Cache-Policy"}
+
+    def fake_webpush(**kwargs):
+        raise WebPushException("Push failed: 400 Bad Request", response=FakeResponse())
+
+    monkeypatch.setattr("app.services.push_service.webpush", fake_webpush)
+
+    # caplog's handler capture isn't reliable here -- the actual push send
+    # (and its logger.warning call) runs on ws_client_factory's background
+    # portal thread (see that fixture's own docstring), not pytest's main
+    # thread. Patching the logger call directly sidesteps that instead of
+    # depending on cross-thread log propagation.
+    calls = []
+    monkeypatch.setattr(
+        "app.services.push_service.logger.warning",
+        lambda msg, *args: calls.append(msg % args),
+    )
+
+    alice = _register_ws(ws_client, _unique("alice"))
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    bob = _register_ws(ws_client, _unique("bob"))
+    ws_client.post(f"/api/rooms/{room['id']}/join")
+    ws_client.post("/api/push/subscribe", json=_subscription_payload(_unique("bob")))
+    assert len(_fetch_subscriptions(ws_client, bob["id"])) == 1
+
+    ws_client.post(
+        "/api/auth/login", json={"username_or_email": alice["username"], "password": "password123"}
+    )
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+        ws.send_json({"type": "message", "room_id": room["id"], "content": "hello"})
+        assert ws.receive_json()["type"] == "message"
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json()["type"] == "joined"
+
+    # A 400 isn't "gone" (404/410) -- the subscription stays, unlike the
+    # expired-subscription case above.
+    assert len(_fetch_subscriptions(ws_client, bob["id"])) == 1
+
+    assert len(calls) == 1
+    assert "Bad Request" in calls[0]
+    assert "Ttl value conflicts with X-WNS-Cache-Policy" in calls[0]

@@ -15,7 +15,14 @@ dependencies = [
     "pydantic-settings>=2.6",
     "argon2-cffi>=23.1",
     "itsdangerous>=2.2",
-    "pywebpush>=2.0",
+    # #56: >=2.0 let the production venv sit on an old 2.0.x that predates
+    # the fix for web-push-libs/pywebpush#162 -- WNS (Windows/Edge push)
+    # has required an X-WNS-Cache-Policy header since April 2024, and an
+    # old pywebpush that never sends it gets a bodyless 400 on every send.
+    # Floored at the actual latest release (merged/shipped 2026-01 through
+    # 2026-08) rather than pinning to whichever exact point release first
+    # included the fix, since that wasn't independently confirmed.
+    "pywebpush>=2.4.0",
     "redis>=5.0",
     "httpx>=0.27",
     "gunicorn>=23.0",
