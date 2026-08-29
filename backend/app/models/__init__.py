@@ -1,6 +1,7 @@
 from app.models.admin_audit_log import AdminAuditLog
 from app.models.api_token import ApiToken
 from app.models.base import Base
+from app.models.custom_emoji import CustomEmoji
 from app.models.custom_theme import CustomTheme
 from app.models.event_subscription import EventSubscription
 from app.models.invite import InviteStatus
@@ -46,5 +47,6 @@ __all__ = [
     "WebhookIncoming",
     "EventSubscription",
     "CustomTheme",
+    "CustomEmoji",
     "LinkPreview",
 ]

@@ -8,7 +8,7 @@ import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
 import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
 import { ImageLightbox } from './ImageLightbox'
 import { LinkPreviewCard } from './LinkPreviewCard'
-import { MessageContent } from './MessageContent'
+import { EmojiGlyph, MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import { VideoLightbox } from './VideoLightbox'
 import './MessageList.css'
@@ -302,7 +302,9 @@ export function MessageList({
                             title={r.user_ids.map(displayNameForUserId).join(', ')}
                             onClick={() => onReact(msg.id, r.emoji)}
                           >
-                            <span>{r.emoji}</span>
+                            <span>
+                              <EmojiGlyph value={r.emoji} />
+                            </span>
                             <span>{r.count}</span>
                           </button>
                         )

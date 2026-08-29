@@ -1,0 +1,13 @@
+/* #18: em-relative, deliberately -- renders correctly inline in message
+   text, inside a reaction pill, and inside the emoji picker's grid without
+   a separate override per context, since each of those already sets its
+   own font-size and this just tracks it. Kept in this file (imported
+   directly by MessageContent.tsx) rather than MessageList.css so it's
+   loaded wherever MessageContent renders -- FilePreviewModal and HelpPage
+   included, not just the message list. */
+.message-custom-emoji {
+  height: 1.2em;
+  width: 1.2em;
+  object-fit: contain;
+  vertical-align: -0.25em;
+}

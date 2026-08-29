@@ -429,6 +429,17 @@
   color: var(--ds-muted);
 }
 
+.custom-emoji-upload-preview {
+  display: block;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  margin-top: var(--sp-2);
+  background: var(--ds-surface-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--ds-border);
+}
+
 .modal-list-row-action {
   flex: none;
   background: transparent;

@@ -1,8 +1,11 @@
+import { getCustomEmojiUrl } from '../api/customEmoji'
 import './ComposerAutocomplete.css'
 
 export interface EmojiShortcodeMatch {
   shortcode: string
-  glyph: string
+  // null for a custom emoji -- there's no unicode glyph to show, so the
+  // row renders its uploaded image instead (see getCustomEmojiUrl below).
+  glyph: string | null
 }
 
 interface EmojiShortcodeAutocompleteProps {
@@ -34,7 +37,15 @@ export function EmojiShortcodeAutocomplete({
           onClick={() => onPick(match.shortcode)}
           onMouseEnter={() => onHover(i)}
         >
-          <span className="composer-autocomplete-emoji-glyph">{match.glyph}</span>
+          <span className="composer-autocomplete-emoji-glyph">
+            {match.glyph ?? (
+              <img
+                src={getCustomEmojiUrl(match.shortcode)}
+                alt=""
+                className="composer-autocomplete-custom-emoji"
+              />
+            )}
+          </span>
           <span className="composer-autocomplete-primary">:{match.shortcode}:</span>
         </button>
       ))}

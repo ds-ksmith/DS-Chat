@@ -1,7 +1,10 @@
 import Markdown from 'markdown-to-jsx'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { getCustomEmojiUrl } from '../api/customEmoji'
+import { useCustomEmoji } from '../context/CustomEmojiContext'
 import { EMOJI_SHORTCODES } from '../lib/emojiShortcodes'
+import './MessageContent.css'
 
 interface MessageContentProps {
   content: string
@@ -70,6 +73,17 @@ function MarkdownLink({ href, children }: MarkdownLinkProps) {
   }
   if (href === 'sup:') {
     return <sup>{children}</sup>
+  }
+  if (href?.startsWith('emoji:')) {
+    const shortcode = href.slice('emoji:'.length)
+    return (
+      <img
+        src={getCustomEmojiUrl(shortcode)}
+        alt={`:${shortcode}:`}
+        title={`:${shortcode}:`}
+        className="message-custom-emoji"
+      />
+    )
   }
   return (
     <a href={href} target="_blank" rel="noopener noreferrer">
@@ -172,6 +186,68 @@ function extractHeadingIds(text: string): { text: string; headingIds: Map<string
     return headingLine
   })
   return { text: nextLines.join('\n'), headingIds }
+}
+
+// #18: a *complete* `:name:` that survived convertShortcodes above (it only
+// replaces names it recognizes, so an unmatched one -- built-in or not --
+// passes through untouched) and matches a shortcode this install actually
+// has a custom emoji for. Turns it into `[​:name:​](emoji:name)`, the same
+// link-trick MarkdownLink's other branches use -- deliberately reusing the
+// exact fence/code-span-skip convention every other converter in this file
+// follows, for the same reason (a pasted `:some_key:` in code shouldn't
+// light up as an emoji any more than an unrelated one should).
+const CUSTOM_EMOJI_PATTERN = /:([a-z0-9_-]+):/g
+
+function convertCustomEmojiShortcodes(text: string, shortcodes: Set<string>): string {
+  if (shortcodes.size === 0) return text
+  const lines = text.split('\n')
+  let inFence = false
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part, i) =>
+          i % 2 === 0
+            ? part.replace(CUSTOM_EMOJI_PATTERN, (match, name) =>
+                shortcodes.has(name) ? `[${match}](emoji:${name})` : match,
+              )
+            : part,
+        )
+        .join('')
+    })
+    .join('\n')
+}
+
+// Reaction pills and the "recently used" emoji row don't go through the
+// markdown pipeline at all -- they render a single stored value directly.
+// A custom emoji's value there is its literal `:shortcode:` (see
+// backend's MessageReaction.emoji); this is the equivalent one-value
+// resolution for those spots, so a deleted-since-reacted-with custom
+// emoji degrades to plain `:shortcode:` text instead of a broken image.
+interface EmojiGlyphProps {
+  value: string
+}
+
+export function EmojiGlyph({ value }: EmojiGlyphProps) {
+  const { byShortcode } = useCustomEmoji()
+  const match = /^:([a-z0-9_-]+):$/.exec(value)
+  const shortcode = match?.[1]
+  if (shortcode && byShortcode.has(shortcode)) {
+    return (
+      <img
+        src={getCustomEmojiUrl(shortcode)}
+        alt={value}
+        title={value}
+        className="message-custom-emoji"
+      />
+    )
+  }
+  return <>{value}</>
 }
 
 const MENTION_PATTERN = /@([a-zA-Z0-9_.-]+)/g
@@ -295,8 +371,13 @@ export function preprocessMarkdown(text: string): { text: string; headingIds: Ma
 }
 
 export function MessageContent({ content, memberUsernames, myRooms }: MessageContentProps) {
+  const { byShortcode } = useCustomEmoji()
   const withMentions = memberUsernames ? highlightMentions(content, memberUsernames) : content
   const withRoomRefs = myRooms ? highlightRoomReferences(withMentions, myRooms) : withMentions
-  const { text, headingIds } = preprocessMarkdown(convertShortcodes(withRoomRefs))
+  const withCustomEmoji = convertCustomEmojiShortcodes(
+    convertShortcodes(withRoomRefs),
+    new Set(byShortcode.keys()),
+  )
+  const { text, headingIds } = preprocessMarkdown(withCustomEmoji)
   return <Markdown options={createMarkdownOptions(headingIds)}>{preserveLineBreaks(text)}</Markdown>
 }

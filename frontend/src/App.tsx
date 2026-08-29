@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ChatSocketProvider } from './context/ChatSocketContext'
+import { CustomEmojiProvider } from './context/CustomEmojiContext'
 import { AdminRoute } from './components/AdminRoute'
 import { DesktopNotificationBridge } from './components/DesktopNotificationBridge'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -67,8 +68,10 @@ function AppRoutes() {
   if (!user) return routes
   return (
     <ChatSocketProvider key={user.id}>
-      <DesktopNotificationBridge />
-      {routes}
+      <CustomEmojiProvider>
+        <DesktopNotificationBridge />
+        {routes}
+      </CustomEmojiProvider>
     </ChatSocketProvider>
   )
 }

@@ -26,6 +26,14 @@ export interface CustomTheme {
   created_at: string
 }
 
+// #18: site-wide, uploaded by any user -- see backend's app/models/custom_emoji.py.
+export interface CustomEmoji {
+  id: string
+  shortcode: string
+  uploaded_by: string
+  created_at: string
+}
+
 export interface User {
   id: string
   username: string

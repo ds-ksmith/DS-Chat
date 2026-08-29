@@ -12,6 +12,7 @@ import { useEscapeKey } from '../hooks/useEscapeKey'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { uploadRoomFile, uploadRoomImage } from '../api/rooms'
 import { getUploadLimit } from '../api/uploads'
+import { useCustomEmoji } from '../context/CustomEmojiContext'
 import { EMOJI_SHORTCODES, SHORTCODE_BY_GLYPH } from '../lib/emojiShortcodes'
 import { formatFileSize } from '../lib/fileSize'
 import { getRecentEmoji, recordEmojiUsed } from '../lib/recentEmoji'
@@ -135,6 +136,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
   const [emojiActiveIndex, setEmojiActiveIndex] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const { byShortcode: customEmojiByShortcode } = useCustomEmoji()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   // #29: a separate input with an image/video accept hint, so mobile
@@ -170,20 +172,33 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
     const q = emojiQuery.text.toLowerCase()
     // A bare ":" with nothing typed yet -- suggest recently-used emoji
     // (already capped to 8, see recentEmoji.ts) rather than an arbitrary
-    // slice of the ~950 known shortcodes.
+    // slice of the ~950 known shortcodes. A recent custom-emoji pick is
+    // stored as its literal `:shortcode:` (see recordEmojiUsed's call
+    // sites) -- resolved against the live registry the same way, so a
+    // since-deleted one just doesn't show up here.
     if (!q) {
       return getRecentEmoji()
-        .map((glyph) => {
-          const shortcode = SHORTCODE_BY_GLYPH[glyph]
-          return shortcode ? { shortcode, glyph } : null
+        .map((value) => {
+          const customMatch = /^:([a-z0-9_-]+):$/.exec(value)
+          if (customMatch && customEmojiByShortcode.has(customMatch[1])) {
+            return { shortcode: customMatch[1], glyph: null }
+          }
+          const shortcode = SHORTCODE_BY_GLYPH[value]
+          return shortcode ? { shortcode, glyph: value } : null
         })
         .filter((match): match is EmojiShortcodeMatch => match !== null)
     }
-    return Object.keys(EMOJI_SHORTCODES)
+    // Custom emoji surface first -- a smaller, more specific set, and the
+    // whole reason this app has an upload feature at all is for them to be
+    // reachable as easily as the built-in set.
+    const customMatches: EmojiShortcodeMatch[] = [...customEmojiByShortcode.keys()]
       .filter((shortcode) => shortcode.startsWith(q))
-      .slice(0, 8)
+      .map((shortcode) => ({ shortcode, glyph: null }))
+    const builtinMatches: EmojiShortcodeMatch[] = Object.keys(EMOJI_SHORTCODES)
+      .filter((shortcode) => shortcode.startsWith(q))
       .map((shortcode) => ({ shortcode, glyph: EMOJI_SHORTCODES[shortcode] }))
-  }, [emojiQuery])
+    return [...customMatches, ...builtinMatches].slice(0, 8)
+  }, [emojiQuery, customEmojiByShortcode])
 
   useEffect(() => {
     getUploadLimit()
@@ -248,20 +263,27 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
 
   function selectEmojiShortcode(shortcode: string) {
     const query = emojiQuery
+    if (!query) return
+    // A custom emoji has no unicode glyph to substitute -- its literal
+    // `:shortcode:` text is what actually gets stored/rendered (see
+    // MessageContent.tsx's convertCustomEmojiShortcodes), so that's what
+    // goes in the textarea instead of a glyph.
+    const isCustom = customEmojiByShortcode.has(shortcode)
     const glyph = EMOJI_SHORTCODES[shortcode]
-    if (!query || !glyph) return
+    if (!isCustom && !glyph) return
+    const inserted = isCustom ? `:${shortcode}:` : glyph
     // Matches EmojiPicker's own insertEmoji -- a shortcode-completed emoji
     // counts as "used" the same as one picked from the picker, so it
     // shows up there too next time.
-    recordEmojiUsed(glyph)
+    recordEmojiUsed(inserted)
     const el = textareaRef.current
-    const next = value.slice(0, query.start) + glyph + ' ' + value.slice(query.end)
+    const next = value.slice(0, query.start) + inserted + ' ' + value.slice(query.end)
     setValue(next)
     setEmojiQuery(null)
     requestAnimationFrame(() => {
       if (!el) return
       el.focus()
-      const cursor = query.start + glyph.length + 1 // glyph + trailing space
+      const cursor = query.start + inserted.length + 1 // inserted text + trailing space
       el.setSelectionRange(cursor, cursor)
       autoGrow()
     })

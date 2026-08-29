@@ -15,6 +15,7 @@ from app.routers import (
     admin,
     auth,
     bots,
+    custom_emoji,
     custom_themes,
     health,
     push,
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router)
     app.include_router(push.router)
     app.include_router(custom_themes.router)
+    app.include_router(custom_emoji.router)
     app.include_router(uploads.router)
     app.include_router(admin.router)
     app.include_router(bots.router)

@@ -311,7 +311,11 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         envelope.room_id is None
                         or envelope.message_id is None
                         or not envelope.emoji
-                        or len(envelope.emoji) > 8
+                        # #18: a raw unicode glyph never gets close to this,
+                        # but a custom emoji reaction is stored as its
+                        # literal `:shortcode:` text (see MessageReaction.emoji's
+                        # String(32) column, which this matches exactly).
+                        or len(envelope.emoji) > 32
                     ):
                         await websocket.send_json(
                             {"type": "error", "detail": "room_id, message_id, and emoji required"}
