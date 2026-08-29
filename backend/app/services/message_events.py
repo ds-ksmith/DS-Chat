@@ -249,6 +249,79 @@ async def _maybe_email_dm_notification(
     )
 
 
+async def _maybe_email_room_mention_notifications(
+    db: AsyncSession,
+    global_presence: GlobalPresence,
+    base_url: str,
+    room_id: uuid.UUID,
+    sender: User,
+    message: Message,
+) -> None:
+    """#67: opt-in, per-room email on mention -- deliberately scoped to
+    regular rooms only (see set_room_email_notifications: DMs already get
+    #66's always-on offline email, no separate toggle). Debounced the same
+    shape as #66 -- only the first unread mention in this room emails, not
+    one per mention while the recipient is away.
+    """
+    room = await db.get(Room, room_id)
+    if room is None or room.is_dm:
+        return
+
+    result = await db.execute(
+        select(MessageMention.user_id).where(MessageMention.message_id == message.id)
+    )
+    mentioned_ids = {row[0] for row in result.all()} - {sender.id}
+    if not mentioned_ids:
+        return
+
+    for user_id in mentioned_ids:
+        membership_result = await db.execute(
+            select(RoomMembership).where(
+                RoomMembership.room_id == room_id, RoomMembership.user_id == user_id
+            )
+        )
+        membership = membership_result.scalar_one_or_none()
+        if membership is None or not membership.email_notifications:
+            continue
+
+        recipient = await db.get(User, user_id)
+        if recipient is None:
+            continue
+        # appear_offline always wins here too, same as _maybe_email_dm_notification.
+        if not recipient.appear_offline and await global_presence.is_online(recipient.id):
+            continue
+
+        already_unread_mention = await db.execute(
+            select(Message.id)
+            .join(MessageMention, MessageMention.message_id == Message.id)
+            .where(
+                MessageMention.user_id == user_id,
+                Message.room_id == room_id,
+                Message.id != message.id,
+                Message.created_at > membership.last_read_at,
+            )
+            .limit(1)
+        )
+        if already_unread_mention.scalar_one_or_none() is not None:
+            continue
+
+        body_line = (
+            f"{sender.username} mentioned you: {message.content[:200]}"
+            if message.content
+            else f"{sender.username} mentioned you"
+        )
+        link = f"{base_url.rstrip('/')}/rooms/{room_id}"
+        await send_email(
+            db,
+            recipient.email,
+            f"New mention in #{room.name}",
+            [body_line],
+            cta_label="Open room",
+            cta_url=link,
+            theme_user=recipient,
+        )
+
+
 async def broadcast_new_message(
     db: AsyncSession,
     broadcaster: Broadcaster,
@@ -288,6 +361,7 @@ async def broadcast_new_message(
         )
     await _notify_offline_members(db, broadcaster, presence, focus_presence, room_id, sender, message)
     await _maybe_email_dm_notification(db, global_presence, base_url, room_id, sender, message)
+    await _maybe_email_room_mention_notifications(db, global_presence, base_url, room_id, sender, message)
     await dispatch_event(db, "message.created", room_id, payload)
     _maybe_fetch_link_preview(broadcaster, room_id, message)
 

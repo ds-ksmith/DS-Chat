@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, PrimaryKeyConstraint, func
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, PrimaryKeyConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -42,6 +42,13 @@ class RoomMembership(Base):
     # arrives in the room, or when find_or_create_dm resolves back to it --
     # both count as the conversation being active again.
     hidden_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # #67: opt-in, per-member -- email when a message in this room mentions
+    # them while they're offline. Deliberately separate from #66's DM
+    # emails (always-on, no toggle) rather than a shared flag, since DMs
+    # are explicitly out of scope for this setting (see message_events.py).
+    email_notifications: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
 
     room = relationship("Room", back_populates="memberships")
     user = relationship("User")

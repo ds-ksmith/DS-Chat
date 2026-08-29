@@ -13,6 +13,7 @@ import {
   removeMember,
   transferOwnership,
   updateRoom,
+  updateRoomNotifications,
 } from '../api/rooms'
 import {
   createEventSubscription,
@@ -106,6 +107,8 @@ export function RoomInfoPanel({
   const [descDraft, setDescDraft] = useState(room.description ?? '')
   const [isPrivateDraft, setIsPrivateDraft] = useState(room.is_private)
   const [roomError, setRoomError] = useState<string | null>(null)
+  const [emailNotifications, setEmailNotifications] = useState(room.email_notifications)
+  const [notificationsError, setNotificationsError] = useState<string | null>(null)
 
   const [integrationsOpen, setIntegrationsOpen] = useState(false)
   const [incomingWebhooks, setIncomingWebhooks] = useState<WebhookIncoming[]>([])
@@ -129,6 +132,7 @@ export function RoomInfoPanel({
     setNameDraft(room.name)
     setDescDraft(room.description ?? '')
     setIsPrivateDraft(room.is_private)
+    setEmailNotifications(room.email_notifications)
     if (canManage) {
       listIncomingWebhooks(room.id).then(setIncomingWebhooks).catch(() => setIncomingWebhooks([]))
       listEventSubscriptions(room.id).then(setEventSubscriptions).catch(() => setEventSubscriptions([]))
@@ -138,7 +142,7 @@ export function RoomInfoPanel({
       setEventSubscriptions([])
       setDirectoryUsers([])
     }
-  }, [room.id, room.name, room.description, room.is_private, canManage])
+  }, [room.id, room.name, room.description, room.is_private, room.email_notifications, canManage])
 
   useEffect(() => {
     // Fetched lazily (only once expanded), not alongside the section above
@@ -151,6 +155,19 @@ export function RoomInfoPanel({
       .then(setAttachments)
       .catch((err) => setAttachmentsError(err instanceof ApiError ? err.message : String(err)))
   }, [filesOpen, room.id])
+
+  async function handleToggleEmailNotifications(enabled: boolean) {
+    const previous = emailNotifications
+    setEmailNotifications(enabled)
+    setNotificationsError(null)
+    try {
+      await updateRoomNotifications(room.id, enabled)
+      onRoomUpdated()
+    } catch (err) {
+      setEmailNotifications(previous)
+      setNotificationsError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
 
   async function handleAddMember(target: UserDirectoryEntry) {
     setInviteError(null)
@@ -376,6 +393,26 @@ export function RoomInfoPanel({
           )
         })}
       </div>
+
+      {!room.is_dm && (
+        <div className="room-info-section">
+          <div className="toggle-row">
+            <div className="toggle-label">
+              <span className="t">Email me on mentions</span>
+              <span className="d">Sent only while you're offline</span>
+            </div>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={emailNotifications}
+                onChange={(e) => handleToggleEmailNotifications(e.target.checked)}
+              />
+              <span className="track" />
+            </label>
+          </div>
+          {notificationsError && <p className="room-info-error">{notificationsError}</p>}
+        </div>
+      )}
 
       <div className="room-info-section">
         <button type="button" className="room-info-settings-toggle" onClick={() => setFilesOpen((v) => !v)}>

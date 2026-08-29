@@ -63,10 +63,18 @@ class MyRoomItem(RoomRead):
     # avatar, not this room's internal `name`) without a second fetch per
     # row. None for a regular room.
     dm_partner: DmPartnerInfo | None = None
+    # #67: this viewer's own opt-in for "email me when mentioned here while
+    # offline" -- always false for a DM (see message_events.py, deliberately
+    # out of scope; DMs already get #66's automatic offline email).
+    email_notifications: bool = False
 
 
 class StartDmRequest(BaseModel):
     other_user_id: uuid.UUID
+
+
+class RoomNotificationSettingsUpdate(BaseModel):
+    email_notifications: bool
 
 
 class RoomMemberRead(BaseModel):

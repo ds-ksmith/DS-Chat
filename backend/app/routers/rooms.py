@@ -25,6 +25,7 @@ from app.schemas.room import (
     RoomMemberAdd,
     RoomMemberRead,
     RoomMemberRoleUpdate,
+    RoomNotificationSettingsUpdate,
     RoomRead,
     RoomUpdate,
     StartDmRequest,
@@ -72,6 +73,7 @@ from app.services.room_service import (
     list_room_members,
     mark_room_read,
     remove_member,
+    set_room_email_notifications,
     transfer_ownership,
     update_room,
 )
@@ -179,6 +181,7 @@ async def list_my_rooms_endpoint(
             role=role,
             has_unread=has_unread,
             has_mention=has_mention,
+            email_notifications=email_notifications,
             dm_partner=(
                 DmPartnerInfo(
                     user_id=partner.id,
@@ -191,7 +194,7 @@ async def list_my_rooms_endpoint(
                 else None
             ),
         )
-        for room, role, has_unread, has_mention, partner in rooms
+        for room, role, has_unread, has_mention, email_notifications, partner in rooms
     ]
 
 
@@ -291,6 +294,20 @@ async def mark_room_read_endpoint(
 ):
     await require_room_member(room_id, current_user, db)
     await mark_room_read(db, room_id, current_user.id)
+
+
+@router.patch("/{room_id}/notifications", status_code=204)
+async def update_room_notifications_endpoint(
+    room_id: uuid.UUID,
+    data: RoomNotificationSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    await require_room_member(room_id, current_user, db)
+    try:
+        await set_room_email_notifications(db, room_id, current_user.id, data.email_notifications)
+    except CannotModifyDmError:
+        raise HTTPException(status_code=400, detail="Email notifications aren't available for DMs")
 
 
 def _member_status(user: User, online_ids: set[uuid.UUID]) -> str:

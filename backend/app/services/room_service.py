@@ -182,7 +182,7 @@ async def list_open_rooms(db: AsyncSession, user_id: uuid.UUID) -> list[tuple[Ro
 
 async def list_member_rooms(
     db: AsyncSession, user_id: uuid.UUID
-) -> list[tuple[Room, RoomRole, bool, bool, User | None]]:
+) -> list[tuple[Room, RoomRole, bool, bool, bool, User | None]]:
     last_message_at = (
         select(func.max(Message.created_at))
         .where(Message.room_id == Room.id)
@@ -205,7 +205,12 @@ async def list_member_rooms(
     )
     result = await db.execute(
         select(
-            Room, RoomMembership.role, RoomMembership.last_read_at, last_message_at, has_unread_mention
+            Room,
+            RoomMembership.role,
+            RoomMembership.last_read_at,
+            last_message_at,
+            has_unread_mention,
+            RoomMembership.email_notifications,
         )
         .join(RoomMembership, RoomMembership.room_id == Room.id)
         .where(RoomMembership.user_id == user_id, RoomMembership.hidden_at.is_(None))
@@ -238,9 +243,10 @@ async def list_member_rooms(
             role,
             last_message_at is not None and last_message_at > last_read_at,
             has_mention,
+            email_notifications,
             partners_by_room.get(room.id),
         )
-        for room, role, last_read_at, last_message_at, has_mention in rows
+        for room, role, last_read_at, last_message_at, has_mention, email_notifications in rows
     ]
 
 
@@ -483,6 +489,22 @@ async def transfer_ownership(
 async def mark_room_read(db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID) -> None:
     membership = await _get_membership(db, room_id, user_id)
     membership.last_read_at = func.now()
+    await db.commit()
+
+
+async def set_room_email_notifications(
+    db: AsyncSession, room_id: uuid.UUID, user_id: uuid.UUID, enabled: bool
+) -> None:
+    """#67: DMs are deliberately excluded -- they already get #66's
+    automatic offline email with no opt-in needed, and this setting only
+    makes sense for a regular room's mention-based notifications."""
+    room = await db.get(Room, room_id)
+    if room is None:
+        raise RoomNotFoundError()
+    if room.is_dm:
+        raise CannotModifyDmError()
+    membership = await _get_membership(db, room_id, user_id)
+    membership.email_notifications = enabled
     await db.commit()
 
 

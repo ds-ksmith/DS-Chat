@@ -68,6 +68,16 @@ export function hideDm(roomId: string): Promise<void> {
   return apiFetch<void>(`/api/rooms/${roomId}/hide`, { method: 'POST' })
 }
 
+// #67: per-viewer opt-in for email-on-mention in this room. 400s for a DM
+// (backend rejects it -- see set_room_email_notifications), so callers
+// should only expose the toggle for a non-DM room.
+export function updateRoomNotifications(roomId: string, emailNotifications: boolean): Promise<void> {
+  return apiFetch<void>(`/api/rooms/${roomId}/notifications`, {
+    method: 'PATCH',
+    body: JSON.stringify({ email_notifications: emailNotifications }),
+  })
+}
+
 export function listRoomMembers(roomId: string): Promise<RoomMember[]> {
   return apiFetch<RoomMember[]>(`/api/rooms/${roomId}/members`)
 }
