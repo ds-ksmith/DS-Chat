@@ -27,8 +27,18 @@ _TRAILING_PUNCTUATION = ".,;:!?)'\">"
 _FETCH_TIMEOUT_SECONDS = 5.0
 _MAX_BYTES = 512 * 1024
 _MAX_REDIRECTS = 3
+# #70: was 7 days -- confirmed live as too long for how this app actually
+# gets used: re-posting a URL whose title/content had genuinely changed
+# kept showing the stale first-fetch preview for up to a week. Short
+# enough that it's effectively "always fresh" for any realistic human
+# posting cadence, while still doing the one thing a cache here is
+# actually for -- collapsing a burst of near-simultaneous fetches of the
+# same URL (several people pasting the same link within moments of each
+# other, or the same person's message history being loaded repeatedly)
+# into one, and not hammering a URL that just failed on every message
+# that references it.
 _USER_AGENT = "ds-chat-link-preview/1.0"
-_CACHE_TTL = timedelta(days=7)
+_CACHE_TTL = timedelta(minutes=5)
 
 
 def extract_first_url(content: str | None) -> str | None:

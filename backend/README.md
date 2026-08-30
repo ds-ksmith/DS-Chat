@@ -822,10 +822,13 @@ preview card fetched from that page's Open Graph tags (`og:title`,
   `Content-Type` is `text/html`.
 - **Cached by URL, not by message** (`link_previews` table, unique on
   `url`) — a URL posted by five different people in five different rooms
-  fetches once. A row also gets written on a *failed* fetch
-  (`fetch_failed=True`) so a URL that genuinely doesn't unfurl (SSRF
-  rejection, timeout, no usable title) isn't re-attempted on every message
-  that references it; both kinds expire after 7 days (`_CACHE_TTL`).
+  within the same short window fetches once. A row also gets written on a
+  *failed* fetch (`fetch_failed=True`) so a URL that genuinely doesn't
+  unfurl (SSRF rejection, timeout, no usable title) isn't re-attempted on
+  every message that references it; both kinds expire after 5 minutes
+  (`_CACHE_TTL` — #70: was 7 days, confirmed live as far too long, a
+  re-posted URL whose title/content had genuinely changed kept showing
+  the stale first-fetch preview for up to a week).
 - Parsed with stdlib `html.parser.HTMLParser`, not a new dependency — only
   meta-tag scraping is needed, not general HTML parsing.
 - Editing a message re-extracts the URL; if it changed or was removed, the

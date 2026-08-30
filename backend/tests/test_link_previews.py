@@ -1,9 +1,13 @@
 import asyncio
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest_asyncio
+from sqlalchemy import select
 
+from app.database import async_session_factory
 from app.database import engine as _link_preview_engine
+from app.models import LinkPreview
 from app.schemas.user import UserCreate
 from app.services.auth_service import register_user
 from app.services.link_preview_service import extract_first_url
@@ -294,3 +298,66 @@ async def test_link_preview_reused_across_messages_with_same_url(client, db_sess
     history = (await client.get(f"/api/rooms/{room['id']}/messages")).json()
     assert len(history) == 2
     assert all(m["link_preview"]["title"] == "Example Article" for m in history)
+
+
+async def test_link_preview_refetches_after_cache_expires(client, db_session, monkeypatch):
+    # #70: a real report -- re-posting a URL whose title had genuinely
+    # changed kept showing the stale first-fetch preview, because the
+    # cache TTL used to be 7 days. Simulates that expiry directly (rather
+    # than actually sleeping 5+ minutes) by backdating the cached row's
+    # fetched_at past the TTL, then confirms a second post of the same URL
+    # picks up new content instead of the stale cached title.
+    captured_tasks: list[asyncio.Task] = []
+    real_create_task = asyncio.create_task
+
+    def fake_create_task(coro):
+        task = real_create_task(coro)
+        captured_tasks.append(task)
+        return task
+
+    monkeypatch.setattr("app.services.message_events.asyncio.create_task", fake_create_task)
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "app.services.link_preview_service.httpx.AsyncClient",
+        _fake_client_factory(call_log=calls),
+    )
+    url = _unique_url()
+
+    await register_and_login(client, db_session, username="alice")
+    room = (await client.post("/api/rooms", json={"name": "general"})).json()
+    webhook = (await client.post(f"/api/rooms/{room['id']}/webhooks/incoming", json={})).json()
+
+    resp1 = await client.post(
+        f"/api/webhooks/incoming/{webhook['token']}", json={"content": f"see {url}"}
+    )
+    assert resp1.status_code == 204
+    await asyncio.gather(*captured_tasks)
+    captured_tasks.clear()
+
+    async with async_session_factory() as session:
+        row = (
+            await session.execute(select(LinkPreview).where(LinkPreview.url == url))
+        ).scalar_one()
+        row.fetched_at = datetime.now(timezone.utc) - timedelta(minutes=10)
+        await session.commit()
+
+    updated_html = _OG_HTML.replace(b"Example Article", b"Updated Article")
+    monkeypatch.setattr(
+        "app.services.link_preview_service.httpx.AsyncClient",
+        _fake_client_factory(html=updated_html, call_log=calls),
+    )
+
+    resp2 = await client.post(
+        f"/api/webhooks/incoming/{webhook['token']}", json={"content": f"again: {url}"}
+    )
+    assert resp2.status_code == 204
+    await asyncio.gather(*captured_tasks)
+
+    assert len(calls) == 2  # the expired cache forced a second real fetch
+
+    # Cached by URL, not by message (see link_preview_service.py) -- the
+    # row was refreshed in place, so *both* messages referencing this URL
+    # now show the new title on a history reload, not one each.
+    history = (await client.get(f"/api/rooms/{room['id']}/messages")).json()
+    assert len(history) == 2
+    assert all(m["link_preview"]["title"] == "Updated Article" for m in history)
