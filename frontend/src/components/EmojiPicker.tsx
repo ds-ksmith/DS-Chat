@@ -1,12 +1,9 @@
-import { useMemo, useState, type MouseEvent } from 'react'
-import { deleteCustomEmoji } from '../api/customEmoji'
-import { useAuth } from '../context/AuthContext'
+import { useMemo, useState } from 'react'
 import { useCustomEmoji } from '../context/CustomEmojiContext'
 import { useEscapeKey } from '../hooks/useEscapeKey'
 import { ALL_EMOJI, EMOJI_CATEGORIES } from '../lib/emoji'
 import { EMOJI_NAMES } from '../lib/emojiNames'
 import { getRecentEmoji, recordEmojiUsed } from '../lib/recentEmoji'
-import { CustomEmojiUploadModal } from './CustomEmojiUploadModal'
 import { EmojiGlyph } from './MessageContent'
 import './EmojiPicker.css'
 
@@ -55,11 +52,8 @@ function searchEmoji(query: string, customShortcodes: string[]): string[] {
 
 export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'left' }: EmojiPickerProps) {
   useEscapeKey(onClose)
-  const { user } = useAuth()
-  const { list: customEmoji, refresh: refreshCustomEmoji } = useCustomEmoji()
+  const { list: customEmoji } = useCustomEmoji()
   const [query, setQuery] = useState('')
-  const [uploadOpen, setUploadOpen] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
   const customShortcodes = useMemo(() => customEmoji.map((e) => e.shortcode), [customEmoji])
   const searchResults = useMemo(() => searchEmoji(query, customShortcodes), [query, customShortcodes])
   const searching = query.trim().length > 0
@@ -72,18 +66,6 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
   function pick(emoji: string) {
     recordEmojiUsed(emoji)
     onPick(emoji)
-  }
-
-  async function handleDeleteCustomEmoji(e: MouseEvent, emojiId: string) {
-    // Delete, not pick -- must never bubble to the button's own onClick.
-    e.stopPropagation()
-    setDeletingId(emojiId)
-    try {
-      await deleteCustomEmoji(emojiId)
-      await refreshCustomEmoji()
-    } finally {
-      setDeletingId(null)
-    }
   }
 
   return (
@@ -122,48 +104,25 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
           )
         ) : (
           <>
-            <div className="emoji-picker-category">
-              <div className="emoji-picker-category-label-row">
+            {customEmoji.length > 0 && (
+              <div className="emoji-picker-category">
                 <div className="emoji-picker-category-label">Custom</div>
-                <button
-                  type="button"
-                  className="emoji-picker-add-custom"
-                  onClick={() => setUploadOpen(true)}
-                >
-                  + Add
-                </button>
-              </div>
-              {customEmoji.length > 0 && (
                 <div className="emoji-picker-grid">
-                  {customEmoji.map((e) => {
-                    const canDelete = user?.id === e.uploaded_by || user?.is_site_admin
-                    return (
-                      <button
-                        key={e.id}
-                        type="button"
-                        role="menuitem"
-                        className="emoji-picker-item emoji-picker-item-custom"
-                        title={`:${e.shortcode}:`}
-                        onClick={() => pick(`:${e.shortcode}:`)}
-                      >
-                        <EmojiGlyph value={`:${e.shortcode}:`} />
-                        {canDelete && (
-                          <span
-                            role="button"
-                            aria-label={`Remove :${e.shortcode}:`}
-                            className="emoji-picker-item-remove"
-                            onClick={(ev) => handleDeleteCustomEmoji(ev, e.id)}
-                            style={deletingId === e.id ? { opacity: 0.5, pointerEvents: 'none' } : undefined}
-                          >
-                            ×
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
+                  {customEmoji.map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      role="menuitem"
+                      className="emoji-picker-item"
+                      title={`:${e.shortcode}:`}
+                      onClick={() => pick(`:${e.shortcode}:`)}
+                    >
+                      <EmojiGlyph value={`:${e.shortcode}:`} />
+                    </button>
+                  ))}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
             {recent.length > 0 && (
               <div className="emoji-picker-category">
                 <div className="emoji-picker-category-label">Recently used</div>
@@ -205,15 +164,6 @@ export function EmojiPicker({ onPick, onClose, placement = 'below', align = 'lef
           </>
         )}
       </div>
-      {uploadOpen && (
-        <CustomEmojiUploadModal
-          onClose={() => setUploadOpen(false)}
-          onUploaded={() => {
-            refreshCustomEmoji()
-            setUploadOpen(false)
-          }}
-        />
-      )}
     </>
   )
 }

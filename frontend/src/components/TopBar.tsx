@@ -13,6 +13,7 @@ import {
 } from '../lib/desktopBridge'
 import { getPushSubscriptionStatus, isPushSupported, subscribeToPush, unsubscribeFromPush } from '../lib/push'
 import { AboutModal } from './AboutModal'
+import { CustomEmojiManageModal } from './CustomEmojiManageModal'
 import { ProfileModal } from './ProfileModal'
 import { UserAvatar } from './UserAvatar'
 import './TopBar.css'
@@ -28,6 +29,7 @@ export function TopBar() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
+  const [customEmojiModalOpen, setCustomEmojiModalOpen] = useState(false)
   const [aboutModalOpen, setAboutModalOpen] = useState(false)
   const [pushSubscribed, setPushSubscribed] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -129,6 +131,16 @@ export function TopBar() {
                 role="menuitem"
                 onClick={() => {
                   setMenuOpen(false)
+                  setCustomEmojiModalOpen(true)
+                }}
+              >
+                Custom emoji
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false)
                   navigate('/help')
                 }}
               >
@@ -190,6 +202,7 @@ export function TopBar() {
         )}
       </div>
       {profileModalOpen && <ProfileModal onClose={() => setProfileModalOpen(false)} />}
+      {customEmojiModalOpen && <CustomEmojiManageModal onClose={() => setCustomEmojiModalOpen(false)} />}
       {aboutModalOpen && <AboutModal onClose={() => setAboutModalOpen(false)} />}
     </header>
   )

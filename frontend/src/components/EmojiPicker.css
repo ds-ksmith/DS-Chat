@@ -69,26 +69,6 @@
   padding: 4px 4px 2px;
 }
 
-.emoji-picker-category-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.emoji-picker-add-custom {
-  background: transparent;
-  border: none;
-  color: var(--ds-accent);
-  font-size: 0.7rem;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 2px 4px;
-}
-
-.emoji-picker-add-custom:hover {
-  text-decoration: underline;
-}
-
 .emoji-picker-grid {
   display: grid;
   grid-template-columns: repeat(9, 1fr);
@@ -107,32 +87,6 @@
 
 .emoji-picker-item:hover {
   background: var(--ds-surface-2);
-}
-
-.emoji-picker-item-custom {
-  position: relative;
-}
-
-.emoji-picker-item-remove {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--ds-danger);
-  color: white;
-  font-size: 0.65rem;
-  line-height: 1;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.emoji-picker-item-custom:hover .emoji-picker-item-remove {
-  opacity: 1;
 }
 
 /* The picker is positioned absolutely relative to its trigger button, which
