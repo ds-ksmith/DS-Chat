@@ -1,5 +1,5 @@
 import { apiFetch, ApiError, NetworkError } from './client'
-import type { User, UserSession } from '../types'
+import type { EmojiScale, TextScale, User, UserSession } from '../types'
 
 // No register() here: this is an invite-only site. Accounts are created by
 // an operator via the backend CLI (`python -m app.cli create-user`), not
@@ -47,6 +47,23 @@ export function updateTheme(theme: 'dark' | 'light' | 'midnight' | 'sunset'): Pr
   return apiFetch<User>('/api/auth/me', {
     method: 'PATCH',
     body: JSON.stringify({ theme }),
+  })
+}
+
+// #71: its own call, same reasoning as updateTheme above -- the backend
+// only applies fields actually present in the request body, so this can't
+// clobber theme (or vice versa).
+export function updateTextScale(textScale: TextScale): Promise<User> {
+  return apiFetch<User>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ text_scale: textScale }),
+  })
+}
+
+export function updateEmojiScale(emojiScale: EmojiScale): Promise<User> {
+  return apiFetch<User>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ emoji_scale: emojiScale }),
   })
 }
 

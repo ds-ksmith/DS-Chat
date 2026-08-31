@@ -1,7 +1,8 @@
 import Markdown from 'markdown-to-jsx'
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { getCustomEmojiUrl } from '../api/customEmoji'
+import { useAuth } from '../context/AuthContext'
 import { useCustomEmoji } from '../context/CustomEmojiContext'
 import { EMOJI_SHORTCODES } from '../lib/emojiShortcodes'
 import './MessageContent.css'
@@ -84,6 +85,14 @@ function MarkdownLink({ href, children }: MarkdownLinkProps) {
         className="message-custom-emoji"
       />
     )
+  }
+  // #71: a raw unicode emoji has no element of its own to size independently
+  // of the surrounding text -- it's just characters in a string. Wrapping
+  // each one individually (see wrapEmojiGlyphs below) gives it one, purely
+  // so the emoji-size preference can scale it via CSS the same way it
+  // already scales a custom emoji's <img>.
+  if (href === 'glyph:') {
+    return <span className="inline-emoji">{children}</span>
   }
   return (
     <a href={href} target="_blank" rel="noopener noreferrer">
@@ -247,7 +256,12 @@ export function EmojiGlyph({ value }: EmojiGlyphProps) {
       />
     )
   }
-  return <>{value}</>
+  // Wrapped the same way wrapEmojiGlyphs wraps a raw emoji in message text
+  // (see .inline-emoji), so a --emoji-scale set on an ancestor (the
+  // reaction pill's own span in MessageList.tsx) scales this the same way
+  // it scales the .message-custom-emoji img above -- and falls back to a
+  // no-op 1x everywhere else (the picker) with no --emoji-scale set at all.
+  return <span className="inline-emoji">{value}</span>
 }
 
 const MENTION_PATTERN = /@([a-zA-Z0-9_.-]+)/g
@@ -370,14 +384,98 @@ export function preprocessMarkdown(text: string): { text: string; headingIds: Ma
   return extractHeadingIds(convertSubSuperscript(text))
 }
 
+// #71: Discord/Slack-style -- a message that's *nothing but* emoji renders
+// them noticeably larger, no manual control needed. `\p{Extended_Pictographic}`
+// is the standard way to match emoji in a JS regex (widely supported);
+// `\p{Emoji_Modifier}` covers skin-tone modifiers, `\u200D` (zero-width
+// joiner) covers compound emoji like family/profession sequences, and
+// `\uFE0F` (variation selector-16) is the explicit emoji-presentation
+// marker some single-codepoint emoji carry -- without all three a real
+// multi-codepoint emoji cluster gets rejected partway through. A custom
+// emoji's `:shortcode:` has no glyph to test against, so it's swapped for
+// a placeholder pictograph first -- same substitution shape as
+// convertCustomEmojiShortcodes above, just standing in for "yes, this is
+// one emoji" rather than an actual image.
+const EMOJI_ONLY_TEST = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200D\uFE0F]+$/u
+// Discord's own cutoff for this treatment -- past a handful, "unusually
+// large emoji" reads as spam rather than expressive, so it reverts to
+// normal size instead of scaling a wall of them up.
+const MAX_EMOJI_ONLY_COUNT = 20
+
+export function isEmojiOnlyMessage(content: string, customShortcodes: Set<string>): boolean {
+  const withBuiltinGlyphs = content.replace(SHORTCODE_PATTERN, (match, name) => EMOJI_SHORTCODES[name] ?? match)
+  const withPlaceholders = withBuiltinGlyphs.replace(CUSTOM_EMOJI_PATTERN, (match, name) =>
+    customShortcodes.has(name) ? '🔹' : match,
+  )
+  const stripped = withPlaceholders.replace(/\s+/g, '')
+  if (!stripped || !EMOJI_ONLY_TEST.test(stripped)) return false
+  return [...new Intl.Segmenter().segment(stripped)].length <= MAX_EMOJI_ONLY_COUNT
+}
+
+// #71: gives every individual unicode emoji its own element (see
+// MarkdownLink's `glyph:` branch) purely so the emoji-size preference can
+// scale it independently of the surrounding text -- a raw emoji is just
+// characters in a string otherwise, with nothing CSS can address on its
+// own. Runs after convertShortcodes so a built-in `:name:` that just
+// became a glyph is wrapped too ("all emoji", not just ones typed as
+// literal unicode); same fence/code-span skip convention as every other
+// converter here.
+const EMOJI_GLYPH_PATTERN = /\p{Extended_Pictographic}(?:\p{Emoji_Modifier}|\u200D\p{Extended_Pictographic}|\uFE0F)*/gu
+
+function wrapEmojiGlyphs(text: string): string {
+  const lines = text.split('\n')
+  let inFence = false
+  return lines
+    .map((line) => {
+      if (/^\s*```/.test(line)) {
+        inFence = !inFence
+        return line
+      }
+      if (inFence) return line
+      return line
+        .split(/(`+[^`]*`+)/g)
+        .map((part, i) => (i % 2 === 0 ? part.replace(EMOJI_GLYPH_PATTERN, (match) => `[${match}](glyph:)`) : part))
+        .join('')
+    })
+    .join('\n')
+}
+
+// Exported so MessageList's reaction pills can apply the same viewer
+// preference to their own EmojiGlyph -- reactions render outside the
+// markdown pipeline entirely (see EmojiGlyph's own comment above), so they
+// need this looked up independently rather than inheriting --emoji-scale
+// from this component's wrapper div.
+export const EMOJI_SCALE_MULTIPLIER: Record<string, number> = {
+  small: 0.8,
+  normal: 1,
+  large: 1.5,
+  xlarge: 2,
+}
+
 export function MessageContent({ content, memberUsernames, myRooms }: MessageContentProps) {
+  const { user } = useAuth()
   const { byShortcode } = useCustomEmoji()
+  const customShortcodes = new Set(byShortcode.keys())
   const withMentions = memberUsernames ? highlightMentions(content, memberUsernames) : content
   const withRoomRefs = myRooms ? highlightRoomReferences(withMentions, myRooms) : withMentions
-  const withCustomEmoji = convertCustomEmojiShortcodes(
-    convertShortcodes(withRoomRefs),
-    new Set(byShortcode.keys()),
+  const withCustomEmoji = convertCustomEmojiShortcodes(convertShortcodes(withRoomRefs), customShortcodes)
+  const withEmojiGlyphs = wrapEmojiGlyphs(withCustomEmoji)
+  const { text, headingIds } = preprocessMarkdown(withEmojiGlyphs)
+  const emojiOnly = isEmojiOnlyMessage(content, customShortcodes)
+  // #71: scoped to this element (not a :root-level variable) so it only
+  // ever affects emoji rendered in message text -- not the same
+  // .message-custom-emoji/EmojiGlyph markup reused by the emoji picker's
+  // grid, where a bigger image would just break its fixed-size layout
+  // instead of doing anything useful. Reaction pills DO scale too, but via
+  // their own inline --emoji-scale in MessageList.tsx, not by inheriting
+  // this one -- a pill isn't a descendant of this wrapper div.
+  const emojiScale = EMOJI_SCALE_MULTIPLIER[user?.emoji_scale ?? 'normal']
+  return (
+    <div
+      className={emojiOnly ? 'message-text-emoji-only' : undefined}
+      style={{ '--emoji-scale': emojiScale } as CSSProperties}
+    >
+      <Markdown options={createMarkdownOptions(headingIds)}>{preserveLineBreaks(text)}</Markdown>
+    </div>
   )
-  const { text, headingIds } = preprocessMarkdown(withCustomEmoji)
-  return <Markdown options={createMarkdownOptions(headingIds)}>{preserveLineBreaks(text)}</Markdown>
 }

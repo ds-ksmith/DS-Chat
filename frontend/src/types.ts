@@ -1,5 +1,12 @@
 export type ThemeName = 'dark' | 'light' | 'midnight' | 'sunset' | 'custom'
 
+// #71: null means "normal" -- see lib/theme.ts's TEXT_SCALE_PERCENT map.
+export type TextScale = 'small' | 'normal' | 'large' | 'xlarge'
+
+// #71: independent of TextScale -- see MessageContent.tsx's
+// EMOJI_SCALE_MULTIPLIER map. Same preset shape for UI consistency.
+export type EmojiScale = 'small' | 'normal' | 'large' | 'xlarge'
+
 // Matches exactly the CSS custom properties frontend/src/styles/themes.css
 // overrides per built-in preset -- kept in sync with
 // backend/app/schemas/custom_theme.py's CustomThemeColors.
@@ -45,6 +52,8 @@ export interface User {
   // Only non-null when theme === 'custom' -- see UserRead's model_validator
   // in backend/app/schemas/user.py.
   active_custom_theme: CustomTheme | null
+  text_scale: TextScale | null
+  emoji_scale: EmojiScale | null
   avatar_filename: string | null
   appear_offline: boolean
   created_at: string

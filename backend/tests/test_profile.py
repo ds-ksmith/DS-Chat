@@ -102,6 +102,62 @@ async def test_theme_custom_rejected_on_generic_profile_update(client, db_sessio
     assert resp.status_code == 422
 
 
+async def test_update_text_scale_persists(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"text_scale": "large"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["text_scale"] == "large"
+
+    me = await client.get("/api/auth/me")
+    assert me.json()["text_scale"] == "large"
+
+
+async def test_invalid_text_scale_rejected(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"text_scale": "huge"})
+    assert resp.status_code == 422
+
+
+async def test_updating_text_scale_does_not_clobber_theme(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+    await client.patch("/api/auth/me", json={"theme": "sunset"})
+
+    resp = await client.patch("/api/auth/me", json={"text_scale": "xlarge"})
+    assert resp.status_code == 200
+    assert resp.json()["theme"] == "sunset"
+    assert resp.json()["text_scale"] == "xlarge"
+
+
+async def test_update_emoji_scale_persists(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"emoji_scale": "xlarge"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["emoji_scale"] == "xlarge"
+
+    me = await client.get("/api/auth/me")
+    assert me.json()["emoji_scale"] == "xlarge"
+
+
+async def test_invalid_emoji_scale_rejected(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+
+    resp = await client.patch("/api/auth/me", json={"emoji_scale": "huge"})
+    assert resp.status_code == 422
+
+
+async def test_updating_emoji_scale_does_not_clobber_text_scale(client, db_session):
+    await register_and_login(client, db_session, username=_unique("alice"))
+    await client.patch("/api/auth/me", json={"text_scale": "large"})
+
+    resp = await client.patch("/api/auth/me", json={"emoji_scale": "small"})
+    assert resp.status_code == 200
+    assert resp.json()["text_scale"] == "large"
+    assert resp.json()["emoji_scale"] == "small"
+
+
 async def test_avatar_upload_succeeds_and_persists(client, db_session):
     await register_and_login(client, db_session, username=_unique("alice"))
 

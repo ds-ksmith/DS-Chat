@@ -5,7 +5,9 @@ import {
   me,
   removeAvatar,
   revokeSession,
+  updateEmojiScale,
   updateProfile,
+  updateTextScale,
   updateTheme,
   uploadAvatar,
 } from '../api/auth'
@@ -20,8 +22,8 @@ import {
 import { getUserAvatarUrl } from '../api/users'
 import { useAuth } from '../context/AuthContext'
 import { hashIndex } from '../lib/avatar'
-import { applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
-import type { CustomTheme, CustomThemeColors, UserSession } from '../types'
+import { applyTextScale, applyTheme, DEFAULT_CUSTOM_COLORS } from '../lib/theme'
+import type { CustomTheme, CustomThemeColors, EmojiScale, TextScale, UserSession } from '../types'
 import { ThemeBuilderModal } from './ThemeBuilderModal'
 import { UserAvatar } from './UserAvatar'
 import './Modal.css'
@@ -31,6 +33,26 @@ const THEME_OPTIONS: { name: 'dark' | 'light' | 'midnight' | 'sunset'; label: st
   { name: 'light', label: 'Light' },
   { name: 'midnight', label: 'Midnight' },
   { name: 'sunset', label: 'Sunset' },
+]
+
+// #71: the "Aa" preview scales with each option's own size, the standard
+// way a text-size picker shows what it does without a separate demo area.
+const TEXT_SCALE_OPTIONS: { name: TextScale; label: string; previewSize: string }[] = [
+  { name: 'small', label: 'Small', previewSize: '0.8rem' },
+  { name: 'normal', label: 'Normal', previewSize: '1rem' },
+  { name: 'large', label: 'Large', previewSize: '1.25rem' },
+  { name: 'xlarge', label: 'Extra large', previewSize: '1.5rem' },
+]
+
+// #71: independent of text size -- only scales emoji rendered in message
+// text (see MessageContent.tsx's --emoji-scale). The preview uses an
+// actual emoji so it demonstrates itself the same way the text-size
+// options do with "Aa".
+const EMOJI_SCALE_OPTIONS: { name: EmojiScale; label: string; previewSize: string }[] = [
+  { name: 'small', label: 'Small', previewSize: '1rem' },
+  { name: 'normal', label: 'Normal', previewSize: '1.25rem' },
+  { name: 'large', label: 'Large', previewSize: '1.6rem' },
+  { name: 'xlarge', label: 'Extra large', previewSize: '2rem' },
 ]
 
 const CUSTOM_COLOR_FIELDS: { key: keyof Omit<CustomThemeColors, 'color_scheme'>; label: string }[] = [
@@ -60,6 +82,8 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [themeError, setThemeError] = useState<string | null>(null)
+  const [textScaleError, setTextScaleError] = useState<string | null>(null)
+  const [emojiScaleError, setEmojiScaleError] = useState<string | null>(null)
 
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([])
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null)
@@ -147,6 +171,32 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
     } catch (err) {
       applyTheme(user?.theme ?? 'dark', user?.active_custom_theme?.colors ?? null)
       setThemeError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleSelectTextScale(scale: TextScale) {
+    // Same instant-apply-then-persist pattern as handleSelectPreset above.
+    applyTextScale(scale)
+    setTextScaleError(null)
+    try {
+      const updated = await updateTextScale(scale)
+      updateUser(updated)
+    } catch (err) {
+      applyTextScale(user?.text_scale ?? null)
+      setTextScaleError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleSelectEmojiScale(scale: EmojiScale) {
+    // No instant-apply DOM mutation here (unlike theme/text scale) -- it's
+    // just a value MessageContent reads from `user` on its next render, so
+    // persisting and updating that is the whole job.
+    setEmojiScaleError(null)
+    try {
+      const updated = await updateEmojiScale(scale)
+      updateUser(updated)
+    } catch (err) {
+      setEmojiScaleError(err instanceof ApiError ? err.message : String(err))
     }
   }
 
@@ -359,6 +409,48 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
           ))}
         </div>
         {themeError && <p className="modal-error">{themeError}</p>}
+
+        <div className="modal-field-label">Text size</div>
+        <div className="text-scale-options">
+          {TEXT_SCALE_OPTIONS.map((option) => (
+            <button
+              key={option.name}
+              type="button"
+              className={`text-scale-option${
+                (user.text_scale ?? 'normal') === option.name ? ' text-scale-option-selected' : ''
+              }`}
+              onClick={() => handleSelectTextScale(option.name)}
+              aria-pressed={(user.text_scale ?? 'normal') === option.name}
+            >
+              <span className="text-scale-option-preview" style={{ fontSize: option.previewSize }}>
+                Aa
+              </span>
+              <span className="text-scale-option-label">{option.label}</span>
+            </button>
+          ))}
+        </div>
+        {textScaleError && <p className="modal-error">{textScaleError}</p>}
+
+        <div className="modal-field-label">Emoji size</div>
+        <div className="text-scale-options">
+          {EMOJI_SCALE_OPTIONS.map((option) => (
+            <button
+              key={option.name}
+              type="button"
+              className={`text-scale-option${
+                (user.emoji_scale ?? 'normal') === option.name ? ' text-scale-option-selected' : ''
+              }`}
+              onClick={() => handleSelectEmojiScale(option.name)}
+              aria-pressed={(user.emoji_scale ?? 'normal') === option.name}
+            >
+              <span className="text-scale-option-preview" style={{ fontSize: option.previewSize }}>
+                🎉
+              </span>
+              <span className="text-scale-option-label">{option.label}</span>
+            </button>
+          ))}
+        </div>
+        {emojiScaleError && <p className="modal-error">{emojiScaleError}</p>}
 
         <div className="modal-field-label">My custom themes</div>
         <div className="theme-swatch-grid">

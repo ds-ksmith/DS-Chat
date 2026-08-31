@@ -19,6 +19,17 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(50))
     theme: Mapped[str | None] = mapped_column(String(20))
+    # #71: null means "normal" (the pre-existing default before this
+    # setting existed) -- a preset name, not a raw scale factor, so it's
+    # validated/enumerable the same way `theme` already is rather than
+    # accepting an arbitrary float.
+    text_scale: Mapped[str | None] = mapped_column(String(20))
+    # #71: independent of text_scale above -- scales emoji rendered in
+    # message text specifically, not the whole UI (see
+    # frontend/src/components/MessageContent.tsx's --emoji-scale, scoped
+    # to message content only so it can't also inflate the emoji picker's
+    # grid or reaction pills).
+    emoji_scale: Mapped[str | None] = mapped_column(String(20))
     # Only meaningful when theme == "custom" -- which of this user's saved
     # CustomTheme rows (app/models/custom_theme.py) is currently active.
     # Cleared explicitly (not via a DB-level ON DELETE) whenever that theme

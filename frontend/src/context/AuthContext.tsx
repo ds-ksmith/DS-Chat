@@ -3,7 +3,7 @@ import * as authApi from '../api/auth'
 import { ApiError, NetworkError } from '../api/client'
 import { clearLastUser, loadLastUser, saveLastUser } from '../lib/lastUser'
 import { unsubscribeFromPush } from '../lib/push'
-import { applyTheme } from '../lib/theme'
+import { applyTextScale, applyTheme } from '../lib/theme'
 import type { User } from '../types'
 
 interface AuthContextValue {
@@ -25,6 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     applyTheme(user?.theme ?? null, user?.active_custom_theme?.colors ?? null)
   }, [user?.theme, user?.active_custom_theme])
+
+  useEffect(() => {
+    applyTextScale(user?.text_scale ?? null)
+  }, [user?.text_scale])
 
   useEffect(() => {
     authApi

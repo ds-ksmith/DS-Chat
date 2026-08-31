@@ -23,6 +23,8 @@ class UserRead(BaseModel):
     is_site_admin: bool
     display_name: str | None
     theme: str | None
+    text_scale: str | None
+    emoji_scale: str | None
     # Resolved, not just an id -- the frontend needs the actual palette to
     # paint on load without a second round trip (see lib/theme.ts).
     active_custom_theme: CustomThemeRead | None
@@ -57,6 +59,10 @@ class ProfileUpdate(BaseModel):
     # ownership check; that's POST /api/custom-themes/{id}/activate, not a
     # bare theme name with nothing to point it at.
     theme: Literal["dark", "light", "midnight", "sunset"] | None = Field(default=None)
+    # #71: kept in sync with frontend/src/lib/theme.ts's TEXT_SCALE_PERCENT map.
+    text_scale: Literal["small", "normal", "large", "xlarge"] | None = Field(default=None)
+    # #71: kept in sync with MessageContent.tsx's EMOJI_SCALE_MULTIPLIER map.
+    emoji_scale: Literal["small", "normal", "large", "xlarge"] | None = Field(default=None)
     appear_offline: bool | None = Field(default=None)
 
 

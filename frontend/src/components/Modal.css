@@ -230,6 +230,45 @@
   color: var(--ds-muted);
 }
 
+.text-scale-options {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+
+.text-scale-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--ds-surface-2);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius);
+  padding: 10px 4px;
+  cursor: pointer;
+}
+
+.text-scale-option:hover {
+  border-color: var(--ds-accent);
+}
+
+.text-scale-option-selected {
+  border-color: var(--ds-accent);
+  box-shadow: 0 0 0 1px var(--ds-accent);
+}
+
+.text-scale-option-preview {
+  font-weight: 700;
+  color: var(--ds-text);
+  line-height: 1;
+}
+
+.text-scale-option-label {
+  font-size: 0.7rem;
+  color: var(--ds-muted);
+}
+
 .theme-swatch-preview-new {
   background: transparent;
   border-style: dashed;

@@ -1,4 +1,4 @@
-import type { CustomThemeColors, ThemeName } from '../types'
+import type { CustomThemeColors, TextScale, ThemeName } from '../types'
 
 // The inline custom properties a custom theme sets on :root -- must be
 // removed explicitly when switching to a preset, since an inline style
@@ -75,4 +75,22 @@ export function applyTheme(theme: ThemeName | null, customColors: CustomThemeCol
   root.setAttribute('data-theme', theme ?? 'dark')
   for (const varName of CUSTOM_THEME_VARS) root.style.removeProperty(varName)
   root.style.removeProperty('color-scheme')
+}
+
+// #71: percentages, not fixed px -- stacks on top of the browser/OS's own
+// zoom or accessibility text-size setting instead of overriding it. Every
+// component in this app already sizes itself in rem (see tokens.css),
+// which is relative to this root value, so setting it here is the one
+// change that scales text *and* the message-image/video max-size caps
+// (also converted to rem -- see MessageList.css) uniformly, with no
+// per-component work.
+const TEXT_SCALE_PERCENT: Record<TextScale, string> = {
+  small: '87.5%',
+  normal: '100%',
+  large: '112.5%',
+  xlarge: '125%',
+}
+
+export function applyTextScale(scale: TextScale | null): void {
+  document.documentElement.style.fontSize = TEXT_SCALE_PERCENT[scale ?? 'normal']
 }

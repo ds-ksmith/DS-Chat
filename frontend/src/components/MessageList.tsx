@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
@@ -8,7 +9,7 @@ import { EMOJI_PICKER_MAX_HEIGHT, EmojiPicker } from './EmojiPicker'
 import { FilePreviewModal, getPreviewKind } from './FilePreviewModal'
 import { ImageLightbox } from './ImageLightbox'
 import { LinkPreviewCard } from './LinkPreviewCard'
-import { EmojiGlyph, MessageContent } from './MessageContent'
+import { EMOJI_SCALE_MULTIPLIER, EmojiGlyph, MessageContent } from './MessageContent'
 import { UserAvatar } from './UserAvatar'
 import { VideoLightbox } from './VideoLightbox'
 import './MessageList.css'
@@ -126,6 +127,10 @@ export function MessageList({
   onDelete,
 }: MessageListProps) {
   const { user } = useAuth()
+  // #71: same viewer preference MessageContent applies to in-text emoji,
+  // looked up separately here since a reaction pill isn't a descendant of
+  // that component's wrapper div (see EmojiGlyph's own comment).
+  const emojiScale = EMOJI_SCALE_MULTIPLIER[user?.emoji_scale ?? 'normal']
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   // Whether the view should be pinned to the latest message -- true right
@@ -302,7 +307,10 @@ export function MessageList({
                             title={r.user_ids.map(displayNameForUserId).join(', ')}
                             onClick={() => onReact(msg.id, r.emoji)}
                           >
-                            <span>
+                            {/* No .inline-emoji here -- EmojiGlyph's own fallback branch
+                                already applies it, and stacking it here too would double
+                                the font-size multiplication for a custom-emoji img. */}
+                            <span style={{ '--emoji-scale': emojiScale } as CSSProperties}>
                               <EmojiGlyph value={r.emoji} />
                             </span>
                             <span>{r.count}</span>

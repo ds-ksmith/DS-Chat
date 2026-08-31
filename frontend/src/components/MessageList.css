@@ -53,8 +53,13 @@
 
 .message-image {
   display: block;
-  max-width: min(320px, 100%);
-  max-height: 240px;
+  /* #71: rem, not px -- scales with the text-size setting (see
+     lib/theme.ts's applyTextScale), same as every other size in this app.
+     min(...) still caps against the viewport in absolute px, since a
+     percentage-of-viewport constraint isn't something a root font-size
+     change should affect. */
+  max-width: min(20rem, 100%);
+  max-height: 15rem;
   object-fit: contain;
   border-radius: var(--radius);
   border: 1px solid var(--ds-border);
@@ -65,14 +70,14 @@
 .message-video-wrap {
   position: relative;
   display: inline-block;
-  max-width: min(320px, 100%);
+  max-width: min(20rem, 100%);
   margin-bottom: 4px;
 }
 
 .message-video {
   display: block;
   width: 100%;
-  max-height: 240px;
+  max-height: 15rem;
   border-radius: var(--radius);
   border: 1px solid var(--ds-border);
   background: var(--ds-void);
@@ -111,7 +116,7 @@
   margin-bottom: 4px;
   color: var(--ds-text);
   text-decoration: none;
-  max-width: min(320px, 100%);
+  max-width: min(20rem, 100%);
 }
 
 .message-file-attachment:hover {

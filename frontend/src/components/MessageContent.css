@@ -4,10 +4,38 @@
    own font-size and this just tracks it. Kept in this file (imported
    directly by MessageContent.tsx) rather than MessageList.css so it's
    loaded wherever MessageContent renders -- FilePreviewModal and HelpPage
-   included, not just the message list. */
+   included, not just the message list.
+
+   #71: also multiplied by --emoji-scale, the manual "make emoji bigger"
+   preference -- but that variable is only ever set on MessageContent's own
+   wrapper div (inline style, scoped to that element and its descendants),
+   never at :root, so var(..., 1) correctly falls back to a no-op multiplier
+   everywhere else this class is reused (the picker's grid, reaction pills)
+   instead of also inflating those and breaking their fixed-size layout. */
 .message-custom-emoji {
-  height: 1.2em;
-  width: 1.2em;
+  height: calc(1.2em * var(--emoji-scale, 1));
+  width: calc(1.2em * var(--emoji-scale, 1));
   object-fit: contain;
   vertical-align: -0.25em;
+}
+
+/* #71: a raw unicode emoji wrapped by wrapEmojiGlyphs -- same --emoji-scale
+   multiplier as the custom-emoji image above, so "make emoji bigger"
+   applies uniformly regardless of which kind of emoji it is. */
+.inline-emoji {
+  display: inline-block;
+  font-size: calc(1em * var(--emoji-scale, 1));
+}
+
+/* #71: Discord/Slack-style large rendering for a message that's nothing
+   but emoji (see isEmojiOnlyMessage) -- em-relative like everything else
+   here, so it scales on top of the text-size setting rather than
+   overriding it, and also honors --emoji-scale on top of its own 2.5x (a
+   message that's only emoji AND has "Extra large" emoji picked should be
+   bigger still, not capped at a fixed size regardless of that setting).
+   .message-custom-emoji's own em-sizing means a custom emoji picks this up
+   for free, no separate rule needed. */
+.message-text-emoji-only {
+  font-size: calc(2.5em * var(--emoji-scale, 1));
+  line-height: 1.2;
 }
