@@ -26,16 +26,3 @@
   display: inline-block;
   font-size: calc(1em * var(--emoji-scale, 1));
 }
-
-/* #71: Discord/Slack-style large rendering for a message that's nothing
-   but emoji (see isEmojiOnlyMessage) -- em-relative like everything else
-   here, so it scales on top of the text-size setting rather than
-   overriding it, and also honors --emoji-scale on top of its own 2.5x (a
-   message that's only emoji AND has "Extra large" emoji picked should be
-   bigger still, not capped at a fixed size regardless of that setting).
-   .message-custom-emoji's own em-sizing means a custom emoji picks this up
-   for free, no separate rule needed. */
-.message-text-emoji-only {
-  font-size: calc(2.5em * var(--emoji-scale, 1));
-  line-height: 1.2;
-}

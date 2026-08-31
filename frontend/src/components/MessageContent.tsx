@@ -384,34 +384,6 @@ export function preprocessMarkdown(text: string): { text: string; headingIds: Ma
   return extractHeadingIds(convertSubSuperscript(text))
 }
 
-// #71: Discord/Slack-style -- a message that's *nothing but* emoji renders
-// them noticeably larger, no manual control needed. `\p{Extended_Pictographic}`
-// is the standard way to match emoji in a JS regex (widely supported);
-// `\p{Emoji_Modifier}` covers skin-tone modifiers, `\u200D` (zero-width
-// joiner) covers compound emoji like family/profession sequences, and
-// `\uFE0F` (variation selector-16) is the explicit emoji-presentation
-// marker some single-codepoint emoji carry -- without all three a real
-// multi-codepoint emoji cluster gets rejected partway through. A custom
-// emoji's `:shortcode:` has no glyph to test against, so it's swapped for
-// a placeholder pictograph first -- same substitution shape as
-// convertCustomEmojiShortcodes above, just standing in for "yes, this is
-// one emoji" rather than an actual image.
-const EMOJI_ONLY_TEST = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}\u200D\uFE0F]+$/u
-// Discord's own cutoff for this treatment -- past a handful, "unusually
-// large emoji" reads as spam rather than expressive, so it reverts to
-// normal size instead of scaling a wall of them up.
-const MAX_EMOJI_ONLY_COUNT = 20
-
-export function isEmojiOnlyMessage(content: string, customShortcodes: Set<string>): boolean {
-  const withBuiltinGlyphs = content.replace(SHORTCODE_PATTERN, (match, name) => EMOJI_SHORTCODES[name] ?? match)
-  const withPlaceholders = withBuiltinGlyphs.replace(CUSTOM_EMOJI_PATTERN, (match, name) =>
-    customShortcodes.has(name) ? '🔹' : match,
-  )
-  const stripped = withPlaceholders.replace(/\s+/g, '')
-  if (!stripped || !EMOJI_ONLY_TEST.test(stripped)) return false
-  return [...new Intl.Segmenter().segment(stripped)].length <= MAX_EMOJI_ONLY_COUNT
-}
-
 // #71: gives every individual unicode emoji its own element (see
 // MarkdownLink's `glyph:` branch) purely so the emoji-size preference can
 // scale it independently of the surrounding text -- a raw emoji is just
@@ -461,7 +433,6 @@ export function MessageContent({ content, memberUsernames, myRooms }: MessageCon
   const withCustomEmoji = convertCustomEmojiShortcodes(convertShortcodes(withRoomRefs), customShortcodes)
   const withEmojiGlyphs = wrapEmojiGlyphs(withCustomEmoji)
   const { text, headingIds } = preprocessMarkdown(withEmojiGlyphs)
-  const emojiOnly = isEmojiOnlyMessage(content, customShortcodes)
   // #71: scoped to this element (not a :root-level variable) so it only
   // ever affects emoji rendered in message text -- not the same
   // .message-custom-emoji/EmojiGlyph markup reused by the emoji picker's
@@ -471,10 +442,7 @@ export function MessageContent({ content, memberUsernames, myRooms }: MessageCon
   // this one -- a pill isn't a descendant of this wrapper div.
   const emojiScale = EMOJI_SCALE_MULTIPLIER[user?.emoji_scale ?? 'normal']
   return (
-    <div
-      className={emojiOnly ? 'message-text-emoji-only' : undefined}
-      style={{ '--emoji-scale': emojiScale } as CSSProperties}
-    >
+    <div style={{ '--emoji-scale': emojiScale } as CSSProperties}>
       <Markdown options={createMarkdownOptions(headingIds)}>{preserveLineBreaks(text)}</Markdown>
     </div>
   )
