@@ -69,6 +69,13 @@ function FileAttachmentCard({ file, roomId, onPreview }: FileAttachmentCardProps
 // trigger a download the moment the browser tries to fetch it).
 const PLAYABLE_VIDEO_CONTENT_TYPES = new Set(['video/mp4', 'video/webm', 'video/ogg'])
 
+// #73: Slack's own threshold for the same "still grouped, but it's been a
+// while" call -- past this gap a same-sender message starts a new group
+// (its own avatar/name/timestamp) even with nobody else posting in
+// between, so a message sent minutes later doesn't hide under a stale
+// timestamp from the start of the run.
+const GROUP_BREAK_MS = 5 * 60 * 1000
+
 interface VideoAttachmentProps {
   file: MessageFileInfo
   roomId: string
@@ -210,8 +217,13 @@ export function MessageList({
         // Mattermost-style grouping: every message shows who sent it, but
         // consecutive messages from the same sender only repeat the
         // avatar/name/timestamp header on the first one in the run --
-        // applies uniformly, including to your own messages.
-        const isGroupStart = !prev || prev.user_id !== msg.user_id
+        // applies uniformly, including to your own messages. Also breaks on
+        // a long gap (see GROUP_BREAK_MS) so a message sent well after the
+        // rest of the run still gets its own visible timestamp.
+        const isGroupStart =
+          !prev ||
+          prev.user_id !== msg.user_id ||
+          new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > GROUP_BREAK_MS
         const editing = editingId === msg.id
         const deleted = !!msg.deleted_at
 
