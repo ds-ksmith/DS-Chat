@@ -39,8 +39,9 @@ from app.schemas.webhook import (
     WebhookIncomingRead,
 )
 from app.services.link_preview_service import get_link_previews_for_urls
-from app.services.message_events import broadcast_room_added
+from app.services.message_events import broadcast_new_message, broadcast_room_added
 from app.services.message_service import (
+    create_message,
     get_reactions_for_messages,
     list_recent_messages,
     list_room_attachments,
@@ -655,7 +656,35 @@ async def add_member_endpoint(
         raise HTTPException(status_code=404, detail="No user with that ID")
     except AlreadyMemberError:
         raise HTTPException(status_code=409, detail="That user is already a member")
+
+    # room_added first -- the new member's client needs to know this room
+    # exists before it can make sense of an unread_update for it, which the
+    # welcome message below would otherwise trigger out of order.
     await broadcast_room_added(request.app.state.broadcaster, data.user_id, room)
+
+    # #72: attributed to the admin doing the adding, not a new system/bot
+    # sender concept -- they're already a real, in-scope user for this
+    # request, and every Message row requires a real user_id today.
+    welcome_name = membership.user.display_name or membership.user.username
+    welcome_message = await create_message(
+        db, room.id, current_user.id, f"Welcome to #{room.name}, {welcome_name}!"
+    )
+    # Same "sending implies having seen the room" reasoning as ws/chat.py's
+    # own live-message path -- without it, the admin's own client would show
+    # this room as unread from a message they effectively just sent.
+    await mark_room_read(db, room.id, current_user.id)
+    await broadcast_new_message(
+        db,
+        request.app.state.broadcaster,
+        request.app.state.presence,
+        request.app.state.focus_presence,
+        request.app.state.global_presence,
+        str(request.base_url),
+        room.id,
+        welcome_message,
+        current_user,
+    )
+
     online_ids = await request.app.state.global_presence.online_user_ids([membership.user_id])
     return RoomMemberRead(
         user_id=membership.user_id,
