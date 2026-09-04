@@ -485,10 +485,10 @@ async def test_add_member_directly(client, db_session, monkeypatch):
 
 
 async def test_add_member_posts_welcome_message(client, db_session, monkeypatch):
-    # #72: attributed to the admin who added them, since there's no
-    # system/bot sender concept -- mirrors test_add_member_directly's setup.
+    # #74: posted as the auto-provisioned "system" account, not the admin
+    # who added them -- mirrors test_add_member_directly's setup.
     _fake_send_email(monkeypatch)
-    alice = await register_and_login(client, db_session, username="alice")
+    await register_and_login(client, db_session, username="alice")
     room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
 
     await client.post("/api/auth/logout")
@@ -500,7 +500,7 @@ async def test_add_member_posts_welcome_message(client, db_session, monkeypatch)
     assert resp.status_code == 201, resp.text
 
     history = (await client.get(f"/api/rooms/{room_id}/messages")).json()
-    welcome_messages = [m for m in history if m["username"] == "alice"]
+    welcome_messages = [m for m in history if m["username"] == "system"]
     assert len(welcome_messages) == 1
     assert welcome_messages[0]["content"] == "Welcome to #general, bob!"
 
