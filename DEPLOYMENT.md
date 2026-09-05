@@ -132,30 +132,32 @@ sudo -u ds-chat ssh-keygen -t ed25519 -f /srv/ds-chat/.ssh/id_ed25519 -N ""
 sudo cat /srv/ds-chat/.ssh/id_ed25519.pub
 ```
 
-Add that public key as a **read-only deploy key** in your git host's repo
-settings (deploy keys are supported by GitHub, GitLab, Gitea, and most
-others — look for "Deploy Keys" under the repo's Settings), then:
+This project is hosted at
+**[github.com/ds-ksmith/DS-Chat](https://github.com/ds-ksmith/DS-Chat)**.
+Add that public key there as a **read-only deploy key** (Settings → Deploy
+Keys on the repo), then:
 
 ```bash
-sudo -u ds-chat ssh-keyscan <YOUR_GIT_HOST> >> /srv/ds-chat/.ssh/known_hosts
-sudo -u ds-chat git clone git@<YOUR_GIT_HOST>:<YOUR_ORG>/ds-chat.git /srv/ds-chat
+sudo -u ds-chat ssh-keyscan github.com >> /srv/ds-chat/.ssh/known_hosts
+sudo -u ds-chat git clone git@github.com:ds-ksmith/DS-Chat.git /srv/ds-chat
 ```
 
-(If your git host's SSH is on a non-default port, adjust the clone URL and
-`ssh-keyscan -p <port>` accordingly.)
+(Deploying from your own fork instead? Substitute its clone URL — the same
+deploy-key/access-token steps work the same way on GitHub, GitLab, Gitea,
+and most other git hosts.)
 
 **Alternative: a personal/deployment-user access token instead of a deploy
 key** — skip the `.ssh`/`ssh-keygen`/`ssh-keyscan` commands above entirely
 and clone over HTTPS with the token embedded in the URL:
 
 ```bash
-sudo -u ds-chat git clone https://<TOKEN>@<YOUR_GIT_HOST>/<YOUR_ORG>/ds-chat.git /srv/ds-chat
+sudo -u ds-chat git clone https://<TOKEN>@github.com/ds-ksmith/DS-Chat.git /srv/ds-chat
 ```
 
 The token then lives in plaintext in `/srv/ds-chat/.git/config` (`git
 remote -v` shows it) — readable by root and the `ds-chat` user, not by
 anyone else under normal file permissions. `deploy/upgrade.sh`'s later
-`git pull`s reuse this same authenticated URL automatically, no extra
+`git fetch`es reuse this same authenticated URL automatically, no extra
 setup needed. Fine as long as the token is scoped to read-only access on
 just this repo.
 
