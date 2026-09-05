@@ -10,8 +10,10 @@ interface AboutModalProps {
 // users remotely through a computer network, you should also make sure
 // that it provides a way for users to get its source... its interface
 // could display a 'Source' link" -- this modal is that link, not just a
-// courtesy credits screen.
-const SOURCE_URL = 'https://git.darksingularity.org/DarkSingularity/ds-chat'
+// courtesy credits screen. Deliberately not a hardcoded URL: whoever
+// deploys this needs to point it at *their* copy of the repo (including
+// any modifications), not the upstream project -- see frontend/.env.example.
+const SOURCE_URL = import.meta.env.VITE_SOURCE_URL as string | undefined
 
 export function AboutModal({ onClose }: AboutModalProps) {
   return (
@@ -39,11 +41,13 @@ export function AboutModal({ onClose }: AboutModalProps) {
           </a>
           .
         </p>
-        <p className="about-modal-line">
-          <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
-            Source code
-          </a>
-        </p>
+        {SOURCE_URL && (
+          <p className="about-modal-line">
+            <a href={SOURCE_URL} target="_blank" rel="noopener noreferrer">
+              Source code
+            </a>
+          </p>
+        )}
 
         <div className="modal-actions" style={{ marginTop: '1rem' }}>
           <button type="button" className="btn-secondary" onClick={onClose}>

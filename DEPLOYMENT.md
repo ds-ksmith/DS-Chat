@@ -132,15 +132,16 @@ sudo -u ds-chat ssh-keygen -t ed25519 -f /srv/ds-chat/.ssh/id_ed25519 -N ""
 sudo cat /srv/ds-chat/.ssh/id_ed25519.pub
 ```
 
-Add that public key as a **read-only deploy key** on the Gitea repo
-(Settings → Deploy Keys), then:
+Add that public key as a **read-only deploy key** in your git host's repo
+settings (deploy keys are supported by GitHub, GitLab, Gitea, and most
+others — look for "Deploy Keys" under the repo's Settings), then:
 
 ```bash
-sudo -u ds-chat ssh-keyscan git.darksingularity.org >> /srv/ds-chat/.ssh/known_hosts
-sudo -u ds-chat git clone git@git.darksingularity.org:DarkSingularity/ds-chat.git /srv/ds-chat
+sudo -u ds-chat ssh-keyscan <YOUR_GIT_HOST> >> /srv/ds-chat/.ssh/known_hosts
+sudo -u ds-chat git clone git@<YOUR_GIT_HOST>:<YOUR_ORG>/ds-chat.git /srv/ds-chat
 ```
 
-(If your Gitea's SSH is on a non-default port, adjust the clone URL and
+(If your git host's SSH is on a non-default port, adjust the clone URL and
 `ssh-keyscan -p <port>` accordingly.)
 
 **Alternative: a personal/deployment-user access token instead of a deploy
@@ -148,7 +149,7 @@ key** — skip the `.ssh`/`ssh-keygen`/`ssh-keyscan` commands above entirely
 and clone over HTTPS with the token embedded in the URL:
 
 ```bash
-sudo -u ds-chat git clone https://<TOKEN>@git.darksingularity.org/DarkSingularity/ds-chat.git /srv/ds-chat
+sudo -u ds-chat git clone https://<TOKEN>@<YOUR_GIT_HOST>/<YOUR_ORG>/ds-chat.git /srv/ds-chat
 ```
 
 The token then lives in plaintext in `/srv/ds-chat/.git/config` (`git
@@ -232,7 +233,16 @@ admin sets it up.
 `/ws`) whenever that directory exists — that's what lets Nginx Proxy
 Manager forward the whole domain to one port with no custom path routing.
 
+Before building, copy `frontend/.env.example` to `frontend/.env.production`
+and set `VITE_SOURCE_URL` to wherever *your* copy of the repo lives — see
+that file's own comment for why this matters (AGPL-3.0 source-availability
+compliance). Vite bakes this in at build time, so it needs to be in place
+before `npm run build` runs, and needs re-running after any future change
+to it.
+
 ```bash
+sudo -u ds-chat cp /srv/ds-chat/frontend/.env.example /srv/ds-chat/frontend/.env.production
+sudo -u ds-chat nano /srv/ds-chat/frontend/.env.production  # set VITE_SOURCE_URL
 sudo -u ds-chat bash -c 'cd /srv/ds-chat/frontend && npm ci && npm run build'
 ```
 

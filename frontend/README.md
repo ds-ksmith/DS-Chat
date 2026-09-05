@@ -112,7 +112,7 @@ src/
     LoginPage.tsx, SignupPage.tsx, ForgotPasswordPage.tsx, ResetPasswordPage.tsx
     ChatShellPage.tsx, AdminPage.tsx, HelpPage.tsx
 
-  styles/tokens.css          design tokens (DarkSingularity theme: colors, spacing, etc.)
+  styles/tokens.css          design tokens (default theme: colors, spacing, etc.)
   sw.ts                      custom service worker (injectManifest): app-shell
                                precache + NetworkFirst runtime caching, push/notificationclick
                                handlers, SKIP_WAITING messaging for the update-prompt flow
