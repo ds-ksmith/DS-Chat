@@ -17,6 +17,7 @@ dist-ssr/
 ## Editors / OS
 .vscode/
 .idea/
+.claude/
 .DS_Store
 
 ## Test / coverage
