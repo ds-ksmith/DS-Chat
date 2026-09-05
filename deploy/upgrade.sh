@@ -16,9 +16,18 @@ BACKEND_DIR="${REPO_DIR}/backend"
 FRONTEND_DIR="${REPO_DIR}/frontend"
 ENV_FILE="/etc/ds-chat/env"
 
-echo "==> Pulling latest code"
+echo "==> Fetching latest release"
 cd "$REPO_DIR"
-git pull --ff-only
+git fetch --tags --force
+LATEST_TAG="$(git tag --sort=-creatordate | head -n1)"
+if [[ -z "$LATEST_TAG" ]]; then
+  echo "No tags found -- nothing to deploy" >&2
+  exit 1
+fi
+echo "Deploying $LATEST_TAG"
+# Detached HEAD, not a branch checkout -- this directory only ever runs a
+# tagged release, never whatever the default branch's tip happens to be.
+git checkout --quiet --detach "$LATEST_TAG"
 
 echo "==> Installing backend dependencies"
 cd "$BACKEND_DIR"

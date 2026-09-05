@@ -159,9 +159,16 @@ anyone else under normal file permissions. `deploy/upgrade.sh`'s later
 setup needed. Fine as long as the token is scoped to read-only access on
 just this repo.
 
-Either way, now that the repo is cloned:
+Either way, now that the repo is cloned, check out the latest release tag
+rather than deploying whatever the default branch's tip happens to be —
+`deploy/upgrade.sh` follows the same rule on every later upgrade (see §6),
+so this keeps the very first deploy consistent with all the ones after it:
 
 ```bash
+cd /srv/ds-chat
+sudo -u ds-chat git fetch --tags
+LATEST_TAG="$(sudo -u ds-chat git tag --sort=-creatordate | head -n1)"
+sudo -u ds-chat git checkout --detach "$LATEST_TAG"
 sudo -u ds-chat mkdir -p /srv/ds-chat/uploads
 ```
 
@@ -330,12 +337,15 @@ This is config in NPM's own UI/database, not a file this repo ships:
 sudo -u ds-chat /srv/ds-chat/deploy/upgrade.sh
 ```
 
-Pulls latest `main`, reinstalls backend deps, runs `alembic upgrade head`,
-rebuilds the frontend, restarts `ds-chat`, and curls `/api/health` to
-confirm it came back up. Fails loudly (`set -euo pipefail`) and stops
-before restarting anything if an earlier step — most importantly a failed
-migration — errors out, so a bad deploy doesn't take down the previously
-working one.
+Fetches tags and checks out whichever one sorts newest (`git tag
+--sort=-creatordate`) — deliberately not the default branch's tip, so
+running this between releases is a safe no-op rather than pulling in
+whatever's mid-flight on `main`. Then reinstalls backend deps, runs
+`alembic upgrade head`, rebuilds the frontend, restarts `ds-chat`, and
+curls `/api/health` to confirm it came back up. Fails loudly
+(`set -euo pipefail`) and stops before restarting anything if an earlier
+step — most importantly a failed migration — errors out, so a bad deploy
+doesn't take down the previously working one.
 
 Active users get disconnected for a few seconds during the restart and
 reconnect automatically (same reconnect logic as §4's NPM-timeout note) —
