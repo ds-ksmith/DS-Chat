@@ -1,9 +1,12 @@
 import json
+import logging
 import uuid
 
 from redis.asyncio import Redis
 
 from app.ws.connection_manager import ConnectionManager
+
+logger = logging.getLogger(__name__)
 
 ROOM_CHANNEL_PREFIX = "room:"
 USER_CHANNEL_PREFIX = "user:"
@@ -43,14 +46,26 @@ class Broadcaster:
             async for message in pubsub.listen():
                 if message["type"] != "pmessage":
                     continue
-                channel = message["channel"]
-                payload = json.loads(message["data"])
-                if channel.startswith(ROOM_CHANNEL_PREFIX):
-                    room_id = uuid.UUID(channel.removeprefix(ROOM_CHANNEL_PREFIX))
-                    await self._manager.broadcast(room_id, payload)
-                elif channel.startswith(USER_CHANNEL_PREFIX):
-                    user_id = uuid.UUID(channel.removeprefix(USER_CHANNEL_PREFIX))
-                    await self._manager.send_to_user(user_id, payload)
+                # #76: this is the one pubsub listener for the whole process
+                # (see main.py's lifespan) -- ConnectionManager.broadcast/
+                # send_to_user already guard against one dead socket taking
+                # the rest of a single fan-out down, but this belt-and-
+                # suspenders catch is for anything else unexpected (a
+                # malformed payload, e.g.) doing the same. An uncaught
+                # exception here previously meant *this whole async for*
+                # loop died silently -- no more live delivery to any room on
+                # this instance, for anyone, until the process restarted.
+                try:
+                    channel = message["channel"]
+                    payload = json.loads(message["data"])
+                    if channel.startswith(ROOM_CHANNEL_PREFIX):
+                        room_id = uuid.UUID(channel.removeprefix(ROOM_CHANNEL_PREFIX))
+                        await self._manager.broadcast(room_id, payload)
+                    elif channel.startswith(USER_CHANNEL_PREFIX):
+                        user_id = uuid.UUID(channel.removeprefix(USER_CHANNEL_PREFIX))
+                        await self._manager.send_to_user(user_id, payload)
+                except Exception:
+                    logger.error("Error handling pubsub message on channel %s", message.get("channel"), exc_info=True)
         finally:
             await pubsub.punsubscribe(f"{ROOM_CHANNEL_PREFIX}*", f"{USER_CHANNEL_PREFIX}*")
             await pubsub.aclose()

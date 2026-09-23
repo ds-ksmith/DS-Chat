@@ -1,7 +1,10 @@
+import logging
 import uuid
 from collections import defaultdict
 
 from fastapi import WebSocket
+
+logger = logging.getLogger(__name__)
 
 
 class ConnectionManager:
@@ -43,8 +46,22 @@ class ConnectionManager:
 
     async def broadcast(self, room_id: uuid.UUID, payload: dict) -> None:
         for websocket in list(self._rooms.get(room_id, ())):
-            await websocket.send_json(payload)
+            # #76: one dead/racing socket (e.g. its own disconnect cleanup
+            # hasn't finished removing it from _rooms yet) must not take the
+            # rest of this broadcast down with it -- this runs inside
+            # Broadcaster.listen()'s single, never-restarted per-process
+            # pubsub loop, so an unhandled exception here previously meant
+            # one bad socket silently killed *live delivery for every room
+            # on this instance*, not just the one socket, until the process
+            # was restarted.
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                logger.warning("Dropping dead socket during broadcast to room %s", room_id, exc_info=True)
 
     async def send_to_user(self, user_id: uuid.UUID, payload: dict) -> None:
         for websocket in list(self._users.get(user_id, ())):
-            await websocket.send_json(payload)
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                logger.warning("Dropping dead socket sending to user %s", user_id, exc_info=True)

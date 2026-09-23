@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -30,6 +31,18 @@ from app.services.session_service import resolve_session
 router = APIRouter(tags=["ws"])
 
 WS_UNAUTHENTICATED = 4401
+
+# #76: comfortably under the ~60s idle-connection timeout common to reverse
+# proxies/load balancers sitting in front of this endpoint, and short enough
+# that the frontend's own zombie-detection watchdog (useChatSocket.ts) can
+# notice a dead connection and reconnect well within a session -- a socket
+# can go silently dead (no close frame at all, e.g. a laptop sleeping or a
+# NAT dropping an idle mapping) without this, and no live message reaches it
+# again until *something* else finally triggers a close, which used to be
+# "switch rooms and back" purely by accident (that remounts the message
+# list, which refetches history over plain REST -- unrelated to the socket
+# itself actually recovering).
+WS_PING_INTERVAL_SECONDS = 30
 
 
 class ClientEnvelope(BaseModel):
@@ -124,7 +137,18 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
 
     try:
         while True:
-            raw = await websocket.receive_json()
+            try:
+                raw = await asyncio.wait_for(
+                    websocket.receive_json(), timeout=WS_PING_INTERVAL_SECONDS
+                )
+            except asyncio.TimeoutError:
+                # Nothing received in a while -- ping rather than assume the
+                # connection's still good. A genuinely dead socket fails this
+                # send (raising, caught below same as any other disconnect);
+                # a merely quiet one just gets proded and the loop continues
+                # waiting.
+                await websocket.send_json({"type": "ping"})
+                continue
             try:
                 try:
                     envelope = ClientEnvelope.model_validate(raw)
@@ -145,6 +169,14 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                     await presence.join(envelope.room_id, user.id)
                     joined_rooms.add(envelope.room_id)
                     await websocket.send_json({"type": "joined", "room_id": str(envelope.room_id)})
+
+                elif envelope.type == "pong":
+                    # #76: the client's reply to our "ping" above -- nothing
+                    # to do with it. Its only purpose is resetting the
+                    # frontend's own liveness watchdog; the timeout on the
+                    # receive_json() above already gets reset by receiving
+                    # any frame at all, this one included.
+                    pass
 
                 elif envelope.type == "leave":
                     if envelope.room_id is None:

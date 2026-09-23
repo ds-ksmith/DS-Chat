@@ -10,6 +10,13 @@ interface UseChatSocketOptions {
 const RECONNECT_BASE_DELAY_MS = 1000
 const RECONNECT_MAX_DELAY_MS = 30000
 
+// #76: the backend pings every 30s (WS_PING_INTERVAL_SECONDS in chat.py) --
+// this needs to comfortably tolerate one missed ping plus ordinary network
+// jitter before declaring the connection dead, not fire on the very first
+// late beat.
+const ZOMBIE_TIMEOUT_MS = 65000
+const ZOMBIE_CHECK_INTERVAL_MS = 10000
+
 const desktopMode = isDesktopNotificationsSupported()
 
 // Room join/leave (live message delivery) depends only on visibility --
@@ -51,6 +58,16 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
   // live WebSocket delivery the user can't actually see will do the job.
   const desiredRoomsRef = useRef(new Set<string>())
   const isVisibleRef = useRef(isVisible())
+  // #76: last time *anything* arrived on the socket (a real message, a
+  // "ping", doesn't matter which) -- the only signal that a connection
+  // sitting at readyState OPEN is actually still alive rather than a
+  // zombie. Without this, a connection that dies without ever sending a
+  // close frame (laptop sleep, a NAT silently dropping an idle mapping)
+  // looks identical to a healthy-but-quiet one: onclose never fires, so the
+  // already-correct reconnect+rejoin logic below never runs, and new
+  // messages just stop arriving until something unrelated (e.g. switching
+  // rooms, which refetches history over plain REST) papers over it.
+  const lastActivityRef = useRef(Date.now())
 
   const sendRoomFrame = useCallback((type: 'join' | 'leave', roomId: string) => {
     const ws = socketRef.current
@@ -99,6 +116,7 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         if (hasConnectedBefore) checkForUpdate()
         hasConnectedBefore = true
         reconnectDelay = RECONNECT_BASE_DELAY_MS
+        lastActivityRef.current = Date.now()
         setConnected(true)
         // Re-join whatever rooms were joined before a reconnect -- the
         // server has no memory of a dropped connection's prior state. Only
@@ -122,7 +140,17 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
 
       ws.onmessage = (event) => {
         if (socketRef.current !== ws) return
-        const envelope = JSON.parse(event.data) as ServerEnvelope
+        lastActivityRef.current = Date.now()
+        const parsed = JSON.parse(event.data)
+        // #76: the server's heartbeat -- purely transport-level, not a
+        // domain event, so it's answered and swallowed right here instead
+        // of being forwarded to subscribers (ServerEnvelope's own type
+        // doesn't include it for exactly that reason).
+        if (parsed.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+          return
+        }
+        const envelope = parsed as ServerEnvelope
         for (const handler of subscribersRef.current) handler(envelope)
       }
 
@@ -143,10 +171,9 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
         if (stopped) return
 
         // Unexpected close -- a deploy restarting the app server, a brief
-        // network blip, or (absent any app-level ping/pong) an idle
-        // connection getting recycled by a reverse proxy in front of it.
-        // Retry with exponential backoff instead of leaving the chat
-        // silently dead until the user manually reloads.
+        // network blip, or an idle connection getting recycled by a reverse
+        // proxy in front of it. Retry with exponential backoff instead of
+        // leaving the chat silently dead until the user manually reloads.
         reconnectTimer = setTimeout(connect, reconnectDelay)
         reconnectDelay = Math.min(reconnectDelay * 2, RECONNECT_MAX_DELAY_MS)
       }
@@ -154,9 +181,21 @@ export function useChatSocket({ onUnauthenticated }: UseChatSocketOptions) {
 
     connect()
 
+    // #76: catches the case onclose can't -- a connection that dies without
+    // ever sending a close frame at all (readyState stays OPEN forever) is
+    // otherwise invisible to this hook. Forcing a close here just routes it
+    // through the exact same onclose/reconnect/rejoin path as a normal
+    // disconnect, rather than needing separate recovery logic of its own.
+    const zombieCheckTimer = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > ZOMBIE_TIMEOUT_MS) {
+        socketRef.current?.close()
+      }
+    }, ZOMBIE_CHECK_INTERVAL_MS)
+
     return () => {
       stopped = true
       if (reconnectTimer) clearTimeout(reconnectTimer)
+      clearInterval(zombieCheckTimer)
       socketRef.current?.close()
       socketRef.current = null
     }

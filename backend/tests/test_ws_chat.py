@@ -109,6 +109,24 @@ def test_history_tiebreaks_identical_timestamps_by_id(ws_client):
     assert [m["content"] for m in history] == [m["content"] for m in expected_order]
 
 
+def test_ws_sends_heartbeat_ping(ws_client, monkeypatch):
+    # #76: with nothing else sent on the connection, a "ping" must arrive
+    # proactively once the idle timeout elapses -- shrunk here so the test
+    # doesn't actually wait the real 30s. Replying "pong" (the frontend's
+    # own behavior) must be accepted silently and leave the connection
+    # fully usable afterward, not treated as an unknown message type.
+    monkeypatch.setattr("app.ws.chat.WS_PING_INTERVAL_SECONDS", 0.05)
+    username = _unique("alice")
+    _register(ws_client, username=username)
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        assert ws.receive_json() == {"type": "ping"}
+        ws.send_json({"type": "pong"})
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        assert ws.receive_json() == {"type": "joined", "room_id": room["id"]}
+
+
 def test_ws_message_without_join_errors(ws_client):
     _register(ws_client, username=_unique("alice"))
     room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
