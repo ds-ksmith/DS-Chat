@@ -58,8 +58,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # ASGITransport, used by the plain REST test fixtures -- only
     # TestClient's websocket_connect-based tests actually run lifespan).
     # The background listener task genuinely needs a running event loop
-    # though, so that part stays here.
-    listener_task = asyncio.create_task(app.state.broadcaster.listen())
+    # though, so that part stays here. run_forever() (not listen() directly)
+    # -- #76: a bare listen() here died permanently and silently the moment
+    # its Redis connection ever dropped (e.g. Redis itself restarting),
+    # with nothing to notice or reconnect; run_forever() supervises it and
+    # restarts on failure instead.
+    listener_task = asyncio.create_task(app.state.broadcaster.run_forever())
 
     yield
 
