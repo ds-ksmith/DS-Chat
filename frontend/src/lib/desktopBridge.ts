@@ -15,6 +15,12 @@ declare global {
   interface Window {
     dsDesktop?: {
       setUnreadCount?(unreadRoomCount: number): void
+      // Tells the tray/dock icon the user has genuinely entered a room --
+      // the desktop wrapper's own signal to clear that room's tray
+      // indicator. Deliberately not fired just because the window was
+      // shown/focused/restored, or opened from the tray: none of those mean
+      // the user actually looked at the room the unread message is in.
+      roomOpened?(): void
       showNotification?(notification: DesktopNotificationRequest): void
       onNotificationClick?(callback: (roomId: string) => void): () => void
     }
@@ -36,6 +42,16 @@ export function isDesktopNotificationsSupported(): boolean {
 
 export function isDesktopClickListenerSupported(): boolean {
   return typeof window.dsDesktop?.onNotificationClick === 'function'
+}
+
+// Both no-op silently if the bridge or this specific method isn't present,
+// same as showDesktopNotification below -- callers never need to guard.
+export function notifyRoomOpened(): void {
+  window.dsDesktop?.roomOpened?.()
+}
+
+export function notifyUnreadCount(unreadRoomCount: number): void {
+  window.dsDesktop?.setUnreadCount?.(unreadRoomCount)
 }
 
 // No-ops silently if the bridge or this specific method isn't present --

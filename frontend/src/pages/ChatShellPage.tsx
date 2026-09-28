@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { NetworkError } from '../api/client'
 import { listMyRooms, listRoomMembers } from '../api/rooms'
@@ -12,7 +12,9 @@ import { Sidebar } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 import { useAuth } from '../context/AuthContext'
 import { useChatSocketContext } from '../context/ChatSocketContext'
+import { useDesktopRoomBridge } from '../hooks/useDesktopRoomBridge'
 import { MOBILE_BREAKPOINT, useWindowWidth } from '../hooks/useWindowWidth'
+import { clearRoomIndicators } from '../lib/roomIndicators'
 import type { MyRoomItem, RoomMember } from '../types'
 import './ChatShellPage.css'
 
@@ -60,9 +62,12 @@ export function ChatShellPage() {
 
   const socket = useChatSocketContext()
 
-  const clearRoomIndicators = useCallback((id: string) => {
-    setRooms((prev) => prev.map((r) => (r.id === id ? { ...r, has_unread: false, has_mention: false } : r)))
+  const handleRoomRead = useCallback((id: string) => {
+    setRooms((prev) => clearRoomIndicators(prev, id))
   }, [])
+
+  const unreadRoomCount = useMemo(() => rooms.filter((r) => r.has_unread).length, [rooms])
+  useDesktopRoomBridge(activeRoom?.id, unreadRoomCount)
 
   useEffect(
     () =>
@@ -134,7 +139,7 @@ export function ChatShellPage() {
               onToggleInfo={() => setInfoOpen((v) => !v)}
               infoOpen={infoOpen}
               socket={socket}
-              onRoomRead={clearRoomIndicators}
+              onRoomRead={handleRoomRead}
             />
           ) : (
             !isMobile && (
