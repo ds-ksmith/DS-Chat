@@ -105,6 +105,34 @@
   cursor: not-allowed;
 }
 
+.composer-format-toggle {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--ds-muted);
+  border: 1px solid var(--ds-border);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.composer-format-toggle:hover:not(:disabled),
+.composer-format-toggle-open {
+  color: var(--ds-text);
+  border-color: var(--ds-accent);
+}
+
+.composer-format-toggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .composer-attach-wrap {
   position: relative;
   flex: none;

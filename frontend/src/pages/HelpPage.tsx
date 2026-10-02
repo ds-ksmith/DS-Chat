@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import Markdown from 'markdown-to-jsx'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { createMarkdownOptions, preprocessMarkdown } from '../components/MessageContent'
 import { TopBar } from '../components/TopBar'
 import './HelpPage.css'
@@ -19,6 +19,15 @@ export function HelpPage() {
     () => (content !== null ? preprocessMarkdown(content) : null),
     [content],
   )
+
+  // #75: the composer's "?" links straight to /help#formatting, but the guide
+  // is fetched after the page loads -- the browser's own scroll-to-hash has
+  // already run (and found nothing) by the time the headings exist.
+  const { hash } = useLocation()
+  useEffect(() => {
+    if (!markdownPreview || !hash) return
+    document.getElementById(hash.slice(1))?.scrollIntoView()
+  }, [markdownPreview, hash])
 
   useEffect(() => {
     let cancelled = false

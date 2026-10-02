@@ -1,0 +1,41 @@
+.formatting-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Spacing, not divider lines, between groups -- a border on every group
+     after the first leaves a dangling line at the start of the second row
+     whenever the toolbar wraps on a narrow screen. */
+  gap: 2px 14px;
+}
+
+.formatting-toolbar-group {
+  display: flex;
+  gap: 2px;
+}
+
+.formatting-toolbar-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: var(--ds-muted);
+  font-size: 0.82rem;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.formatting-toolbar-btn:hover:not(:disabled) {
+  background: var(--ds-surface-2);
+  color: var(--ds-text);
+}
+
+.formatting-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

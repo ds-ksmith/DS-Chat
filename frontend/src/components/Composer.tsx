@@ -15,10 +15,13 @@ import { getUploadLimit } from '../api/uploads'
 import { useCustomEmoji } from '../context/CustomEmojiContext'
 import { EMOJI_SHORTCODES, SHORTCODE_BY_GLYPH } from '../lib/emojiShortcodes'
 import { formatFileSize } from '../lib/fileSize'
+import { getFormattingToolbarOpen, setFormattingToolbarOpen } from '../lib/formattingToolbarPref'
+import { applyFormat, type FormatAction } from '../lib/markdownFormat'
 import { getRecentEmoji, recordEmojiUsed } from '../lib/recentEmoji'
 import type { MyRoomItem, RoomMember } from '../types'
 import { EmojiPicker } from './EmojiPicker'
 import { EmojiShortcodeAutocomplete, type EmojiShortcodeMatch } from './EmojiShortcodeAutocomplete'
+import { FormattingToolbar } from './FormattingToolbar'
 import { MentionAutocomplete } from './MentionAutocomplete'
 import { RoomReferenceAutocomplete } from './RoomReferenceAutocomplete'
 import './Composer.css'
@@ -136,6 +139,7 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
   const [emojiActiveIndex, setEmojiActiveIndex] = useState(0)
   const [dragActive, setDragActive] = useState(false)
   const [attachMenuOpen, setAttachMenuOpen] = useState(false)
+  const [toolbarOpen, setToolbarOpen] = useState(getFormattingToolbarOpen)
   const { byShortcode: customEmojiByShortcode } = useCustomEmoji()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -449,6 +453,29 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
     })
   }
 
+  function toggleToolbar() {
+    const next = !toolbarOpen
+    setToolbarOpen(next)
+    setFormattingToolbarOpen(next)
+  }
+
+  // #75: the toolbar only ever edits the textarea's plain markdown text --
+  // nothing about what gets sent changes.
+  function applyFormatAction(action: FormatAction) {
+    const el = textareaRef.current
+    if (!el) return
+    const result = applyFormat(
+      { value, start: el.selectionStart ?? value.length, end: el.selectionEnd ?? value.length },
+      action,
+    )
+    setValue(result.value)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(result.start, result.end)
+      autoGrow()
+    })
+  }
+
   function insertEmoji(emoji: string) {
     const el = textareaRef.current
     setEmojiPickerOpen(false)
@@ -517,6 +544,9 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
         </div>
       )}
       {uploadError && <div className="composer-status composer-error">{uploadError}</div>}
+      {toolbarOpen && (
+        <FormattingToolbar id="composer-formatting-toolbar" disabled={isDisabled} onAction={applyFormatAction} />
+      )}
       <div className="composer-box">
         <input
           ref={photoInputRef}
@@ -589,6 +619,18 @@ export function Composer({ roomId, roomName, isDm, members, rooms, disabled, arc
             />
           )}
         </div>
+        <button
+          type="button"
+          className={`composer-format-toggle${toolbarOpen ? ' composer-format-toggle-open' : ''}`}
+          onClick={toggleToolbar}
+          disabled={isDisabled}
+          aria-label="Formatting options"
+          aria-expanded={toolbarOpen}
+          aria-controls="composer-formatting-toolbar"
+          title="Formatting options"
+        >
+          Aa
+        </button>
         <div className="composer-textarea-wrap">
           <textarea
             ref={textareaRef}

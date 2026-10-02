@@ -70,7 +70,13 @@ send. Use **Shift+Enter** to add a line break without sending.
 
 ## Formatting
 
-Messages support Markdown:
+Messages support Markdown. Prefer buttons to typing the syntax? Click the
+**Aa** button next to the emoji button in the composer to open a formatting
+toolbar — it inserts the markdown below into your message for you (select some
+text first to wrap it, or click a button again to take the formatting back
+off). It stays collapsed until you open it, and remembers your choice.
+
+Or type it yourself:
 
 - `**bold**`, `*italic*`, `~~strikethrough~~`
 - `` `inline code` `` and fenced code blocks (three backticks)
