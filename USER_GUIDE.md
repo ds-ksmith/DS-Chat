@@ -68,6 +68,11 @@ new message, or if you message them again yourself.
 Type in the message box at the bottom of a room and press **Enter** to
 send. Use **Shift+Enter** to add a line break without sending.
 
+Each message shows when it was sent, in your local time. Messages from today
+show just the time; older ones add the day — "Yesterday 4:04 PM", a weekday
+like "Mon 4:04 PM" for the past week, then the date ("Oct 2, 4:04 PM", with
+the year if it's not this one). Hover a time to see the full date.
+
 ## Formatting
 
 Messages support Markdown. Prefer buttons to typing the syntax? Click the

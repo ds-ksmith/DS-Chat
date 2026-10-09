@@ -40,12 +40,17 @@
 }
 
 .message-author {
+  /* Lets a very long display name shrink/wrap instead of pushing the
+     (now longer, e.g. "Yesterday 4:04 PM") timestamp out of the row. */
+  min-width: 0;
   font-size: 0.86rem;
   font-weight: 700;
   color: var(--ds-text);
 }
 
 .message-time {
+  flex: none;
+  white-space: nowrap;
   font-size: 0.68rem;
   color: var(--ds-muted);
   font-family: var(--mono);
