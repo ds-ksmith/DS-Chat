@@ -1,4 +1,7 @@
 import asyncio
+import contextlib
+import logging
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -28,6 +31,8 @@ from app.services.message_service import (
 from app.services.room_service import mark_room_read
 from app.services.session_service import resolve_session
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["ws"])
 
 WS_UNAUTHENTICATED = 4401
@@ -43,6 +48,22 @@ WS_UNAUTHENTICATED = 4401
 # list, which refetches history over plain REST -- unrelated to the socket
 # itself actually recovering).
 WS_PING_INTERVAL_SECONDS = 30
+
+# #77: a human client that has sent nothing -- not even the "pong" to the ping
+# above -- for this long is treated as gone and disconnected, so its presence
+# stops being renewed and cleanup runs. Needed on top of the transport's own
+# keepalive: a browser answers *protocol-level* pings from its network layer
+# even while the page's JavaScript is frozen (a suspended or discarded tab,
+# a sleeping laptop that keeps its network up), so the connection looks
+# healthy forever while nobody is actually there. Only the page itself can
+# send the app-level "pong". The frontend reconnects on any non-4401 close.
+WS_DEAD_AFTER_SECONDS = 90
+WS_HEARTBEAT_TIMEOUT = 4408
+
+# Presence entries (see ExpiringPresenceSet) are renewed on incoming frames,
+# at most this often -- a chatty client shouldn't turn every message into
+# several extra Redis writes.
+PRESENCE_REFRESH_MIN_INTERVAL_SECONDS = 10
 
 
 class ClientEnvelope(BaseModel):
@@ -72,6 +93,21 @@ async def _is_room_archived(db: AsyncSession, room_id: uuid.UUID) -> bool:
 
 def _missing_scope(api_token: ApiToken | None, scope: str) -> bool:
     return api_token is not None and scope not in api_token.scopes
+
+
+async def _broadcast_offline(db: AsyncSession, broadcaster, user_id: uuid.UUID) -> None:
+    await broadcast_member_updated(db, broadcaster, user_id)
+    await broadcast_dm_presence_update(db, broadcaster, user_id, online=False)
+
+
+async def _best_effort(label: str, awaitable):
+    # Disconnect cleanup is several independent Redis/DB steps; one failing
+    # must not skip the ones after it.
+    try:
+        return await awaitable
+    except Exception:
+        logger.warning("Presence cleanup step failed: %s", label, exc_info=True)
+        return None
 
 
 @router.websocket("/ws/chat")
@@ -114,13 +150,19 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     # refcount if the socket closes while still blurred -- mirroring how
     # joined_rooms tracks per-connection room membership for its own cleanup.
     is_blurred = False
+    # Identifies this connection's own presence entries (#77) -- see
+    # ExpiringPresenceSet -- so one connection ending can't affect another
+    # belonging to the same user, and a dead one can simply stop renewing.
+    conn_id = uuid.uuid4().hex
+    last_frame_at = time.monotonic()
+    last_presence_refresh = last_frame_at
     manager.register_user(user.id, websocket)
     # Only broadcast on a genuine offline->online transition (this user's
     # first open connection), not for every extra tab -- broadcast_member_
     # updated tells every room this user's in to refresh, which would be
     # wasted churn on a transition that didn't actually change anything
     # visible.
-    if await global_presence.connect(user.id):
+    if await global_presence.connect(user.id, conn_id):
         await broadcast_member_updated(db, broadcaster, user.id)
         await broadcast_dm_presence_update(db, broadcaster, user.id, online=True)
     # This session is shared for the connection's entire lifetime (which can
@@ -135,6 +177,18 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
     # waiting for the next one.
     await db.commit()
 
+    async def refresh_presence() -> None:
+        # Renews every presence entry this connection holds. If the global
+        # one had already lapsed (a long stall) this is also the moment the
+        # user comes back online, and has to be announced like a fresh connect.
+        if await global_presence.refresh(user.id, conn_id):
+            await broadcast_member_updated(db, broadcaster, user.id)
+            await broadcast_dm_presence_update(db, broadcaster, user.id, online=True)
+        for room_id in joined_rooms:
+            await presence.refresh(room_id, user.id, conn_id)
+        if is_blurred:
+            await focus_presence.refresh(user.id, conn_id)
+
     try:
         while True:
             try:
@@ -147,9 +201,30 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                 # send (raising, caught below same as any other disconnect);
                 # a merely quiet one just gets proded and the loop continues
                 # waiting.
+                if api_token is None and time.monotonic() - last_frame_at >= WS_DEAD_AFTER_SECONDS:
+                    # Gone (see WS_DEAD_AFTER_SECONDS). The socket may be too
+                    # dead to even take a close frame; either way, leaving the
+                    # loop runs the normal cleanup below.
+                    with contextlib.suppress(Exception):
+                        await websocket.close(code=WS_HEARTBEAT_TIMEOUT)
+                    break
+                if api_token is not None:
+                    # A bot isn't expected to speak our app-level heartbeat
+                    # (it may just ignore the ping), so it can't be dropped
+                    # for not answering and its presence can't depend on
+                    # answers. While the handler is alive the transport's own
+                    # keepalive is what vouches for it -- a dead bot socket
+                    # ends this handler, and cleanup does the rest.
+                    await refresh_presence()
+                    last_presence_refresh = time.monotonic()
+                    await db.commit()
                 await websocket.send_json({"type": "ping"})
                 continue
+            last_frame_at = time.monotonic()
             try:
+                if last_frame_at - last_presence_refresh >= PRESENCE_REFRESH_MIN_INTERVAL_SECONDS:
+                    await refresh_presence()
+                    last_presence_refresh = last_frame_at
                 try:
                     envelope = ClientEnvelope.model_validate(raw)
                 except ValidationError:
@@ -166,7 +241,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         )
                         continue
                     manager.join(envelope.room_id, websocket)
-                    await presence.join(envelope.room_id, user.id)
+                    await presence.join(envelope.room_id, user.id, conn_id)
                     joined_rooms.add(envelope.room_id)
                     await websocket.send_json({"type": "joined", "room_id": str(envelope.room_id)})
 
@@ -183,7 +258,7 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         await websocket.send_json({"type": "error", "detail": "room_id required"})
                         continue
                     manager.leave(envelope.room_id, websocket)
-                    await presence.leave(envelope.room_id, user.id)
+                    await presence.leave(envelope.room_id, user.id, conn_id)
                     joined_rooms.discard(envelope.room_id)
 
                 elif envelope.type == "focus":
@@ -198,11 +273,11 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
                         continue
                     if envelope.focused:
                         if is_blurred:
-                            await focus_presence.mark_focused(user.id)
+                            await focus_presence.mark_focused(user.id, conn_id)
                             is_blurred = False
                     else:
                         if not is_blurred:
-                            await focus_presence.mark_blurred(user.id)
+                            await focus_presence.mark_blurred(user.id, conn_id)
                             is_blurred = True
 
                 elif envelope.type == "message":
@@ -396,9 +471,11 @@ async def chat_endpoint(websocket: WebSocket, db: AsyncSession = Depends(get_db)
         manager.leave_all(websocket)
         manager.unregister_user(user.id, websocket)
         for room_id in joined_rooms:
-            await presence.leave(room_id, user.id)
+            await _best_effort("room presence", presence.leave(room_id, user.id, conn_id))
         if is_blurred:
-            await focus_presence.mark_focused(user.id)
-        if await global_presence.disconnect(user.id):
-            await broadcast_member_updated(db, broadcaster, user.id)
-            await broadcast_dm_presence_update(db, broadcaster, user.id, online=False)
+            await _best_effort("focus presence", focus_presence.mark_focused(user.id, conn_id))
+        if await _best_effort("global presence", global_presence.disconnect(user.id, conn_id)):
+            await _best_effort(
+                "offline broadcast",
+                _broadcast_offline(db, broadcaster, user.id),
+            )

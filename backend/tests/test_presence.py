@@ -130,3 +130,108 @@ def test_online_users_endpoint_respects_appear_offline(ws_client):
 
     online = ws_client.get("/api/users/online").json()
     assert alice["id"] not in online
+
+
+# --- #77: liveness -----------------------------------------------------------
+# A connection that stops answering the app-level heartbeat is dropped by the
+# server, and a connection that does answer keeps its presence entry renewed.
+# Timings are shrunk so nothing here waits on the real 30s/90s values.
+
+
+def _fast_heartbeat(monkeypatch):
+    monkeypatch.setattr("app.ws.chat.WS_PING_INTERVAL_SECONDS", 0.05)
+    monkeypatch.setattr("app.ws.chat.WS_DEAD_AFTER_SECONDS", 0.2)
+    monkeypatch.setattr("app.ws.chat.PRESENCE_REFRESH_MIN_INTERVAL_SECONDS", 0)
+
+
+def test_unresponsive_client_is_disconnected_by_the_server(ws_client, monkeypatch):
+    # The frozen-page / sleeping-laptop case: the transport stays open (the
+    # browser answers protocol pings itself) but the page never replies to
+    # the app-level ping.
+    from starlette.websockets import WebSocketDisconnect
+
+    _fast_heartbeat(monkeypatch)
+    _register_ws(ws_client, _unique("alice"))
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        pings = 0
+        try:
+            while True:
+                assert ws.receive_json() == {"type": "ping"}
+                pings += 1
+                assert pings < 100, "server never gave up on a silent client"
+        except WebSocketDisconnect as exc:
+            assert exc.code == 4408
+        assert pings >= 2
+
+
+def test_client_that_answers_pings_is_not_disconnected(ws_client, monkeypatch):
+    _fast_heartbeat(monkeypatch)
+    _register_ws(ws_client, _unique("alice"))
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        # Far longer than WS_DEAD_AFTER_SECONDS in total.
+        for _ in range(12):
+            assert ws.receive_json() == {"type": "ping"}
+            ws.send_json({"type": "pong"})
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        while (msg := ws.receive_json())["type"] == "ping":
+            pass
+        assert msg == {"type": "joined", "room_id": room["id"]}
+
+
+def test_bot_connection_is_not_dropped_for_ignoring_pings(ws_client_factory, monkeypatch):
+    # API-token clients aren't expected to speak the app heartbeat.
+    _fast_heartbeat(monkeypatch)
+    ws_client = ws_client_factory()
+    admin = _register_ws(ws_client, _unique("admin"))
+
+    async def _promote():
+        from app.models import User
+
+        async with ws_client.session_factory() as session:
+            user = await session.get(User, uuid.UUID(admin["id"]))
+            user.is_site_admin = True
+            await session.commit()
+
+    ws_client.portal.call(_promote)
+    room = ws_client.post("/api/rooms", json={"name": _unique("general")}).json()
+    bot = ws_client.post("/api/admin/bots", json={"username": _unique("bot")}).json()
+    token = ws_client.post(
+        f"/api/admin/bots/{bot['id']}/tokens", json={"scopes": ["read:messages", "write:messages"]}
+    ).json()["token"]
+    ws_client.post(f"/api/rooms/{room['id']}/join", headers={"Authorization": f"Bearer {token}"})
+
+    with ws_client.websocket_connect("/ws/chat", headers={"Authorization": f"Bearer {token}"}) as ws:
+        for _ in range(8):  # ~0.4s of silence, twice WS_DEAD_AFTER_SECONDS
+            assert ws.receive_json() == {"type": "ping"}
+        ws.send_json({"type": "join", "room_id": room["id"]})
+        while (msg := ws.receive_json())["type"] == "ping":
+            pass
+        assert msg["type"] == "joined"
+
+
+def test_presence_entry_is_renewed_while_the_client_answers(ws_client, monkeypatch):
+    import time
+
+    _fast_heartbeat(monkeypatch)
+    alice = _register_ws(ws_client, _unique("alice"))
+
+    async def _scores():
+        redis = ws_client.app.state.redis
+        return await redis.zrange("presence:v2:global", 0, -1, withscores=True)
+
+    with ws_client.websocket_connect("/ws/chat") as ws:
+        # Wait for the first ping so the connect-time entry exists.
+        assert ws.receive_json() == {"type": "ping"}
+        first = [s for m, s in ws_client.portal.call(_scores) if m.startswith(alice["id"])]
+        assert len(first) == 1
+
+        time.sleep(0.1)
+        ws.send_json({"type": "pong"})
+        # Any later frame arriving back proves the pong was processed.
+        while ws.receive_json()["type"] != "ping":
+            pass
+        second = [s for m, s in ws_client.portal.call(_scores) if m.startswith(alice["id"])]
+        assert second and second[0] > first[0]

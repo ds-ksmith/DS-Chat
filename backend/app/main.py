@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 import pathlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -11,6 +12,7 @@ from redis.asyncio import Redis
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import settings
+from app.database import async_session_factory
 from app.routers import (
     admin,
     auth,
@@ -31,6 +33,9 @@ from app.ws.connection_manager import ConnectionManager
 from app.ws.focus_presence import FocusPresence
 from app.ws.global_presence import GlobalPresence
 from app.ws.presence import Presence
+from app.ws.presence_sweeper import purge_legacy_presence, run_presence_sweeper
+
+logger = logging.getLogger(__name__)
 
 # backend/app/main.py -> backend/ -> repo root -- matches both the local
 # monorepo layout and the production layout (/srv/ds-chat/backend,
@@ -65,11 +70,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # restarts on failure instead.
     listener_task = asyncio.create_task(app.state.broadcaster.run_forever())
 
+    # #77: presence entries now expire, and an expiry has no disconnect event
+    # to announce it -- this loop is what notices. The purge clears the old
+    # refcount hashes (and the counts that had leaked into them); it's
+    # best-effort, since Redis being down at startup shouldn't stop the app.
+    try:
+        await purge_legacy_presence(app.state.redis)
+    except Exception:
+        logger.warning("Could not purge legacy presence keys", exc_info=True)
+    sweeper_task = asyncio.create_task(run_presence_sweeper(app))
+
     yield
 
-    listener_task.cancel()
-    with contextlib.suppress(asyncio.CancelledError):
-        await listener_task
+    for task in (sweeper_task, listener_task):
+        task.cancel()
+    for task in (sweeper_task, listener_task):
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     await app.state.redis.aclose()
 
 
@@ -85,6 +102,7 @@ def create_app() -> FastAPI:
     )
 
     app.state.connection_manager = ConnectionManager()
+    app.state.session_factory = async_session_factory
     app.state.redis = Redis.from_url(settings.redis_url, decode_responses=True)
     app.state.presence = Presence(app.state.redis)
     app.state.global_presence = GlobalPresence(app.state.redis)

@@ -289,17 +289,26 @@ instance and running many behave identically:
   to `room:*`; each message it receives is handed to its own local
   `ConnectionManager.broadcast()`. One instance just talks to itself
   through Redis, so there's no separate single-instance code path.
-- `app/ws/presence.py` (`Presence`) — a Redis hash per room
-  (`presence:{room_id}`, field = user ID, value = connection refcount) is
-  the cross-instance answer to "is this member connected *anywhere* right
-  now," which is what the Phase 4 offline-push check uses instead of the
-  local `ConnectionManager`. Refcounted so a user connected from two tabs
-  (or two instances) isn't marked offline until every connection closes.
+- `app/ws/presence.py` (`Presence`) — a Redis sorted set per room
+  (`presence:v2:room:{id}`, one member per *connection*, `<user_id>:<conn_id>`,
+  score = expiry time) is the cross-instance answer to "is this member
+  connected *anywhere* right now," which is what the Phase 4 offline-push
+  check uses instead of the local `ConnectionManager`. A user is connected
+  while any of their entries is unexpired, so two tabs (or two instances)
+  don't mark them offline until every connection is gone. `GlobalPresence`
+  (`presence:v2:global`) and `FocusPresence` (`presence:v2:unfocused`) use the
+  same store, `app/ws/expiring_presence.py` (`ExpiringPresenceSet`).
 
-Known limitation: `Presence` has no heartbeat/TTL, so a hard process crash
-(not a clean disconnect) leaks that connection's increment forever — same
-category of simplification as the "no server-side session revocation" note
-below.
+Presence entries expire (#77) so nothing can be stuck online. A connection
+renews its entries (90s TTL) whenever the client sends a frame — the frontend
+answers the server's 30s `ping` with a `pong`, which is exactly that — and
+the server closes a human client's socket (code 4408) after 90s of silence.
+Bot (API-token) connections don't speak the heartbeat, so the server renews
+their entries itself while their handler is alive. An expiry has no
+disconnect event to announce it, so `app/ws/presence_sweeper.py` runs on every
+worker (a Redis lock makes it one sweep per 15s overall), prunes expired
+entries, and broadcasts the offline transition. The pre-#77 `presence:*`
+refcount hashes are deleted at startup.
 
 ## Push notifications (Phase 4)
 
