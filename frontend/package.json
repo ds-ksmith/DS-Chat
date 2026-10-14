@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "2026.10.9",
+  "version": "2026.10.13",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
