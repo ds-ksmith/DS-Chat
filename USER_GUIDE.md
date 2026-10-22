@@ -133,7 +133,9 @@ you'll see an error before it uploads.
 Hover over a message and click the 🙂 icon in its action row to react
 with an emoji. Reactions from everyone appear as small pills under the
 message with a count; click an existing pill to add or remove your own
-reaction to it. Hovering a pill shows who reacted.
+reaction to it. Hovering a pill shows who reacted. Once a message has
+reactions, a small **+🙂** button at the end of the row of pills lets you
+add a different emoji without going back to the action row.
 
 Anyone can add a custom emoji: open the emoji picker (the 🙂 button, either
 in the composer or on a message) and click **+ Add** in the **Custom**

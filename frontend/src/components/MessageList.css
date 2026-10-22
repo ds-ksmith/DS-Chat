@@ -391,6 +391,7 @@
 }
 
 .message-reaction-pills {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
@@ -429,4 +430,25 @@
   font-family: var(--sans);
   width: 100%;
   resize: vertical;
+}
+
+/* The picker anchors to the row of pills, not to this button: the button's
+   position moves right with every added reaction, and a picker hanging
+   off it ran past the edge of a phone screen. (No `position` here on
+   purpose -- .message-reaction-wrap's relative would re-anchor it.) */
+.message-reaction-add-wrap {
+  display: contents;
+}
+
+/* #78: always visible once a message has reactions, so adding to the pile
+   doesn't need the hover-row button. Same shape as the pills it sits
+   beside, kept quieter so it doesn't read as another reaction. */
+.message-reaction-add {
+  gap: 2px;
+  opacity: 0.8;
+}
+
+.message-reaction-add:hover,
+.message-reaction-add:focus-visible {
+  opacity: 1;
 }

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
@@ -146,6 +146,10 @@ export function MessageList({
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
   const [videoLightbox, setVideoLightbox] = useState<{ src: string; filename: string } | null>(null)
   const [reactingId, setReactingId] = useState<string | null>(null)
+  // #78: a message has two buttons that open the same picker (the hover-row
+  // one and the one at the end of its reaction pills); this says which one
+  // the picker belongs to, so it renders next to the button that was used.
+  const [reactingFrom, setReactingFrom] = useState<'row' | 'pills'>('row')
   const [reactionPlacement, setReactionPlacement] = useState<'above' | 'below'>('below')
   const [previewFile, setPreviewFile] = useState<MessageFileInfo | null>(null)
   const memberUsernames = useMemo(() => new Set(members.map((m) => m.username)), [members])
@@ -153,6 +157,25 @@ export function MessageList({
   function displayNameForUserId(userId: string): string {
     const member = members.find((m) => m.user_id === userId)
     return member?.display_name || member?.username || 'someone'
+  }
+
+  function toggleReactionPicker(
+    e: ReactMouseEvent<HTMLButtonElement>,
+    messageId: string,
+    from: 'row' | 'pills',
+  ) {
+    if (reactingId === messageId && reactingFrom === from) {
+      setReactingId(null)
+      return
+    }
+    // Flip upward when the picker wouldn't fit below the trigger -- a
+    // message near the bottom of the scrolled list otherwise opens a
+    // picker that runs off-screen and can't be used.
+    const rect = e.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    setReactionPlacement(spaceBelow < EMOJI_PICKER_MAX_HEIGHT ? 'above' : 'below')
+    setReactingFrom(from)
+    setReactingId(messageId)
   }
 
   useEffect(() => {
@@ -321,6 +344,28 @@ export function MessageList({
                           </button>
                         )
                       })}
+                      <div className="message-reaction-add-wrap">
+                        <button
+                          type="button"
+                          className="message-reaction-pill message-reaction-add"
+                          onClick={(e) => toggleReactionPicker(e, msg.id, 'pills')}
+                          aria-label="Add reaction"
+                        >
+                          <span aria-hidden="true">+</span>
+                          <span aria-hidden="true">🙂</span>
+                        </button>
+                        {reactingId === msg.id && reactingFrom === 'pills' && (
+                          <EmojiPicker
+                            onPick={(emoji) => {
+                              onReact(msg.id, emoji)
+                              setReactingId(null)
+                            }}
+                            onClose={() => setReactingId(null)}
+                            placement={reactionPlacement}
+                            align="left"
+                          />
+                        )}
+                      </div>
                     </div>
                   )}
                 </>
@@ -332,25 +377,12 @@ export function MessageList({
                   <button
                     type="button"
                     className="message-reaction-trigger"
-                    onClick={(e) => {
-                      if (reactingId === msg.id) {
-                        setReactingId(null)
-                        return
-                      }
-                      // Flip upward when the picker wouldn't fit below the
-                      // trigger -- a message near the bottom of the
-                      // scrolled list otherwise opens a picker that runs
-                      // off-screen and can't be used.
-                      const rect = e.currentTarget.getBoundingClientRect()
-                      const spaceBelow = window.innerHeight - rect.bottom
-                      setReactionPlacement(spaceBelow < EMOJI_PICKER_MAX_HEIGHT ? 'above' : 'below')
-                      setReactingId(msg.id)
-                    }}
+                    onClick={(e) => toggleReactionPicker(e, msg.id, 'row')}
                     aria-label="Add reaction"
                   >
                     🙂
                   </button>
-                  {reactingId === msg.id && (
+                  {reactingId === msg.id && reactingFrom === 'row' && (
                     <EmojiPicker
                       onPick={(emoji) => {
                         onReact(msg.id, emoji)
