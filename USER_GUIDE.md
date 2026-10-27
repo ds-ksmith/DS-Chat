@@ -17,6 +17,7 @@ attachments, notifications, and personalizing your account.
 - [Presence and notifications](#presence-and-notifications)
 - [Your profile](#your-profile)
 - [Room details](#room-details)
+- [Integrations](#integrations)
 - [Active sessions](#active-sessions)
 - [Staying up to date](#staying-up-to-date)
 
@@ -209,8 +210,135 @@ you can:
 - Leave the room — unless you're the owner, in which case ownership has
   to be transferred to someone else first
 
-Room admins and owners see additional management options here that
-aren't covered in this guide.
+Room admins and owners see additional management options here, including
+**Integrations** (see [Integrations](#integrations)).
+
+## Integrations
+
+DS Chat can exchange messages with other tools, three ways. The first two
+are set up by a room's admins or owners; the third by a site admin.
+
+| You want to… | Use |
+| --- | --- |
+| Post into a room from a script, CI job, or another service | [Incoming webhook](#incoming-webhooks) |
+| Get notified elsewhere when a room's messages change | [Outgoing event subscription](#outgoing-event-subscriptions) |
+| Have a program read and write messages as its own account | [Bot](#bots) |
+
+Links in messages already get a preview card on their own, and Web Push
+and email notifications work without any setup — see
+[Presence and notifications](#presence-and-notifications).
+
+### Incoming webhooks
+
+An incoming webhook is a private URL that posts into one room.
+
+1. Open the room's details panel (the info icon in the header) and expand
+   **Integrations**. You need to be an admin or the owner of the room.
+2. Under **Incoming webhooks**, add an optional description (such as
+   "Deploy notices") and create it. The full URL is listed there whenever
+   you need to copy it again.
+3. Send a `POST` with a JSON body to that URL:
+
+```bash
+curl -X POST "https://chat.example.com/api/webhooks/incoming/<token>" \
+  -H "Content-Type: application/json" \
+  -d '{"content": "Deploy finished: **v2026.10.22** is live"}'
+```
+
+The message appears in the room right away, formatted like any other
+(markdown works), attributed to whoever created the webhook, and it
+notifies members the same way a typed message would. A successful post
+returns `204`; an unknown or revoked URL returns `404`, and an archived
+room returns `403`.
+
+**Treat the URL like a password.** There's no other authentication: anyone
+who has it can post into the room. If it leaks, click **Revoke** next to
+it in the same panel and create a new one.
+
+### Outgoing event subscriptions
+
+An outgoing subscription sends DS Chat's events to a URL you control.
+
+1. In the same **Integrations** panel, under **Outgoing event
+   subscriptions**, enter the URL and tick the events you want:
+   `message.created` (a new message) and/or `message.updated` (an edit).
+2. Click **Add**. A **signing secret** appears once — copy it now, it
+   won't be shown again.
+
+Each event arrives as a `POST` with a JSON body:
+
+```json
+{
+  "event": "message.created",
+  "data": { "id": "…", "room_id": "…", "username": "alice", "content": "hello", "…": "…" }
+}
+```
+
+To let you confirm a request really came from DS Chat, each one carries an
+`X-DS-Chat-Signature: sha256=<hex>` header: the HMAC-SHA256 of the raw
+request body, keyed with your signing secret. For example, in Python:
+
+```python
+import hashlib, hmac
+
+expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+valid = hmac.compare_digest(expected, request_signature_header)
+```
+
+Things to know:
+
+- **Delivery is best-effort.** Each event is tried once with a short
+  timeout; if your endpoint is down or slow, that event is dropped and
+  not retried. Don't rely on it as your only record of a conversation.
+- **Only message creation and edits** are sent. Deletions, reactions,
+  and joins don't generate events.
+- **The URL must be publicly reachable.** Addresses that point to
+  private or internal networks (localhost, `192.168.x.x`, and so on) are
+  rejected when you add the subscription.
+- **Revoke** removes a subscription immediately.
+
+### Bots
+
+A bot is an account for a program rather than a person. It signs in with
+an API token instead of a password and uses the same interface as the
+app itself, so it can read and write messages in real time.
+
+Only **site admins** create bots: open the admin page, choose the **Bots**
+tab, and click **Create bot**, then **Issue token** and pick what the
+token may do:
+
+- `read:messages` — read a room's message history
+- `write:messages` — send, edit, and delete messages
+- `manage:rooms` — recognized, but doesn't grant anything beyond what the
+  bot's room role already allows
+
+The token is shown once — copy it then. You can revoke it from the same
+tab at any time.
+
+A bot is held to the same rules as any member: it can only see and post
+in rooms it belongs to, and its room role limits what it can do there.
+The token can narrow that further, never widen it.
+
+The bot connects to the WebSocket at `/ws/chat`, sending
+`Authorization: Bearer <token>` with the connection, and then speaks
+simple JSON messages:
+
+```json
+{"type": "join", "room_id": "<room id>"}
+{"type": "message", "room_id": "<room id>", "content": "Hello from a bot"}
+{"type": "edit", "room_id": "<room id>", "message_id": "<id>", "content": "Fixed"}
+```
+
+Messages from the room arrive on the same connection as they happen. The
+same bearer token also works for the regular `/api/` endpoints, such as
+fetching a room's history.
+
+The server sends a `{"type": "ping"}` every 30 seconds to check a
+connection is alive; a bot may ignore it, since bot connections are never
+dropped for staying silent.
+
+There is currently **no rate limiting** on bots (or anyone else), so keep
+automation polite.
 
 ## Staying up to date
 
