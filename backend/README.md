@@ -276,6 +276,18 @@ the same as human ones. Not implemented — there's no rate limiting
 anywhere in the app today (human or bot) to extend, and building one well
 is its own scope. Documented gap, not an oversight.
 
+## Message history paging
+
+`GET /api/rooms/{id}/messages` returns the newest `limit` messages (default
+50, max 200), oldest first. Pass `before=<message id>` for the page that
+comes before that message, and keep passing the first id of each page to walk
+back to the start of the conversation; an empty page (or one shorter than
+`limit`) means there's nothing older. The cursor is a message id, but it's
+compared as a `(created_at, id)` pair to match the endpoint's ordering, so
+paging is exact across messages that share a timestamp. An id that isn't in
+that room is a 404. Membership and the `read:messages` scope apply exactly as
+for the first page, so bots can page too.
+
 ## Cross-instance broadcast (Phase 5)
 
 The WebSocket layer is split into three pieces so that running one app

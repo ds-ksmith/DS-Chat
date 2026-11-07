@@ -452,3 +452,35 @@
 .message-reaction-add:focus-visible {
   opacity: 1;
 }
+
+/* Paging back through history -- quiet, centered rows at the very top. */
+.message-list-older,
+.message-list-start {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 0 12px;
+  color: var(--ds-muted);
+  font-size: 0.78rem;
+}
+
+.message-list-older button {
+  background: none;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius-pill);
+  color: var(--ds-muted);
+  cursor: pointer;
+  font: inherit;
+  padding: 3px 12px;
+}
+
+.message-list-older button:hover,
+.message-list-older button:focus-visible {
+  border-color: var(--ds-accent);
+  color: var(--ds-text);
+}
+
+.message-list-older-error {
+  color: var(--ds-danger);
+}

@@ -554,3 +554,109 @@ async def test_list_room_members(client, db_session):
     assert len(members) == 1
     assert members[0]["username"] == "alice"
     assert members[0]["role"] == "owner"
+
+
+async def _seed_messages(db_session, room_id: str, user_id: str, count: int) -> list[str]:
+    import uuid
+
+    from app.services.message_service import create_message
+
+    ids = []
+    for i in range(count):
+        message = await create_message(
+            db_session, uuid.UUID(room_id), uuid.UUID(user_id), content=f"msg {i}"
+        )
+        ids.append(str(message.id))
+    return ids
+
+
+async def test_history_pages_back_with_before_cursor(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    await _seed_messages(db_session, room_id, alice["id"], 7)
+
+    newest = (await client.get(f"/api/rooms/{room_id}/messages?limit=3")).json()
+    assert len(newest) == 3
+    second = (await client.get(f"/api/rooms/{room_id}/messages?limit=3&before={newest[0]['id']}")).json()
+    assert len(second) == 3
+    third = (await client.get(f"/api/rooms/{room_id}/messages?limit=3&before={second[0]['id']}")).json()
+    assert len(third) == 1
+    assert (await client.get(f"/api/rooms/{room_id}/messages?limit=3&before={third[0]['id']}")).json() == []
+
+    whole = (await client.get(f"/api/rooms/{room_id}/messages?limit=200")).json()
+    paged = third + second + newest
+    assert [m["id"] for m in paged] == [m["id"] for m in whole]
+    assert len({m["id"] for m in paged}) == 7  # no repeats across pages
+
+
+async def test_history_paging_is_exact_across_identical_timestamps(client, db_session):
+    # Messages can share a created_at (rapid sends, webhooks). A cursor on the
+    # timestamp alone would skip or repeat whichever one lands on a page
+    # boundary, so force every message to the same instant and page through.
+    from datetime import datetime, timezone
+
+    from sqlalchemy import update
+
+    from app.models import Message
+
+    alice = await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    await _seed_messages(db_session, room_id, alice["id"], 7)
+    await db_session.execute(
+        update(Message).values(created_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
+    )
+    await db_session.flush()
+
+    whole = (await client.get(f"/api/rooms/{room_id}/messages?limit=200")).json()
+    assert len({m["created_at"] for m in whole}) == 1  # genuinely all tied
+
+    pages, cursor = [], None
+    while True:
+        url = f"/api/rooms/{room_id}/messages?limit=3" + (f"&before={cursor}" if cursor else "")
+        page = (await client.get(url)).json()
+        if not page:
+            break
+        pages.append(page)
+        cursor = page[0]["id"]
+    paged = [m["id"] for page in reversed(pages) for m in page]
+    assert paged == [m["id"] for m in whole]
+
+
+async def test_history_before_returns_oldest_first(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    await _seed_messages(db_session, room_id, alice["id"], 5)
+
+    newest = (await client.get(f"/api/rooms/{room_id}/messages?limit=2")).json()
+    older = (await client.get(f"/api/rooms/{room_id}/messages?limit=2&before={newest[0]['id']}")).json()
+    assert [m["content"] for m in older] == ["msg 1", "msg 2"]
+
+
+async def test_history_before_unknown_message_is_404(client, db_session):
+    import uuid
+
+    await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    resp = await client.get(f"/api/rooms/{room_id}/messages?before={uuid.uuid4()}")
+    assert resp.status_code == 404
+
+
+async def test_history_before_message_from_another_room_is_404(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    room_a = (await client.post("/api/rooms", json={"name": "a-room"})).json()["id"]
+    room_b = (await client.post("/api/rooms", json={"name": "b-room"})).json()["id"]
+    (in_b,) = await _seed_messages(db_session, room_b, alice["id"], 1)
+
+    resp = await client.get(f"/api/rooms/{room_a}/messages?before={in_b}")
+    assert resp.status_code == 404
+
+
+async def test_history_before_still_requires_membership(client, db_session):
+    alice = await register_and_login(client, db_session, username="alice")
+    room_id = (await client.post("/api/rooms", json={"name": "general"})).json()["id"]
+    (message_id,) = await _seed_messages(db_session, room_id, alice["id"], 1)
+
+    await client.post("/api/auth/logout")
+    await register_and_login(client, db_session, username="bob")
+    resp = await client.get(f"/api/rooms/{room_id}/messages?before={message_id}")
+    assert resp.status_code == 403

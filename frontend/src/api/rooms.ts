@@ -1,4 +1,5 @@
 import { apiFetch, ApiError, NetworkError } from './client'
+import { HISTORY_PAGE_SIZE } from '../lib/historyPaging'
 import type {
   Message,
   MessageFileInfo,
@@ -120,8 +121,12 @@ export function transferOwnership(roomId: string, newOwnerUserId: string): Promi
   })
 }
 
-export function getRoomMessages(roomId: string): Promise<Message[]> {
-  return apiFetch<Message[]>(`/api/rooms/${roomId}/messages`)
+// `before` is a message id: the page that comes before it, for loading older
+// history. Omitted, it's the newest page.
+export function getRoomMessages(roomId: string, before?: string): Promise<Message[]> {
+  const params = new URLSearchParams({ limit: String(HISTORY_PAGE_SIZE) })
+  if (before) params.set('before', before)
+  return apiFetch<Message[]>(`/api/rooms/${roomId}/messages?${params}`)
 }
 
 // Not apiFetch: that wrapper always sets Content-Type: application/json,

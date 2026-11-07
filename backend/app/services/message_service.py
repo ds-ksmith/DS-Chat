@@ -2,7 +2,7 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -124,12 +124,28 @@ async def delete_message(db: AsyncSession, message_id: uuid.UUID, deleter_id: uu
 
 
 async def list_recent_messages(
-    db: AsyncSession, room_id: uuid.UUID, limit: int = 50
+    db: AsyncSession, room_id: uuid.UUID, limit: int = 50, before: uuid.UUID | None = None
 ) -> list[Message]:
-    result = await db.execute(
+    """The newest `limit` messages in a room, oldest first. With `before`, the
+    newest `limit` messages that come *before* that message instead -- how a
+    client pages back through history. Raises MessageNotFoundError if `before`
+    isn't a message in this room."""
+    query = (
         select(Message)
         .where(Message.room_id == room_id)
         .options(selectinload(Message.user), selectinload(Message.file))
+    )
+    if before is not None:
+        cursor = await db.get(Message, before)
+        if cursor is None or cursor.room_id != room_id:
+            raise MessageNotFoundError()
+        # Compared as a (created_at, id) pair, not created_at alone, to match
+        # the ordering below: two messages can share a created_at, and a
+        # timestamp-only cursor would skip or repeat whichever one of the
+        # pair sits on the page boundary.
+        query = query.where(tuple_(Message.created_at, Message.id) < tuple_(cursor.created_at, cursor.id))
+    result = await db.execute(
+        query
         # Secondary key on the primary key -- two messages can share the
         # same created_at (rapid sends, e.g. from different clients or a
         # webhook), and without a tiebreaker Postgres isn't obligated to

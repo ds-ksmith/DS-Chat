@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NetworkError } from '../api/client'
 import { getRoomMessages, markRoomRead } from '../api/rooms'
+import { HISTORY_PAGE_SIZE, mergeFreshHistory, prependOlder } from '../lib/historyPaging'
 import type { ChatSocketHandle } from '../ws/useChatSocket'
 import type { ChatMessageEnvelope, Message, MyRoomItem, RoomMember, ServerEnvelope } from '../types'
 import { Composer } from './Composer'
@@ -34,6 +35,16 @@ export function ChatPane({
   const [live, setLive] = useState<ChatMessageEnvelope[]>([])
   const [wsError, setWsError] = useState<string | null>(null)
   const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false)
+  // Paging back through older history (the server only returns the newest
+  // page on its own). hasMoreOlder starts false and is set from the first
+  // fetch's result: a short page means that's the whole conversation.
+  const [hasMoreOlder, setHasMoreOlder] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+  const [olderError, setOlderError] = useState<string | null>(null)
+  // Read inside async callbacks, which would otherwise close over a stale
+  // `history` from whichever render created them.
+  const historyRef = useRef<Message[]>([])
+  historyRef.current = history
 
   // refreshHistory fires more than once in quick succession on a fresh load
   // -- once from the mount effect below, then again as soon as the WS's
@@ -57,11 +68,19 @@ export function ChatPane({
     setLive([])
     setWsError(null)
     setHistoryUnavailableOffline(false)
+    // A refresh supersedes any older-page request still in flight (its
+    // result is now ignored), so it can't be left showing as loading.
+    setLoadingOlder(false)
     const requestId = ++historyRequestIdRef.current
     getRoomMessages(room.id)
       .then((msgs) => {
         if (historyRequestIdRef.current !== requestId) return
-        setHistory(msgs)
+        // Keeps any older pages the user already scrolled back to load (see
+        // mergeFreshHistory) -- this runs on every rejoin, not just first load.
+        const merged = mergeFreshHistory(historyRef.current, msgs)
+        setHistory(merged.messages)
+        if (!merged.keptOlder) setHasMoreOlder(msgs.length >= HISTORY_PAGE_SIZE)
+        setOlderError(null)
       })
       .catch((err) => {
         if (historyRequestIdRef.current !== requestId) return
@@ -79,8 +98,39 @@ export function ChatPane({
     // deliberately doesn't do this (a resync on the *same* room shouldn't
     // flash empty while refetching).
     setHistory([])
+    historyRef.current = []
+    setHasMoreOlder(false)
+    setLoadingOlder(false)
+    setOlderError(null)
     refreshHistory()
   }, [room.id, refreshHistory])
+
+  const loadOlder = useCallback(() => {
+    const oldest = historyRef.current[0]
+    if (!oldest || loadingOlder) return
+    // Shares the refresh counter: a refresh that starts while this is in
+    // flight supersedes it (its result may no longer line up with history).
+    const requestId = historyRequestIdRef.current
+    setLoadingOlder(true)
+    setOlderError(null)
+    getRoomMessages(room.id, oldest.id)
+      .then((older) => {
+        if (historyRequestIdRef.current !== requestId) return
+        // One batch with the history change, so the list sees the new
+        // messages and the end of loading together (it uses that to keep the
+        // scroll position steady).
+        setHistory((prev) => prependOlder(prev, older))
+        setHasMoreOlder(older.length >= HISTORY_PAGE_SIZE)
+        setLoadingOlder(false)
+      })
+      .catch((err) => {
+        if (historyRequestIdRef.current !== requestId) return
+        setOlderError(
+          err instanceof NetworkError ? "You're offline." : 'Could not load earlier messages.',
+        )
+        setLoadingOlder(false)
+      })
+  }, [room.id, loadingOlder])
 
   useEffect(() => {
     socket.joinRoom(room.id)
@@ -215,8 +265,14 @@ export function ChatPane({
   const myRooms = useMemo(() => new Map(rooms.map((r) => [r.name, r.id])), [rooms])
 
   const connected = socket.connected
+  // Bumped on every send so MessageList scrolls down to show it (see its
+  // scrollToBottomSignal prop) even when the user had scrolled back.
+  const [sendSignal, setSendSignal] = useState(0)
   const send = useCallback(
-    (content: string, imageId?: string, fileId?: string) => socket.send(room.id, content, imageId, fileId),
+    (content: string, imageId?: string, fileId?: string) => {
+      setSendSignal((n) => n + 1)
+      return socket.send(room.id, content, imageId, fileId)
+    },
     [socket, room.id],
   )
   const sendEdit = useCallback(
@@ -284,6 +340,11 @@ export function ChatPane({
         onEdit={sendEdit}
         onReact={sendReaction}
         onDelete={sendDelete}
+        hasMoreOlder={hasMoreOlder}
+        loadingOlder={loadingOlder}
+        olderError={olderError}
+        onLoadOlder={loadOlder}
+        scrollToBottomSignal={sendSignal}
       />
       <Composer
         roomId={room.id}

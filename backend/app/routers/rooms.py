@@ -41,6 +41,7 @@ from app.schemas.webhook import (
 from app.services.link_preview_service import get_link_previews_for_urls
 from app.services.message_events import broadcast_new_message, broadcast_room_added
 from app.services.message_service import (
+    MessageNotFoundError,
     create_message,
     get_reactions_for_messages,
     list_recent_messages,
@@ -427,12 +428,20 @@ async def get_room_messages_endpoint(
     room_id: uuid.UUID,
     request: Request,
     limit: int = Query(default=50, ge=1, le=200),
+    before: uuid.UUID | None = Query(
+        default=None,
+        description="Return the page of messages that comes before this message (its id) -- "
+        "how a client loads older history. Omit for the newest messages.",
+    ),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     require_scope(request, "read:messages")
     await require_room_member(room_id, current_user, db)
-    messages = await list_recent_messages(db, room_id, limit)
+    try:
+        messages = await list_recent_messages(db, room_id, limit, before)
+    except MessageNotFoundError:
+        raise HTTPException(status_code=404, detail="Message not found")
     reactions_by_message = await get_reactions_for_messages(db, [m.id for m in messages])
     preview_urls = {m.preview_url for m in messages if m.preview_url}
     previews_by_url = await get_link_previews_for_urls(db, list(preview_urls))

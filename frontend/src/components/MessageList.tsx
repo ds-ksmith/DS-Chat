@@ -1,5 +1,5 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { getRoomFileUrl, getRoomImageUrl } from '../api/rooms'
 import { useAuth } from '../context/AuthContext'
 import { useLocalDay } from '../hooks/useLocalDay'
@@ -117,7 +117,22 @@ interface MessageListProps {
   onEdit: (messageId: string, content: string) => void
   onReact: (messageId: string, emoji: string) => void
   onDelete: (messageId: string) => void
+  // Paging back through older history. All optional: a list that never
+  // passes them just has no older page to offer.
+  hasMoreOlder?: boolean
+  loadingOlder?: boolean
+  olderError?: string | null
+  onLoadOlder?: () => void
+  // Bumped each time the user sends a message, so the list can jump to the
+  // bottom to show it even if they had scrolled back. (Not inferred from the
+  // newest message being theirs: a history refresh briefly shows an older
+  // message of theirs last, which would look the same.)
+  scrollToBottomSignal?: number
 }
+
+// How close to the top (px) a scroll has to get before the next older page is
+// requested -- early enough that it's usually there before the user arrives.
+const LOAD_OLDER_THRESHOLD_PX = 300
 
 export function MessageList({
   roomId,
@@ -127,6 +142,11 @@ export function MessageList({
   onEdit,
   onReact,
   onDelete,
+  hasMoreOlder = false,
+  loadingOlder = false,
+  olderError = null,
+  onLoadOlder,
+  scrollToBottomSignal = 0,
 }: MessageListProps) {
   const { user } = useAuth()
   const now = useLocalDay()
@@ -136,9 +156,9 @@ export function MessageList({
   const emojiScale = EMOJI_SCALE_MULTIPLIER[user?.emoji_scale ?? 'normal']
   const containerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  // Whether the view should be pinned to the latest message -- true right
-  // after a room switch/new message, flipped off if the user deliberately
-  // scrolls away from the bottom. Read by the image-load handler below so a
+  // Whether the view should be pinned to the latest message -- true on
+  // opening a room and whenever the user is at the bottom, flipped off as
+  // soon as they scroll away from it. Read by the image-load handler below so a
   // late-loading image doesn't yank someone back down mid-scrollback.
   const pinnedToBottomRef = useRef(true)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -178,10 +198,83 @@ export function MessageList({
     setReactingId(messageId)
   }
 
+  // Paging back. Asking for an older page records where the list was
+  // scrolled to, so that once those messages are added above, the view can be
+  // put back exactly where it was instead of jumping.
+  const olderAnchorRef = useRef<{ height: number; top: number } | null>(null)
+  const skipBottomScrollRef = useRef(false)
+  const firstIdRef = useRef(messages[0]?.id)
+  // Refs rather than closing over the props: the scroll listener below is
+  // attached once and must always see the current values.
+  const canLoadOlderRef = useRef(false)
+  canLoadOlderRef.current = hasMoreOlder && !loadingOlder && !olderError && !!onLoadOlder
+  const onLoadOlderRef = useRef(onLoadOlder)
+  onLoadOlderRef.current = onLoadOlder
+
+  function requestOlder() {
+    const container = containerRef.current
+    if (!container || !onLoadOlderRef.current) return
+    olderAnchorRef.current = { height: container.scrollHeight, top: container.scrollTop }
+    onLoadOlderRef.current()
+  }
+
+  // Runs before paint, so the correction is never visible as a flash. Only
+  // acts when messages were added *above* the old first one while an anchor
+  // is waiting -- an ordinary new message at the bottom leaves it alone.
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    const first = messages[0]?.id
+    const anchor = olderAnchorRef.current
+    if (container && anchor && first !== firstIdRef.current) {
+      container.scrollTop = anchor.top + (container.scrollHeight - anchor.height)
+      skipBottomScrollRef.current = true
+    }
+    firstIdRef.current = first
+  }, [messages])
+
+  // The request is over (loaded, empty, failed): nothing left to restore.
+  // Declared after the effect above so a result that lands in the same render
+  // as the end of loading is still restored first.
+  useLayoutEffect(() => {
+    if (!loadingOlder) olderAnchorRef.current = null
+  }, [loadingOlder])
+
+  const prevRoomIdRef = useRef<string | null>(null)
   useEffect(() => {
+    if (skipBottomScrollRef.current) {
+      // This change was older messages loading in above -- not something
+      // to follow down to the bottom.
+      skipBottomScrollRef.current = false
+      return
+    }
+    const roomChanged = prevRoomIdRef.current !== roomId
+    prevRoomIdRef.current = roomId
+    // Follows new messages to the bottom when the user is already there or
+    // on opening a room -- but not while they're scrolled back reading older
+    // history, which would otherwise be yanked away by every incoming
+    // message. (Sending one has its own signal, below.)
+    if (roomChanged || pinnedToBottomRef.current) {
+      pinnedToBottomRef.current = true
+      bottomRef.current?.scrollIntoView({ block: 'end' })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately keyed on length, not the array: it re-runs per new message, not per edit/reaction
+  }, [roomId, messages.length])
+
+  useEffect(() => {
+    if (scrollToBottomSignal === 0) return
     pinnedToBottomRef.current = true
     bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [roomId, messages.length])
+  }, [scrollToBottomSignal])
+
+  // A list too short to scroll never fires a scroll event, so without this a
+  // tall window showing a full page of short messages would have no way to
+  // reach the older ones short of the button.
+  useEffect(() => {
+    const container = containerRef.current
+    if (container && canLoadOlderRef.current && container.scrollHeight <= container.clientHeight) {
+      requestOlder()
+    }
+  }, [messages, hasMoreOlder, loadingOlder, olderError])
 
   useEffect(() => {
     const container = containerRef.current
@@ -193,6 +286,7 @@ export function MessageList({
       // rounding alone.
       pinnedToBottomRef.current =
         container.scrollHeight - container.scrollTop - container.clientHeight < 48
+      if (container.scrollTop < LOAD_OLDER_THRESHOLD_PX && canLoadOlderRef.current) requestOlder()
     }
     // `load` doesn't bubble, but a capture-phase listener on an ancestor
     // still sees it fire on the way down -- lets one listener catch every
@@ -230,6 +324,22 @@ export function MessageList({
 
   return (
     <div className="message-list" ref={containerRef}>
+      {hasMoreOlder || loadingOlder || olderError ? (
+        <div className="message-list-older">
+          {loadingOlder ? (
+            <span>Loading earlier messages…</span>
+          ) : (
+            <>
+              {olderError && <span className="message-list-older-error">{olderError}</span>}
+              <button type="button" onClick={requestOlder}>
+                {olderError ? 'Try again' : 'Load earlier messages'}
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        messages.length > 0 && <div className="message-list-start">Start of conversation</div>
+      )}
       {messages.map((msg, i) => {
         const mine = msg.user_id === user?.id
         const prev = messages[i - 1]

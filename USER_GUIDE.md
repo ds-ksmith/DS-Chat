@@ -74,6 +74,13 @@ show just the time; older ones add the day — "Yesterday 4:04 PM", a weekday
 like "Mon 4:04 PM" for the past week, then the date ("Oct 2, 4:04 PM", with
 the year if it's not this one). Hover a time to see the full date.
 
+A room or conversation opens showing its most recent 50 messages. Scroll up
+and older ones load automatically, 50 at a time, until you reach "Start of
+conversation" at the top. (There's also a **Load earlier messages** button
+if you'd rather click.) The place you were reading stays put as they load,
+and new messages won't pull you away from older ones while you're scrolled
+back — sending a message takes you back down to the latest.
+
 ## Formatting
 
 Messages support Markdown. Prefer buttons to typing the syntax? Click the
