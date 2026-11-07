@@ -56,11 +56,24 @@ echo "==> Restarting ds-chat"
 sudo systemctl restart ds-chat
 
 echo "==> Verifying"
-sleep 2
-if curl -sf http://127.0.0.1:8000/api/health >/dev/null; then
-  echo "Health check OK"
+# Retried rather than checked once after a fixed sleep: the service runs
+# several workers that each import the app and run startup work, which can
+# take longer than a couple of seconds, so a single early check reported
+# failure on deploys that were in fact healthy a moment later.
+HEALTH_URL="http://127.0.0.1:8000/api/health"
+HEALTH_TIMEOUT_SECONDS=30
+healthy=false
+for ((waited = 0; waited < HEALTH_TIMEOUT_SECONDS; waited += 2)); do
+  sleep 2
+  if curl -sf "$HEALTH_URL" >/dev/null; then
+    healthy=true
+    break
+  fi
+done
+if [[ "$healthy" == true ]]; then
+  echo "Health check OK (after ~$((waited + 2))s)"
 else
-  echo "Health check FAILED -- check: sudo journalctl -u ds-chat -n 50" >&2
+  echo "Health check FAILED after ${HEALTH_TIMEOUT_SECONDS}s -- check: sudo journalctl -u ds-chat -n 50" >&2
   exit 1
 fi
 sudo systemctl status ds-chat --no-pager -l | head -10
