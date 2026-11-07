@@ -5,6 +5,7 @@ import {
   me,
   removeAvatar,
   revokeSession,
+  updateDmEmailNotifications,
   updateEmojiScale,
   updateProfile,
   updateTextScale,
@@ -84,6 +85,7 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
   const [themeError, setThemeError] = useState<string | null>(null)
   const [textScaleError, setTextScaleError] = useState<string | null>(null)
   const [emojiScaleError, setEmojiScaleError] = useState<string | null>(null)
+  const [dmEmailError, setDmEmailError] = useState<string | null>(null)
 
   const [customThemes, setCustomThemes] = useState<CustomTheme[]>([])
   const [editingThemeId, setEditingThemeId] = useState<string | null>(null)
@@ -197,6 +199,16 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
       updateUser(updated)
     } catch (err) {
       setEmojiScaleError(err instanceof ApiError ? err.message : String(err))
+    }
+  }
+
+  async function handleToggleDmEmail(enabled: boolean) {
+    setDmEmailError(null)
+    try {
+      const updated = await updateDmEmailNotifications(enabled)
+      updateUser(updated)
+    } catch (err) {
+      setDmEmailError(err instanceof ApiError ? err.message : String(err))
     }
   }
 
@@ -556,6 +568,29 @@ export function ProfileModal({ onClose }: ProfileModalProps) {
             </button>
           </div>
         </form>
+
+        <hr className="modal-divider" />
+
+        <div className="modal-field-label">Email notifications</div>
+        <div className="toggle-row">
+          <div className="toggle-label">
+            <span className="t">Direct messages</span>
+            <span className="d">
+              Email me when someone messages me directly while I'm offline. Email for a
+              room's messages is set in that room's details.
+            </span>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={user.dm_email_notifications}
+              onChange={(e) => handleToggleDmEmail(e.target.checked)}
+              aria-label="Email me about direct messages"
+            />
+            <span className="track" />
+          </label>
+        </div>
+        {dmEmailError && <p className="modal-error">{dmEmailError}</p>}
 
         <hr className="modal-divider" />
 

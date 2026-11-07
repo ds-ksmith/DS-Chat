@@ -379,7 +379,9 @@ covered by `backend/tests/test_desktop_notifications.py`.
 Two related, separately-scoped email triggers layered on top of Web Push/
 desktop notifications, both in `app/services/message_events.py`:
 
-**DMs** (`_maybe_email_dm_notification`) — always on, no opt-in toggle.
+**DMs** (`_maybe_email_dm_notification`) — on by default, with an account-wide
+opt-out (`User.dm_email_notifications`, set via `PATCH /api/auth/me` and shown
+under Profile settings); a recipient who has turned it off is never emailed.
 Emails a DM's other participant when they're *genuinely* offline
 (`GlobalPresence.is_online`, not just "not connected to this room's own
 channel" the way the Web Push/desktop-notification audience is computed —
@@ -392,7 +394,7 @@ since the recipient's `last_read_at`.
 **Regular rooms** (`_maybe_email_room_notifications`) — opt-in per
 member, per room (`RoomMembership.email_notifications`, toggled via `PATCH
 /api/rooms/{id}/notifications`; rejected for a DM — `CannotModifyDmError`
-→ 400 — since DMs already get the always-on behavior above). Two triggers,
+→ 400 — since DMs already get the offline email above, controlled account-wide instead). Two triggers,
 not one: the room's first unread message debounces the same way DMs do,
 *but* a message that `@mentions` the subscriber always emails regardless
 of that debounce — a mention is a stronger, individually-addressed signal

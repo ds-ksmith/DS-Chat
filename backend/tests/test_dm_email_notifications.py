@@ -205,3 +205,99 @@ def test_dm_email_debounced_to_first_unread_then_resets_after_read(ws_client_fac
         _send_and_sync(alice_ws, dm["id"], "message three")
 
     assert len(calls) == 2
+
+
+def test_dm_emails_default_to_on(ws_client_factory):
+    instance = ws_client_factory()
+    user = _register_ws(instance, _unique("alice"))
+    assert user["dm_email_notifications"] is True
+
+
+def test_dm_email_setting_round_trips_and_leaves_other_fields_alone(ws_client_factory):
+    instance = ws_client_factory()
+    _register_ws(instance, _unique("alice"))
+    instance.patch("/api/auth/me", json={"display_name": "Alice A"})
+
+    resp = instance.patch("/api/auth/me", json={"dm_email_notifications": False})
+    assert resp.status_code == 200
+    assert resp.json()["dm_email_notifications"] is False
+    assert resp.json()["display_name"] == "Alice A"
+
+    # Another profile change must not flip it back to the default.
+    resp = instance.patch("/api/auth/me", json={"theme": "light"})
+    assert resp.json()["dm_email_notifications"] is False
+
+    assert instance.get("/api/auth/me").json()["dm_email_notifications"] is False
+
+    resp = instance.patch("/api/auth/me", json={"dm_email_notifications": True})
+    assert resp.json()["dm_email_notifications"] is True
+
+
+def test_dm_email_setting_rejects_null(ws_client_factory):
+    instance = ws_client_factory()
+    _register_ws(instance, _unique("alice"))
+    resp = instance.patch("/api/auth/me", json={"dm_email_notifications": None})
+    assert resp.status_code == 422
+    assert instance.get("/api/auth/me").json()["dm_email_notifications"] is True
+
+
+def test_dm_message_does_not_email_recipient_who_turned_dm_emails_off(ws_client_factory, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+    dm = instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]}).json()
+
+    assert instance2.patch("/api/auth/me", json={"dm_email_notifications": False}).status_code == 200
+
+    # bob is genuinely offline -- the one case that always used to email.
+    with instance1.websocket_connect("/ws/chat") as alice_ws:
+        alice_ws.send_json({"type": "join", "room_id": dm["id"]})
+        assert alice_ws.receive_json()["type"] == "joined"
+        _send_and_sync(alice_ws, dm["id"], "hey, you there?")
+
+    assert calls == []
+
+
+def test_dm_email_resumes_when_turned_back_on(ws_client_factory, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    _register_ws(instance1, _unique("alice"))
+    bob = _register_ws(instance2, _unique("bob"))
+    dm = instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]}).json()
+
+    instance2.patch("/api/auth/me", json={"dm_email_notifications": False})
+    instance2.patch("/api/auth/me", json={"dm_email_notifications": True})
+
+    with instance1.websocket_connect("/ws/chat") as alice_ws:
+        alice_ws.send_json({"type": "join", "room_id": dm["id"]})
+        assert alice_ws.receive_json()["type"] == "joined"
+        _send_and_sync(alice_ws, dm["id"], "hey")
+
+    assert len(calls) == 1
+    assert calls[0]["message"]["To"] == bob["email"]
+
+
+def test_turning_dm_emails_off_does_not_affect_room_mention_emails(ws_client_factory, monkeypatch):
+    calls = _fake_smtp(monkeypatch)
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    _register_ws(instance1, _unique("alice"))
+    room = instance1.post("/api/rooms", json={"name": _unique("general")}).json()
+    bob = _register_ws(instance2, _unique("bob"))
+    instance2.post(f"/api/rooms/{room['id']}/join")
+    instance2.patch(f"/api/rooms/{room['id']}/notifications", json={"email_notifications": True})
+    instance2.patch("/api/auth/me", json={"dm_email_notifications": False})
+
+    with instance1.websocket_connect("/ws/chat") as alice_ws:
+        alice_ws.send_json({"type": "join", "room_id": room["id"]})
+        assert alice_ws.receive_json()["type"] == "joined"
+        _send_and_sync(alice_ws, room["id"], f"hey @{bob['username']}")
+
+    assert len(calls) == 1
+    assert calls[0]["message"]["To"] == bob["email"]

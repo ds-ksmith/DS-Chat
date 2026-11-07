@@ -30,6 +30,7 @@ class UserRead(BaseModel):
     active_custom_theme: CustomThemeRead | None
     avatar_filename: str | None
     appear_offline: bool
+    dm_email_notifications: bool
     created_at: datetime
 
     @model_validator(mode="after")
@@ -64,6 +65,7 @@ class ProfileUpdate(BaseModel):
     # #71: kept in sync with MessageContent.tsx's EMOJI_SCALE_MULTIPLIER map.
     emoji_scale: Literal["small", "normal", "large", "xlarge"] | None = Field(default=None)
     appear_offline: bool | None = Field(default=None)
+    dm_email_notifications: bool | None = Field(default=None)
 
 
 class UserDirectoryRead(BaseModel):

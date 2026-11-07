@@ -180,8 +180,9 @@ The same menu has a notifications toggle:
   focused window, even if it's still open somewhere on screen.
 
 You'll also get an email if someone messages you in a direct conversation
-while you're genuinely offline — no setup needed. For regular rooms,
-email is opt-in per room: open a room's **Room details** panel and turn
+while you're genuinely offline. If you'd rather not, open **Profile
+settings** from your account menu and turn off **Email notifications →
+Direct messages**. For regular rooms, email is opt-in per room: open a room's **Room details** panel and turn
 on **Email notifications** to get emailed on that room's first unread
 message and on every `@mention`, while you're offline.
 

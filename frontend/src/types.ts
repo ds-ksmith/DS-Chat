@@ -56,6 +56,7 @@ export interface User {
   emoji_scale: EmojiScale | null
   avatar_filename: string | null
   appear_offline: boolean
+  dm_email_notifications: boolean
   created_at: string
 }
 

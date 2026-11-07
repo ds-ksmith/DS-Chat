@@ -106,6 +106,12 @@ async def update_profile(
         current_user.emoji_scale = updates["emoji_scale"]
     if "appear_offline" in updates:
         current_user.appear_offline = updates["appear_offline"]
+    if "dm_email_notifications" in updates:
+        # Rejects an explicit null rather than storing it: the column is
+        # NOT NULL, and "unset" isn't a meaningful value for an on/off choice.
+        if updates["dm_email_notifications"] is None:
+            raise HTTPException(status_code=422, detail="dm_email_notifications must be true or false")
+        current_user.dm_email_notifications = updates["dm_email_notifications"]
     await db.commit()
     # A plain db.refresh() would expire (and, on next access, lazily
     # reload) the active_custom_theme relationship get_current_user

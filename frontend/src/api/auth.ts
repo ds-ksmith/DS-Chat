@@ -81,6 +81,16 @@ export function updateAppearOffline(appearOffline: boolean): Promise<User> {
   })
 }
 
+// Whether to be emailed about direct messages received while offline.
+// Per-room email for regular rooms is separate (see api/rooms.ts's
+// updateRoomEmailNotifications).
+export function updateDmEmailNotifications(enabled: boolean): Promise<User> {
+  return apiFetch<User>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify({ dm_email_notifications: enabled }),
+  })
+}
+
 export function changePassword(currentPassword: string, newPassword: string): Promise<void> {
   return apiFetch<void>('/api/auth/password', {
     method: 'PATCH',

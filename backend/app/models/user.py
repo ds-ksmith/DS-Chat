@@ -45,6 +45,12 @@ class User(Base):
     # always shows as offline to everyone regardless of actual connection
     # state (a "lurk" mode), independent of any individual room.
     appear_offline: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    # Whether to be emailed about direct messages received while offline.
+    # On by default -- that's how DM email always behaved before this was a
+    # setting, so existing users keep getting them until they turn it off.
+    dm_email_notifications: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

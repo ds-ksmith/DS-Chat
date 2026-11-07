@@ -201,6 +201,11 @@ async def _maybe_email_dm_notification(
             "DM email skipped for room %s: recipient user %s not found", room_id, membership.user_id
         )
         return
+    if not recipient.dm_email_notifications:
+        logger.warning(
+            "DM email skipped for room %s: recipient %s turned DM emails off", room_id, recipient.id
+        )
+        return
     # appear_offline is a manual "always look offline" override -- treated
     # the same as genuinely offline here, same as everywhere else it's
     # checked in this codebase.
@@ -258,8 +263,9 @@ async def _maybe_email_room_notifications(
     message: Message,
 ) -> None:
     """#67: opt-in, per-room email -- deliberately scoped to regular rooms
-    only (see set_room_email_notifications: DMs already get #66's
-    always-on offline email, no separate toggle).
+    only (see set_room_email_notifications: DMs already get #66's offline
+    email, controlled by the account-wide User.dm_email_notifications
+    setting rather than a per-room toggle).
 
     Two triggers, not one: the room's first unread message debounces the
     same way #66 does (one email per unread burst, not one per message),
