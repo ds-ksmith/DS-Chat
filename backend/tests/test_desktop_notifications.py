@@ -235,3 +235,43 @@ def test_desktop_notification_not_sent_to_non_member(ws_client_factory):
         outsider_ws.send_json({"type": "join", "room_id": room2["id"]})
         joined = outsider_ws.receive_json()
         assert joined == {"type": "joined", "room_id": room2["id"]}
+
+
+def _dm_notification_title(ws_client_factory, alice_display_name: str | None) -> tuple[str, str]:
+    """Returns (title, alice's username) for the notification bob gets when
+    alice DMs him while he's connected but not viewing the conversation."""
+    instance1 = ws_client_factory()
+    instance2 = ws_client_factory()
+
+    alice = _register_ws(instance1, _unique("alice"))
+    if alice_display_name is not None:
+        resp = instance1.patch("/api/auth/me", json={"display_name": alice_display_name})
+        assert resp.status_code == 200
+    bob = _register_ws(instance2, _unique("bob"))
+    dm = instance1.post("/api/rooms/dm", json={"other_user_id": bob["id"]}).json()
+
+    with instance2.websocket_connect("/ws/chat") as bob_ws:
+        with instance1.websocket_connect("/ws/chat") as alice_ws:
+            alice_ws.send_json({"type": "join", "room_id": dm["id"]})
+            assert alice_ws.receive_json()["type"] == "joined"
+            _send_and_sync(alice_ws, dm["id"], "you around?")
+
+        # Skips everything else bob's channel carries here (alice's presence
+        # change, the unread dot) -- only the notification itself matters.
+        note = _recv(bob_ws)
+        while note["type"] != "desktop_notification":
+            note = _recv(bob_ws)
+        assert note["room_id"] == dm["id"]
+        # The generated room name must never leak into the title (#79).
+        assert dm["name"] not in note["title"]
+        return note["title"], alice["username"]
+
+
+def test_dm_notification_title_is_the_senders_username(ws_client_factory):
+    title, alice_username = _dm_notification_title(ws_client_factory, alice_display_name=None)
+    assert title == alice_username
+
+
+def test_dm_notification_title_prefers_the_senders_display_name(ws_client_factory):
+    title, _ = _dm_notification_title(ws_client_factory, alice_display_name="Alice Anderson")
+    assert title == "Alice Anderson"

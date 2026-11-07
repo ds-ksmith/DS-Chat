@@ -77,7 +77,16 @@ async def _notify_offline_members(
         )
 
     room = await db.get(Room, room_id)
-    title = f"#{room.name}" if room else "New message"
+    if room is None:
+        title = "New message"
+    elif room.is_dm:
+        # A DM's room name is a generated identifier, not anything a person
+        # would recognize (#79) -- the useful title is who it's from, which
+        # in a two-person conversation is exactly the sender. Same name the
+        # app shows next to their messages: display name, else username.
+        title = sender.display_name or sender.username
+    else:
+        title = f"#{room.name}"
     for user_id in notify_ids:
         mentioned = user_id in mentioned_ids
         if message.content:
